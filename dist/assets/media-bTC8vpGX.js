@@ -1,0 +1,2 @@
+const e=()=>typeof window<"u"?window.location.origin:"",i=o=>{if(typeof o!="string")return;const t=o.trim();if(!t)return;if(/^(https?:|data:|blob:)/i.test(t))return t;if(t.startsWith("//"))return`${typeof window<"u"?window.location.protocol:"https:"}${t}`;const r=e();return r?`${r}${t.startsWith("/")?t:`/${t}`}`:t},s=o=>(o??[]).map(t=>i(t)).filter(t=>!!t);export{s as a,i as r};
+//# sourceMappingURL=media-bTC8vpGX.js.map
