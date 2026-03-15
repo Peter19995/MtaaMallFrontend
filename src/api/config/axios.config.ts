@@ -3,7 +3,10 @@ import axios, { type InternalAxiosRequestConfig } from 'axios'
 type RetryableRequest = InternalAxiosRequestConfig & { _retry?: boolean }
 type RefreshResponse = { access_token: string; refresh_token?: string }
 
-const rawApiUrl = (import.meta.env.VITE_API_URL as string | undefined)?.trim()
+const rawApiUrl = (
+  (import.meta.env.VITE_API_BASE_URL as string | undefined) ??
+  (import.meta.env.VITE_API_URL as string | undefined)
+)?.trim()
 const normalizedApiUrl = rawApiUrl?.replace(/\/+$/, '')
 const baseURL = normalizedApiUrl
   ? normalizedApiUrl.endsWith('/api/v1')

@@ -1,5 +1,27 @@
 import { FormEvent, useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { motion, AnimatePresence } from 'framer-motion'
+import { useNavigate } from 'react-router-dom'
+import {
+  PlusIcon,
+  MagnifyingGlassIcon,
+  FunnelIcon,
+  XMarkIcon,
+  PencilIcon,
+  TrashIcon,
+  PhotoIcon,
+  CubeIcon,
+  TagIcon,
+  CheckCircleIcon,
+  XCircleIcon,
+  ArrowPathIcon,
+  SparklesIcon,
+  DocumentDuplicateIcon,
+  EyeIcon,
+  EyeSlashIcon,
+  ChevronDownIcon,
+  ChevronUpIcon,
+} from '@heroicons/react/24/outline'
 import { Button, DataTable, Select, TextArea, TextInput, type Column } from '@components/common'
 import {
   createCategoryRequest,
@@ -12,6 +34,7 @@ import {
   type ProductUpdate,
   updateProductRequest
 } from '@api/modules/products.api'
+import { AppTheme, withOpacity } from '@constants/theme'
 
 type ProductFormState = {
   sku: string
@@ -47,7 +70,8 @@ const formatCurrency = (amount: number): string =>
   new Intl.NumberFormat('en-KE', {
     style: 'currency',
     currency: 'KES',
-    maximumFractionDigits: 2
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 0
   }).format(amount)
 
 const getOfferPrice = (price: number, isOnOffer?: boolean, maxOffer?: number): number =>
@@ -59,7 +83,23 @@ const parseImageUrls = (value: string): string[] =>
     .map((item) => item.trim())
     .filter((item) => item.length > 0)
 
+// Animation variants
+const fadeInUp = {
+  initial: { opacity: 0, y: 20 },
+  animate: { opacity: 1, y: 0 },
+  exit: { opacity: 0, y: -20 }
+}
+
+const staggerContainer = {
+  animate: {
+    transition: {
+      staggerChildren: 0.05
+    }
+  }
+}
+
 const ProductManagementPage = () => {
+  const navigate = useNavigate()
   const queryClient = useQueryClient()
   const [search, setSearch] = useState('')
   const [categoryFilter, setCategoryFilter] = useState(ALL_CATEGORIES)
@@ -71,6 +111,8 @@ const ProductManagementPage = () => {
   const [formError, setFormError] = useState<string | null>(null)
   const [categoryName, setCategoryName] = useState('')
   const [categoryDescription, setCategoryDescription] = useState('')
+  const [showFilters, setShowFilters] = useState(false)
+  const [previewImage, setPreviewImage] = useState<string | null>(null)
 
   const categoriesQuery = useQuery({
     queryKey: ['products', 'categories'],
@@ -205,26 +247,62 @@ const ProductManagementPage = () => {
       key: 'name',
       header: 'Product',
       render: (row) => (
-        <div>
-          <p className="font-medium text-text">{row.name}</p>
-          <p className="text-[11px] text-text-tertiary">SKU: {row.sku}</p>
+        <div className="flex items-center gap-3">
+          <div className="h-10 w-10 rounded-lg bg-gradient-to-br from-primary/10 to-secondary/10 flex items-center justify-center">
+            {row.image_urls?.[0] ? (
+              <img 
+                src={row.image_urls[0]} 
+                alt={row.name} 
+                className="h-10 w-10 rounded-lg object-cover"
+              />
+            ) : (
+              <CubeIcon className="h-5 w-5 text-primary/50" />
+            )}
+          </div>
+          <div>
+            <p className="font-medium text-text">{row.name}</p>
+            <p className="text-xs text-text-tertiary">SKU: {row.sku}</p>
+          </div>
         </div>
       )
     },
     {
       key: 'category_name',
       header: 'Category',
-      render: (row) => row.category_name ?? 'Uncategorized'
+      render: (row) => (
+        <span className="inline-flex items-center gap-1 rounded-full bg-primary/10 px-3 py-1 text-xs font-medium text-primary">
+          <TagIcon className="h-3 w-3" />
+          {row.category_name ?? 'Uncategorized'}
+        </span>
+      )
     },
     {
       key: 'stock_quantity',
       header: 'Stock',
       render: (row) => (
         <div>
-          <p className={row.stock_quantity <= row.reorder_level ? 'text-warning-dark' : 'text-text-secondary'}>
-            {row.stock_quantity}
-          </p>
-          <p className="text-[11px] text-text-tertiary">Reorder: {row.reorder_level}</p>
+          <div className="flex items-center gap-2">
+            <span className={`text-sm font-medium ${
+              row.stock_quantity <= row.reorder_level 
+                ? 'text-warning' 
+                : 'text-success'
+            }`}>
+              {row.stock_quantity}
+            </span>
+            <span className="text-xs text-text-tertiary">/ {row.reorder_level}</span>
+          </div>
+          <div className="w-20 h-1.5 bg-background rounded-full mt-1">
+            <div 
+              className={`h-full rounded-full ${
+                row.stock_quantity <= row.reorder_level 
+                  ? 'bg-warning' 
+                  : 'bg-success'
+              }`}
+              style={{ 
+                width: `${Math.min((row.stock_quantity / (row.reorder_level * 2)) * 100, 100)}%` 
+              }}
+            />
+          </div>
         </div>
       )
     },
@@ -233,10 +311,12 @@ const ProductManagementPage = () => {
       header: 'Pricing',
       render: (row) => (
         <div className="text-right">
-          <p className={row.is_on_offer ? 'text-[11px] text-text-tertiary line-through' : 'text-text-secondary'}>
-            {formatCurrency(row.price)}
-          </p>
-          <p className="font-medium text-text">
+          {row.is_on_offer && (
+            <p className="text-xs text-text-tertiary line-through">
+              {formatCurrency(row.price)}
+            </p>
+          )}
+          <p className="text-sm font-bold text-primary">
             {formatCurrency(getOfferPrice(row.price, row.is_on_offer, row.max_offer))}
           </p>
         </div>
@@ -248,55 +328,48 @@ const ProductManagementPage = () => {
       header: 'Offer',
       render: (row) => (
         <span
-          className={`inline-flex rounded-full px-2 py-0.5 text-[11px] font-medium ${
+          className={`inline-flex items-center gap-1 rounded-full px-3 py-1 text-xs font-medium ${
             row.is_on_offer
-              ? 'bg-warning-light text-warning-dark'
-              : 'bg-divider text-text-tertiary'
+              ? 'bg-warning/10 text-warning'
+              : 'bg-background text-text-tertiary'
           }`}
         >
-          {row.is_on_offer
-            ? `On offer (${formatCurrency(row.max_offer ?? 0)} off)`
-            : 'No offer'}
+          {row.is_on_offer ? (
+            <>
+              <SparklesIcon className="h-3 w-3" />
+              {formatCurrency(row.max_offer ?? 0)} off
+            </>
+          ) : (
+            'No offer'
+          )}
         </span>
       ),
       align: 'center'
-    },
-    {
-      key: 'image_urls',
-      header: 'Images',
-      render: (row) => {
-        const images = row.image_urls ?? []
-        if (images.length === 0) {
-          return <span className="text-[11px] text-text-tertiary">None</span>
-        }
-        return (
-          <div className="flex items-center gap-2">
-            <img src={images[0]} alt={row.name} className="h-8 w-8 rounded object-cover" />
-            <span className="text-[11px] text-text-secondary">{images.length} image(s)</span>
-          </div>
-        )
-      }
     },
     {
       key: 'is_active',
       header: 'Status',
       render: (row) => (
         <span
-          className={`inline-flex rounded-full px-2 py-0.5 text-[11px] font-medium ${
+          className={`inline-flex items-center gap-1 rounded-full px-3 py-1 text-xs font-medium ${
             row.is_active
-              ? 'bg-success-light text-success-dark'
-              : 'bg-divider text-text-tertiary'
+              ? 'bg-success/10 text-success'
+              : 'bg-error/10 text-error'
           }`}
         >
-          {row.is_active ? 'Active' : 'Inactive'}
+          {row.is_active ? (
+            <>
+              <CheckCircleIcon className="h-3 w-3" />
+              Active
+            </>
+          ) : (
+            <>
+              <XCircleIcon className="h-3 w-3" />
+              Inactive
+            </>
+          )}
         </span>
       ),
-      align: 'center'
-    },
-    {
-      key: 'created_at',
-      header: 'Created',
-      render: (row) => new Date(row.created_at).toLocaleDateString(),
       align: 'center'
     },
     {
@@ -307,39 +380,23 @@ const ProductManagementPage = () => {
         <div className="flex justify-end gap-2">
           <button
             type="button"
-            className="rounded border border-border px-2 py-1 text-[11px] text-text-secondary hover:bg-secondary-light"
-            onClick={() => {
-              setEditingProductId(row.id)
-              setForm({
-                sku: row.sku,
-                name: row.name,
-                description: row.description ?? '',
-                categoryId: row.category_id ? String(row.category_id) : '',
-                stockQuantity: String(row.stock_quantity),
-                reorderLevel: String(row.reorder_level),
-                isActive: row.is_active,
-                isOnOffer: Boolean(row.is_on_offer),
-                maxOffer: String(row.max_offer ?? 0),
-                imageUrlsText: (row.image_urls ?? []).join('\n'),
-                imageFiles: []
-              })
-              setShowProductForm(true)
-              setFormError(null)
-            }}
+            className="p-2 text-text-secondary hover:text-primary hover:bg-primary/5 rounded-lg transition-all"
+            onClick={() => navigate(`/dashboard/admin/products/${row.id}`)}
+            title="Manage product"
           >
-            Edit
+            <PencilIcon className="h-4 w-4" />
           </button>
           <button
             type="button"
-            className="rounded border border-error px-2 py-1 text-[11px] text-error hover:bg-error-light/20"
+            className="p-2 text-text-secondary hover:text-error hover:bg-error/5 rounded-lg transition-all"
             onClick={() => {
-              const confirmed = window.confirm(`Delete "${row.name}"? This action cannot be undone.`)
-              if (confirmed) {
+              if (window.confirm(`Delete "${row.name}"? This action cannot be undone.`)) {
                 deleteProductMutation.mutate(row.id)
               }
             }}
+            title="Delete product"
           >
-            Delete
+            <TrashIcon className="h-4 w-4" />
           </button>
         </div>
       )
@@ -361,266 +418,495 @@ const ProductManagementPage = () => {
   }
 
   return (
-    <div className="space-y-6 text-text">
-      <header className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <h1 className="text-lg font-semibold tracking-tight sm:text-xl">Product management</h1>
-          <p className="text-xs text-text-tertiary sm:text-sm">
-            Manage product catalog, stock settings, and categories.
-          </p>
+    <div className="min-h-screen bg-gradient-to-br from-background via-white to-background p-6">
+      {/* Header */}
+      <motion.div
+        initial={{ opacity: 0, y: -20 }}
+        animate={{ opacity: 1, y: 0 }}
+        className="mb-6"
+      >
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+          <div>
+            <h1 className="text-2xl font-bold text-text flex items-center gap-2">
+              <CubeIcon className="h-6 w-6 text-primary" />
+              Product Management
+            </h1>
+            <p className="text-sm text-text-secondary mt-1">
+              Manage your product catalog, stock levels, and categories
+            </p>
+          </div>
+          
+          <div className="flex gap-2">
+            <Button
+              variant="outline"
+              onClick={() => setShowCategoryForm(!showCategoryForm)}
+              className="flex items-center gap-2"
+            >
+              <TagIcon className="h-4 w-4" />
+              {showCategoryForm ? 'Close Category Form' : 'New Category'}
+            </Button>
+            <Button
+              onClick={() => {
+                setEditingProductId(null)
+                setForm(EMPTY_FORM)
+                setFormError(null)
+                setShowProductForm(!showProductForm)
+              }}
+              className="flex items-center gap-2"
+            >
+              <PlusIcon className="h-4 w-4" />
+              {showProductForm ? 'Close Product Form' : 'New Product'}
+            </Button>
+          </div>
         </div>
-        <div className="flex gap-2">
-          <Button
-            variant="outline"
-            onClick={() => {
-              setShowCategoryForm((prev) => !prev)
-            }}
-          >
-            {showCategoryForm ? 'Close category form' : 'New category'}
-          </Button>
-          <Button
-            onClick={() => {
-              setEditingProductId(null)
-              setForm(EMPTY_FORM)
-              setFormError(null)
-              setShowProductForm((prev) => !prev)
-            }}
-          >
-            {showProductForm ? 'Close product form' : 'New product'}
-          </Button>
-        </div>
-      </header>
+      </motion.div>
 
-      <section className="rounded-xl border border-border bg-surface p-4">
-        <div className="grid gap-3 md:grid-cols-4">
-          <TextInput
-            label="Search"
-            placeholder="Search by name or SKU"
-            value={search}
-            onChange={(event) => setSearch(event.target.value)}
-          />
-          <Select
-            label="Category"
-            options={categoryOptions}
-            value={categoryFilter}
-            onChange={(event) => setCategoryFilter(String(event.target.value))}
-          />
-          <label className="mt-6 inline-flex items-center gap-2 text-xs text-text-secondary sm:text-sm">
-            <input
-              type="checkbox"
-              checked={inStockOnly}
-              onChange={(event) => setInStockOnly(event.target.checked)}
-              className="h-4 w-4 rounded border border-border text-primary focus:ring-primary"
-            />
-            Show in-stock only
-          </label>
-        </div>
-      </section>
-
-      {showCategoryForm ? (
-        <section className="rounded-xl border border-border bg-surface p-4">
-          <h2 className="text-sm font-semibold text-text">Create category</h2>
-          <form className="mt-3 grid gap-3 md:grid-cols-3" onSubmit={onSubmitCategory}>
-            <TextInput
-              label="Category name"
-              value={categoryName}
-              onChange={(event) => setCategoryName(event.target.value)}
-              required
-            />
-            <TextInput
-              label="Description"
-              value={categoryDescription}
-              onChange={(event) => setCategoryDescription(event.target.value)}
-            />
-            <div className="flex items-end">
-              <Button type="submit" loading={createCategoryMutation.isPending}>
-                Save category
-              </Button>
-            </div>
-          </form>
-        </section>
-      ) : null}
-
-      {showProductForm ? (
-        <section className="rounded-xl border border-border bg-surface p-4">
-          <h2 className="text-sm font-semibold text-text">
-            {editingProductId ? 'Edit product' : 'Create product'}
-          </h2>
-          <form className="mt-3 grid gap-3 md:grid-cols-3" onSubmit={onSubmitProduct}>
-            {!editingProductId ? (
-              <TextInput
-                label="SKU"
-                value={form.sku}
-                onChange={(event) => setForm((prev) => ({ ...prev, sku: event.target.value }))}
-                required
-              />
-            ) : null}
-            <TextInput
-              label="Name"
-              value={form.name}
-              onChange={(event) => setForm((prev) => ({ ...prev, name: event.target.value }))}
-              required
-            />
-            <Select
-              label="Category"
-              options={productFormCategoryOptions}
-              value={form.categoryId}
-              onChange={(event) => setForm((prev) => ({ ...prev, categoryId: String(event.target.value) }))}
-            />
-            <TextInput
-              label="Stock quantity"
-              type="number"
-              min={0}
-              value={form.stockQuantity}
-              onChange={(event) =>
-                setForm((prev) => ({ ...prev, stockQuantity: event.target.value }))
-              }
-              required
-            />
-            <TextInput
-              label="Reorder level"
-              type="number"
-              min={0}
-              value={form.reorderLevel}
-              onChange={(event) =>
-                setForm((prev) => ({ ...prev, reorderLevel: event.target.value }))
-              }
-              required
-            />
-            <div className="md:col-span-2">
-              <TextArea
-                label="Description"
-                value={form.description}
-                onChange={(event) =>
-                  setForm((prev) => ({ ...prev, description: event.target.value }))
-                }
-              />
-            </div>
-            <div className="md:col-span-2">
-              <TextArea
-                label="Image URLs (optional)"
-                helperText="One image URL per line."
-                value={form.imageUrlsText}
-                onChange={(event) =>
-                  setForm((prev) => ({ ...prev, imageUrlsText: event.target.value }))
-                }
-              />
-            </div>
-            <div className="space-y-1.5 text-xs sm:text-sm">
-              <label className="block font-medium text-text-secondary" htmlFor="product-image-files">
-                Upload images (optional)
-              </label>
+      {/* Filters Section */}
+      <motion.section
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.1 }}
+        className="mb-6"
+      >
+        <div className="bg-white rounded-xl border border-border p-4 shadow-sm">
+          <div className="flex flex-col lg:flex-row gap-4">
+            {/* Search */}
+            <div className="flex-1 relative">
               <input
-                id="product-image-files"
-                type="file"
-                accept="image/*"
-                multiple
-                onChange={(event) => {
-                  const files = Array.from(event.target.files ?? [])
-                  setForm((prev) => ({ ...prev, imageFiles: files }))
-                }}
-                className="w-full rounded-md border border-border bg-surface px-3 py-2 text-xs sm:text-sm"
+                type="text"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="Search by name or SKU..."
+                className="w-full h-10 pl-10 pr-4 bg-background border border-border rounded-lg 
+                         focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20 
+                         transition-all text-sm"
               />
-              {form.imageFiles.length > 0 ? (
-                <p className="text-[11px] text-text-tertiary">
-                  {form.imageFiles.length} file(s) selected.
-                </p>
-              ) : null}
+              <MagnifyingGlassIcon className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-text-tertiary" />
             </div>
-            <TextInput
-              label="Max offer amount"
-              type="number"
-              min={0}
-              step="0.01"
-              value={form.maxOffer}
-              onChange={(event) => setForm((prev) => ({ ...prev, maxOffer: event.target.value }))}
-              disabled={!form.isOnOffer}
-            />
-            <label className="mt-6 inline-flex items-center gap-2 text-xs text-text-secondary sm:text-sm">
+
+            {/* Category Filter */}
+            <div className="w-full lg:w-48">
+              <Select
+                options={categoryOptions}
+                value={categoryFilter}
+                onChange={(e) => setCategoryFilter(String(e.target.value))}
+                className="h-10"
+              />
+            </div>
+
+            {/* In Stock Toggle */}
+            <label className="flex items-center gap-2 cursor-pointer">
               <input
                 type="checkbox"
-                checked={form.isOnOffer}
-                onChange={(event) =>
-                  setForm((prev) => ({ ...prev, isOnOffer: event.target.checked }))
-                }
-                className="h-4 w-4 rounded border border-border text-primary focus:ring-primary"
+                checked={inStockOnly}
+                onChange={(e) => setInStockOnly(e.target.checked)}
+                className="w-4 h-4 rounded border-border text-primary focus:ring-primary/20"
               />
-              Product is on offer
+              <span className="text-sm text-text-secondary">In stock only</span>
             </label>
-            <label className="mt-6 inline-flex items-center gap-2 text-xs text-text-secondary sm:text-sm">
-              <input
-                type="checkbox"
-                checked={form.isActive}
-                onChange={(event) =>
-                  setForm((prev) => ({ ...prev, isActive: event.target.checked }))
-                }
-                className="h-4 w-4 rounded border border-border text-primary focus:ring-primary"
-              />
-              Product is active
-            </label>
-            {editingProduct ? (
-              <div className="md:col-span-3 rounded-md border border-border bg-background px-3 py-2 text-xs text-text-secondary sm:text-sm">
-                <p>
-                  Normal selling price: <span className="font-medium text-text">{formatCurrency(editingProduct.price)}</span>
-                </p>
-                <p>
-                  Offer price:{' '}
-                  <span className="font-medium text-text">
-                    {formatCurrency(
-                      getOfferPrice(
-                        editingProduct.price,
-                        form.isOnOffer,
-                        Number.isNaN(Number(form.maxOffer)) ? 0 : Number(form.maxOffer)
-                      )
-                    )}
-                  </span>
-                </p>
-                <p>
-                  Images: <span className="font-medium text-text">{(editingProduct.image_urls ?? []).length}</span>
-                </p>
-              </div>
-            ) : null}
-            <div className="md:col-span-3 flex items-center gap-2">
-              <Button type="submit" loading={saveProductMutation.isPending}>
-                {editingProductId ? 'Update product' : 'Create product'}
-              </Button>
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => {
-                  setShowProductForm(false)
-                  setEditingProductId(null)
-                  setForm(EMPTY_FORM)
-                  setFormError(null)
-                }}
+
+            {/* Filter Toggle */}
+            <button
+              onClick={() => setShowFilters(!showFilters)}
+              className={`flex items-center gap-2 px-3 py-2 rounded-lg border transition-all ${
+                showFilters 
+                  ? 'bg-primary text-white border-primary' 
+                  : 'border-border text-text-secondary hover:border-primary hover:text-primary'
+              }`}
+            >
+              <FunnelIcon className="h-4 w-4" />
+              <span className="text-sm">Advanced Filters</span>
+              {showFilters ? (
+                <ChevronUpIcon className="h-4 w-4" />
+              ) : (
+                <ChevronDownIcon className="h-4 w-4" />
+              )}
+            </button>
+          </div>
+
+          {/* Advanced Filters */}
+          <AnimatePresence>
+            {showFilters && (
+              <motion.div
+                initial={{ height: 0, opacity: 0 }}
+                animate={{ height: 'auto', opacity: 1 }}
+                exit={{ height: 0, opacity: 0 }}
+                className="overflow-hidden mt-4 pt-4 border-t border-border"
               >
-                Cancel
-              </Button>
-              {formError ? <p className="text-xs text-error">{formError}</p> : null}
-            </div>
-          </form>
-        </section>
-      ) : null}
-
-      <section className="space-y-3">
-        <div className="flex items-center justify-between">
-          <h2 className="text-sm font-semibold text-text">Catalog</h2>
-          {productsQuery.isFetching ? (
-            <span className="text-[11px] text-text-tertiary">Refreshing…</span>
-          ) : null}
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div>
+                    <label className="block text-xs font-medium text-text-secondary mb-1">
+                      Price Range
+                    </label>
+                    <div className="flex gap-2">
+                      <input
+                        type="number"
+                        placeholder="Min"
+                        className="w-full h-9 px-3 bg-background border border-border rounded-lg text-sm"
+                      />
+                      <input
+                        type="number"
+                        placeholder="Max"
+                        className="w-full h-9 px-3 bg-background border border-border rounded-lg text-sm"
+                      />
+                    </div>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-text-secondary mb-1">
+                      Stock Status
+                    </label>
+                    <select className="w-full h-9 px-3 bg-background border border-border rounded-lg text-sm">
+                      <option>All</option>
+                      <option>Low Stock</option>
+                      <option>Out of Stock</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-text-secondary mb-1">
+                      Offer Status
+                    </label>
+                    <select className="w-full h-9 px-3 bg-background border border-border rounded-lg text-sm">
+                      <option>All</option>
+                      <option>On Offer</option>
+                      <option>Not on Offer</option>
+                    </select>
+                  </div>
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
         </div>
-        {productsQuery.isError ? (
-          <p className="text-xs text-error">Could not load products from API.</p>
-        ) : null}
-        <DataTable
-          columns={columns}
-          data={productsQuery.data ?? []}
-          getRowKey={(row) => row.id}
-          emptyState={
-            productsQuery.isLoading ? 'Loading products…' : 'No products found for current filter.'
-          }
-        />
-      </section>
+      </motion.section>
+
+      {/* Category Form */}
+      <AnimatePresence>
+        {showCategoryForm && (
+          <motion.section
+            initial={{ opacity: 0, y: -20 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -20 }}
+            className="mb-6"
+          >
+            <div className="bg-white rounded-xl border border-border p-4 shadow-sm">
+              <h2 className="text-sm font-semibold text-text mb-4 flex items-center gap-2">
+                <TagIcon className="h-4 w-4 text-primary" />
+                Create New Category
+              </h2>
+              <form onSubmit={onSubmitCategory} className="grid gap-4 md:grid-cols-3">
+                <TextInput
+                  label="Category Name"
+                  value={categoryName}
+                  onChange={(e) => setCategoryName(e.target.value)}
+                  required
+                  placeholder="e.g., Curtains, Furniture"
+                />
+                <TextInput
+                  label="Description (Optional)"
+                  value={categoryDescription}
+                  onChange={(e) => setCategoryDescription(e.target.value)}
+                  placeholder="Brief description of the category"
+                />
+                <div className="flex items-end gap-2">
+                  <Button 
+                    type="submit" 
+                    loading={createCategoryMutation.isPending}
+                    className="flex-1"
+                  >
+                    Save Category
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    onClick={() => setShowCategoryForm(false)}
+                  >
+                    Cancel
+                  </Button>
+                </div>
+              </form>
+            </div>
+          </motion.section>
+        )}
+      </AnimatePresence>
+
+      {/* Product Form */}
+      <AnimatePresence>
+        {showProductForm && (
+          <motion.section
+            initial={{ opacity: 0, y: -20 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -20 }}
+            className="mb-6"
+          >
+            <div className="bg-white rounded-xl border border-border p-4 shadow-sm">
+              <h2 className="text-sm font-semibold text-text mb-4 flex items-center gap-2">
+                <CubeIcon className="h-4 w-4 text-primary" />
+                {editingProductId ? 'Edit Product' : 'Create New Product'}
+              </h2>
+              <form onSubmit={onSubmitProduct} className="space-y-4">
+                <div className="grid gap-4 md:grid-cols-3">
+                  {!editingProductId && (
+                    <TextInput
+                      label="SKU"
+                      value={form.sku}
+                      onChange={(e) => setForm({ ...form, sku: e.target.value })}
+                      required
+                      placeholder="e.g., PRD-001"
+                    />
+                  )}
+                  <TextInput
+                    label="Product Name"
+                    value={form.name}
+                    onChange={(e) => setForm({ ...form, name: e.target.value })}
+                    required
+                    placeholder="e.g., Premium Cotton Curtains"
+                  />
+                  <Select
+                    label="Category"
+                    options={productFormCategoryOptions}
+                    value={form.categoryId}
+                    onChange={(e) => setForm({ ...form, categoryId: String(e.target.value) })}
+                  />
+                  <TextInput
+                    label="Stock Quantity"
+                    type="number"
+                    min={0}
+                    value={form.stockQuantity}
+                    onChange={(e) => setForm({ ...form, stockQuantity: e.target.value })}
+                    required
+                  />
+                  <TextInput
+                    label="Reorder Level"
+                    type="number"
+                    min={0}
+                    value={form.reorderLevel}
+                    onChange={(e) => setForm({ ...form, reorderLevel: e.target.value })}
+                    required
+                  />
+                  <TextInput
+                    label="Max Offer Amount"
+                    type="number"
+                    min={0}
+                    step="0.01"
+                    value={form.maxOffer}
+                    onChange={(e) => setForm({ ...form, maxOffer: e.target.value })}
+                    disabled={!form.isOnOffer}
+                  />
+                </div>
+
+                <div className="grid gap-4 md:grid-cols-2">
+                  <TextArea
+                    label="Description"
+                    value={form.description}
+                    onChange={(e) => setForm({ ...form, description: e.target.value })}
+                    placeholder="Product description..."
+                    rows={4}
+                  />
+                  <TextArea
+                    label="Image URLs (One per line)"
+                    helperText="Enter image URLs, one per line"
+                    value={form.imageUrlsText}
+                    onChange={(e) => setForm({ ...form, imageUrlsText: e.target.value })}
+                    rows={4}
+                  />
+                </div>
+
+                <div className="grid gap-4 md:grid-cols-2">
+                  <div className="space-y-2">
+                    <label className="block text-xs font-medium text-text-secondary">
+                      Upload Images
+                    </label>
+                    <input
+                      type="file"
+                      accept="image/*"
+                      multiple
+                      onChange={(e) => {
+                        const files = Array.from(e.target.files ?? [])
+                        setForm({ ...form, imageFiles: files })
+                      }}
+                      className="w-full px-3 py-2 bg-background border border-border rounded-lg text-sm"
+                    />
+                    {form.imageFiles.length > 0 && (
+                      <p className="text-xs text-text-tertiary">
+                        {form.imageFiles.length} file(s) selected
+                      </p>
+                    )}
+                  </div>
+
+                  <div className="flex items-center gap-4">
+                    <label className="flex items-center gap-2 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={form.isOnOffer}
+                        onChange={(e) => setForm({ ...form, isOnOffer: e.target.checked })}
+                        className="w-4 h-4 rounded border-border text-primary focus:ring-primary/20"
+                      />
+                      <span className="text-sm text-text-secondary">Product is on offer</span>
+                    </label>
+                    <label className="flex items-center gap-2 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={form.isActive}
+                        onChange={(e) => setForm({ ...form, isActive: e.target.checked })}
+                        className="w-4 h-4 rounded border-border text-primary focus:ring-primary/20"
+                      />
+                      <span className="text-sm text-text-secondary">Product is active</span>
+                    </label>
+                  </div>
+                </div>
+
+                {editingProduct && (
+                  <div className="bg-background rounded-lg p-3 border border-border">
+                    <p className="text-xs text-text-secondary">
+                      Current price: <span className="font-medium text-text">{formatCurrency(editingProduct.price)}</span>
+                    </p>
+                    <p className="text-xs text-text-secondary mt-1">
+                      Images: <span className="font-medium text-text">{(editingProduct.image_urls ?? []).length}</span>
+                    </p>
+                  </div>
+                )}
+
+                <div className="flex items-center gap-2 pt-2">
+                  <Button type="submit" loading={saveProductMutation.isPending}>
+                    {editingProductId ? 'Update Product' : 'Create Product'}
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => {
+                      setShowProductForm(false)
+                      setEditingProductId(null)
+                      setForm(EMPTY_FORM)
+                      setFormError(null)
+                    }}
+                  >
+                    Cancel
+                  </Button>
+                  {formError && (
+                    <span className="text-xs text-error">{formError}</span>
+                  )}
+                </div>
+              </form>
+            </div>
+          </motion.section>
+        )}
+      </AnimatePresence>
+
+      {/* Products Table */}
+      <motion.section
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.2 }}
+      >
+        <div className="bg-white rounded-xl border border-border shadow-sm overflow-hidden">
+          <div className="p-4 border-b border-border flex items-center justify-between">
+            <h2 className="text-sm font-semibold text-text flex items-center gap-2">
+              <CubeIcon className="h-4 w-4 text-primary" />
+              Product Catalog
+            </h2>
+            {productsQuery.isFetching && (
+              <span className="text-xs text-text-tertiary flex items-center gap-1">
+                <ArrowPathIcon className="h-3 w-3 animate-spin" />
+                Refreshing...
+              </span>
+            )}
+          </div>
+
+          {productsQuery.isError ? (
+            <div className="p-8 text-center">
+              <XCircleIcon className="h-12 w-12 mx-auto text-error/30 mb-3" />
+              <p className="text-sm text-error">Could not load products from API.</p>
+              <Button
+                variant="outline"
+                onClick={() => productsQuery.refetch()}
+                className="mt-3"
+              >
+                Try Again
+              </Button>
+            </div>
+          ) : (
+            <DataTable
+              columns={columns}
+              data={productsQuery.data ?? []}
+              getRowKey={(row) => row.id}
+              emptyState={
+                productsQuery.isLoading ? (
+                  <div className="p-8 text-center">
+                    <ArrowPathIcon className="h-8 w-8 mx-auto text-primary/30 animate-spin mb-3" />
+                    <p className="text-sm text-text-secondary">Loading products...</p>
+                  </div>
+                ) : (
+                  <div className="p-8 text-center">
+                    <CubeIcon className="h-12 w-12 mx-auto text-text-tertiary/30 mb-3" />
+                    <p className="text-sm text-text-secondary">No products found</p>
+                    <p className="text-xs text-text-tertiary mt-1">Try adjusting your filters</p>
+                  </div>
+                )
+              }
+            />
+          )}
+        </div>
+
+        {/* Summary Stats */}
+        {productsQuery.data && productsQuery.data.length > 0 && (
+          <div className="mt-4 grid grid-cols-2 md:grid-cols-4 gap-4">
+            <div className="bg-white rounded-lg border border-border p-3">
+              <p className="text-xs text-text-tertiary">Total Products</p>
+              <p className="text-xl font-bold text-primary">{productsQuery.data.length}</p>
+            </div>
+            <div className="bg-white rounded-lg border border-border p-3">
+              <p className="text-xs text-text-tertiary">In Stock</p>
+              <p className="text-xl font-bold text-success">
+                {productsQuery.data.filter(p => p.stock_quantity > 0).length}
+              </p>
+            </div>
+            <div className="bg-white rounded-lg border border-border p-3">
+              <p className="text-xs text-text-tertiary">On Offer</p>
+              <p className="text-xl font-bold text-warning">
+                {productsQuery.data.filter(p => p.is_on_offer).length}
+              </p>
+            </div>
+            <div className="bg-white rounded-lg border border-border p-3">
+              <p className="text-xs text-text-tertiary">Categories</p>
+              <p className="text-xl font-bold text-accent">
+                {new Set(productsQuery.data.map(p => p.category_id)).size}
+              </p>
+            </div>
+          </div>
+        )}
+      </motion.section>
+
+      {/* Image Preview Modal */}
+      <AnimatePresence>
+        {previewImage && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4"
+            onClick={() => setPreviewImage(null)}
+          >
+            <motion.div
+              initial={{ scale: 0.9 }}
+              animate={{ scale: 1 }}
+              exit={{ scale: 0.9 }}
+              className="relative max-w-4xl max-h-[90vh]"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <img
+                src={previewImage}
+                alt="Preview"
+                className="max-w-full max-h-[90vh] rounded-lg"
+              />
+              <button
+                onClick={() => setPreviewImage(null)}
+                className="absolute top-4 right-4 p-2 bg-black/50 rounded-full text-white hover:bg-black/70 transition-colors"
+              >
+                <XMarkIcon className="h-5 w-5" />
+              </button>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   )
 }

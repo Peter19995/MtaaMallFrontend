@@ -8,7 +8,6 @@ import {
   WrenchScrewdriverIcon,
   NewspaperIcon,
   PhotoIcon,
-  QuestionMarkCircleIcon,
   UserIcon,
   Bars3Icon,
   XMarkIcon,
@@ -19,6 +18,7 @@ import {
 import { CartContext } from '@contexts/CartContext'
 import { useAuth } from '@hooks/useAuth'
 import { AppTheme, withOpacity } from '@constants/theme'
+import brandLogo from '@/assets/business-logo.svg'
 
 // Navigation items with icons
 const navItems = [
@@ -26,10 +26,10 @@ const navItems = [
   { path: '/about', label: 'About', icon: UserIcon, public: true },
   { path: '/products', label: 'Shop', icon: ShoppingBagIcon, public: true },
   { path: '/services', label: 'Services', icon: SparklesIcon, public: true },
+  { path: '/styling-studio', label: 'Styling Studio', icon: SparklesIcon, public: true },
   { path: '/projects', label: 'Projects', icon: WrenchScrewdriverIcon, public: true },
   { path: '/blog', label: 'Blogs', icon: NewspaperIcon, public: true },
   { path: '/gallery', label: 'Gallery', icon: PhotoIcon, public: true },
-  { path: '/faq', label: 'FAQ', icon: QuestionMarkCircleIcon, public: true },
 ]
 
 export const MainLayout = () => {
@@ -98,22 +98,15 @@ export const MainLayout = () => {
               to="/" 
               className="relative group flex items-center gap-2"
             >
-              <motion.div
+              <motion.img
                 initial={{ scale: 1 }}
                 whileHover={{ scale: 1.05 }}
                 whileTap={{ scale: 0.95 }}
-                className="relative"
-              >
-                <div className="absolute inset-0 bg-gradient-to-r from-primary to-secondary rounded-lg blur opacity-50 group-hover:opacity-75 transition-opacity" />
-                <div className="relative bg-gradient-to-r from-primary to-primary-dark px-3 py-1.5 rounded-lg">
-                  <span className="text-lg font-bold text-white tracking-tight">
-                    Julian
-                  </span>
-                </div>
-              </motion.div>
-              <span className="text-sm font-medium text-text-secondary hidden sm:block">
-                Interiors
-              </span>
+                src={brandLogo}
+                alt="Julian Interiors logo"
+                className="h-10 w-auto rounded-full border border-primary/10 bg-white/80 p-0.5 shadow-sm"
+              />
+              <span className="text-sm font-medium text-text-secondary hidden sm:block">Julian Interiors</span>
             </Link>
 
             {/* Desktop Navigation */}
@@ -468,7 +461,12 @@ export const MainLayout = () => {
           <div className="grid grid-cols-1 md:grid-cols-4 gap-8">
             {/* Brand Section */}
             <div className="col-span-1 md:col-span-2">
-              <Link to="/" className="inline-block mb-4">
+              <Link to="/" className="mb-4 inline-flex items-center gap-3">
+                <img
+                  src={brandLogo}
+                  alt="Julian Interiors logo"
+                  className="h-12 w-auto rounded-full border border-primary/10 bg-white p-0.5"
+                />
                 <span className="text-2xl font-bold bg-gradient-to-r from-primary to-secondary bg-clip-text text-transparent">
                   Julian Interiors
                 </span>

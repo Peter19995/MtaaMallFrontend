@@ -14,6 +14,7 @@ const ProjectsPage = lazy(() => import('@pages/public/Projects/ProjectsPage'))
 const BlogPage = lazy(() => import('@pages/public/Blog/BlogPage'))
 const BlogPostPage = lazy(() => import('@pages/public/Blog/BlogPost'))
 const GalleryPage = lazy(() => import('@pages/public/Gallery/GalleryPage'))
+const StylingStudioPage = lazy(() => import('@pages/public/StylingStudio/StylingStudioPage'))
 const CheckoutPage = lazy(() => import('@pages/public/Checkout/CheckoutPage'))
 const CartPage = lazy(() => import('@pages/public/Cart/CartPage'))
 const LoginPage = lazy(() => import('@pages/auth/Login/LoginPage'))
@@ -22,6 +23,9 @@ const AdminOverview = lazy(
 )
 const ProductManagementPage = lazy(
   () => import('@pages/dashboard/admin/Products/ProductManagementPage')
+)
+const ManageProductPage = lazy(
+  () => import('@pages/dashboard/admin/Products/ManageProductPage')
 )
 const ServiceManagementPage = lazy(
   () => import('@pages/dashboard/admin/Services/ServiceManagementPage')
@@ -34,6 +38,18 @@ const ProjectsOperationsPage = lazy(
 )
 const SalesOperationsPage = lazy(
   () => import('@pages/dashboard/admin/Operations/SalesOperationsPage')
+)
+const CreatePosSalePage = lazy(
+  () => import('@pages/dashboard/admin/Operations/CreatePosSalePage')
+)
+const PaymentModesPage = lazy(
+  () => import('@pages/dashboard/admin/PaymentModes/PaymentModesPage')
+)
+const StylingManagementPage = lazy(
+  () => import('@pages/dashboard/admin/Styling/StylingManagementPage')
+)
+const SettingsPage = lazy(
+  () => import('@pages/dashboard/admin/Settings/SettingsPage')
 )
 const NotFoundPage = lazy(() => import('@pages/errors/NotFound/NotFoundPage'))
 
@@ -59,6 +75,7 @@ export const AppRoutes = () => {
           <Route path="/blog" element={<BlogPage />} />
           <Route path="/blog/:slug" element={<BlogPostPage />} />
           <Route path="/gallery" element={<GalleryPage />} />
+          <Route path="/styling-studio" element={<StylingStudioPage />} />
           <Route path="/checkout" element={<CheckoutPage />} />
           <Route path="/cart" element={<CartPage />} />
         </Route>
@@ -69,10 +86,15 @@ export const AppRoutes = () => {
           <Route element={<DashboardLayout />}>
             <Route path="/dashboard/admin" element={<AdminOverview />} />
             <Route path="/dashboard/admin/products" element={<ProductManagementPage />} />
+            <Route path="/dashboard/admin/products/:productId" element={<ManageProductPage />} />
             <Route path="/dashboard/admin/services" element={<ServiceManagementPage />} />
             <Route path="/dashboard/admin/inventory" element={<InventoryManagementPage />} />
             <Route path="/dashboard/admin/projects" element={<ProjectsOperationsPage />} />
             <Route path="/dashboard/admin/sales" element={<SalesOperationsPage />} />
+            <Route path="/dashboard/admin/sales/create" element={<CreatePosSalePage />} />
+            <Route path="/dashboard/admin/payment-modes" element={<PaymentModesPage />} />
+            <Route path="/dashboard/admin/styling" element={<StylingManagementPage />} />
+            <Route path="/dashboard/admin/settings" element={<SettingsPage />} />
           </Route>
         </Route>
 

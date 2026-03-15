@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 406 644" role="img" aria-labelledby="title">
+  <title id="title">Julian Interiors Logo</title>
+  <rect x="2" y="2" width="402" height="640" rx="201" fill="#0E353D"/>
+  <ellipse cx="185" cy="377" rx="108" ry="95" fill="none" stroke="#1FE8E4" stroke-width="4"/>
+  <path d="M143 443V258c0-58 39-96 98-96 54 0 91 33 91 84 0 54-37 89-90 107-20 7-42 12-62 14" fill="none" stroke="#ECEFF1" stroke-width="30" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M247 170v246c0 66-31 95-85 95-26 0-47-6-65-18" fill="none" stroke="#1FD8D4" stroke-width="26" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M247 162h40c-14 8-20 19-20 34v10h-20z" fill="#1FD8D4"/>
+  <path d="M137 493v26c0 20-7 34-20 43h51c-10-8-16-23-16-43v-26z" fill="#ECEFF1"/>
+</svg>

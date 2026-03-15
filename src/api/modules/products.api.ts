@@ -26,6 +26,8 @@ export type ProductResponse = {
   is_on_offer?: boolean
   max_offer?: number
   image_urls?: string[]
+  branch_id?: number | null
+  branch_name?: string | null
   created_at: string
 }
 
@@ -60,6 +62,22 @@ export type ProductListParams = {
   search?: string
   category_id?: number
   in_stock_only?: boolean
+  branch_id?: number
+}
+
+export type ProductGetParams = {
+  branch_id?: number
+}
+
+export type InStockProductsScope = 'all' | 'branch'
+
+export type InStockProductsParams = {
+  scope?: InStockProductsScope
+  branch_id?: number
+  skip?: number
+  limit?: number
+  search?: string
+  category_id?: number
 }
 
 export const listCategoriesRequest = async (): Promise<ProductCategoryResponse[]> => {
@@ -78,6 +96,21 @@ export const listProductsRequest = async (
   params?: ProductListParams
 ): Promise<ProductResponse[]> => {
   const { data } = await api.get<ProductResponse[]>('/products/', { params })
+  return data
+}
+
+export const listInStockProductsRequest = async (
+  params?: InStockProductsParams
+): Promise<ProductResponse[]> => {
+  const { data } = await api.get<ProductResponse[]>('/products/in-stock', { params })
+  return data
+}
+
+export const getProductRequest = async (
+  productId: number,
+  params?: ProductGetParams
+): Promise<ProductResponse> => {
+  const { data } = await api.get<ProductResponse>(`/products/${productId}`, { params })
   return data
 }
 

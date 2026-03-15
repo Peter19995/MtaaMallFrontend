@@ -1,5 +1,8 @@
 const getMediaBaseUrl = (): string => {
-  const rawApiUrl = (import.meta.env.VITE_API_URL as string | undefined)?.trim()
+  const rawApiUrl = (
+    (import.meta.env.VITE_API_BASE_URL as string | undefined) ??
+    (import.meta.env.VITE_API_URL as string | undefined)
+  )?.trim()
 
   if (!rawApiUrl) {
     return typeof window !== 'undefined' ? window.location.origin : ''

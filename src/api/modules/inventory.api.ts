@@ -51,7 +51,9 @@ export type StockCountCreate = {
   count_date: string
   physical_stock: number
   apply_adjustment?: boolean
-  location?: string
+  valuation_method?: InventoryValuationMethod
+  adjustment_buying_price?: number
+  adjustment_selling_price?: number
   notes?: string
 }
 
@@ -66,6 +68,7 @@ export type StockCountResponse = {
   physical_stock: number
   variance: number
   apply_adjustment: boolean
+  valuation_method_used?: InventoryValuationMethod | null
   location: string
   category_id?: number | null
   category_name?: string | null
