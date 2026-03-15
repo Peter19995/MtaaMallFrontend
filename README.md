@@ -38,7 +38,7 @@ On first deployment, `scripts/deploy.sh` creates `.env.production` automatically
 If you want to create it manually in advance, use:
 
 ```env
-VITE_API_BASE_URL=https://api.julian-interiors.com
+VITE_API_BASE_URL=https://api.julian-interiors.com/api/v1
 VITE_APP_ENV=production
 ```
 
