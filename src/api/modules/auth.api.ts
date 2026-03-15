@@ -27,7 +27,31 @@ export type UserResponse = {
   permissions?: string[]
 }
 
+const resolveRequestUrl = (path: string) => {
+  const baseUrl =
+    typeof api.defaults.baseURL === 'string' ? api.defaults.baseURL.replace(/\/+$/, '') : ''
+
+  if (!baseUrl) {
+    return path
+  }
+
+  if (baseUrl.startsWith('http')) {
+    return `${baseUrl}${path}`
+  }
+
+  if (typeof window !== 'undefined') {
+    return `${window.location.origin}${baseUrl}${path}`
+  }
+
+  return `${baseUrl}${path}`
+}
+
 export const loginRequest = async (payload: LoginRequest): Promise<TokenResponse> => {
+  console.debug('[auth] login request', {
+    url: resolveRequestUrl('/auth/login'),
+    body: payload
+  })
+
   const { data } = await api.post<TokenResponse>('/auth/login', payload, {
     headers: {
       'Content-Type': 'application/json',
