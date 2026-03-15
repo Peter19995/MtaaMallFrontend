@@ -31,12 +31,17 @@ const rawApiUrl = (
 )?.trim()
 const normalizedApiUrl = rawApiUrl?.replace(/\/+$/, '')
 const isDev = import.meta.env.DEV
+const runtimeHostname = typeof window !== 'undefined' ? window.location.hostname : ''
+const shouldUseSameOriginApi =
+  isDev ||
+  runtimeHostname === 'julian-interiors.com' ||
+  runtimeHostname === 'www.julian-interiors.com'
 const configuredBaseUrl = normalizedApiUrl
   ? normalizedApiUrl.endsWith('/api/v1')
     ? normalizedApiUrl
     : `${normalizedApiUrl}/api/v1`
   : '/api/v1'
-const baseURL = isDev ? '/api/v1' : configuredBaseUrl
+const baseURL = shouldUseSameOriginApi ? '/api/v1' : configuredBaseUrl
 
 const api = axios.create({
   baseURL
