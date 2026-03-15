@@ -1,0 +1,2 @@
+import{a}from"./axios.config-Dt4nIoJo.js";const c=async()=>{const{data:t}=await a.get("/blogs/categories",{params:{active_only:!0}});return t},l=async t=>{const{data:s}=await a.get("/blogs/public",{params:t});return s},i=async t=>{const{data:s}=await a.get(`/blogs/public/${t}`);return s},n=async(t,s)=>{const{data:e}=await a.get(`/blogs/public/${t}/comments`,{params:s});return e};export{c as a,n as b,i as g,l};
+//# sourceMappingURL=blogs.api-BtyENIKP.js.map

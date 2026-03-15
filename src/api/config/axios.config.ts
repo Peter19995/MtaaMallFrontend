@@ -30,11 +30,13 @@ const rawApiUrl = (
   (import.meta.env.VITE_API_URL as string | undefined)
 )?.trim()
 const normalizedApiUrl = rawApiUrl?.replace(/\/+$/, '')
-const baseURL = normalizedApiUrl
+const isDev = import.meta.env.DEV
+const configuredBaseUrl = normalizedApiUrl
   ? normalizedApiUrl.endsWith('/api/v1')
     ? normalizedApiUrl
     : `${normalizedApiUrl}/api/v1`
   : '/api/v1'
+const baseURL = isDev ? '/api/v1' : configuredBaseUrl
 
 const api = axios.create({
   baseURL

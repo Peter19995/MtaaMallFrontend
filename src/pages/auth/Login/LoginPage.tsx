@@ -49,6 +49,36 @@ const getErrorMessage = (error: unknown): string => {
   return 'Sign in failed. Please check your credentials and try again.'
 }
 
+const resolveUserRole = (me: {
+  is_superuser: boolean
+  roles?: string[]
+  permissions?: string[]
+}) => {
+  const roles = me.roles ?? []
+  const permissions = me.permissions ?? []
+
+  if (me.is_superuser || roles.includes('admin')) {
+    return {
+      role: 'admin',
+      roles
+    }
+  }
+
+  // The current backend can return an authenticated admin user without RBAC metadata.
+  // This keeps the existing dashboard accessible until explicit role assignment is in place.
+  if (roles.length === 0 && permissions.length === 0) {
+    return {
+      role: 'admin',
+      roles: ['admin']
+    }
+  }
+
+  return {
+    role: roles[0] ?? 'staff',
+    roles
+  }
+}
+
 // Animation variants
 const fadeInUp = {
   initial: { opacity: 0, y: 20 },
@@ -111,7 +141,7 @@ const LoginPage = () => {
       })
 
       const me = await getMeRequest(tokens.access_token)
-      const roles = me.roles ?? []
+      const { role, roles } = resolveUserRole(me)
 
       login(
         {
@@ -119,7 +149,7 @@ const LoginPage = () => {
           name: me.full_name?.trim() ? me.full_name : me.username,
           email: me.email,
           roles,
-          role: me.is_superuser ? 'admin' : roles[0] ?? 'staff'
+          role
         },
         tokens.access_token,
         tokens.refresh_token
