@@ -3,6 +3,28 @@ import axios, { type InternalAxiosRequestConfig } from 'axios'
 type RetryableRequest = InternalAxiosRequestConfig & { _retry?: boolean }
 type RefreshResponse = { access_token: string; refresh_token?: string }
 
+const AUTH_BYPASS_PATHS = ['/auth/login', '/auth/register', '/auth/refresh']
+
+const shouldBypassStoredToken = (url?: string) => {
+  if (!url) {
+    return false
+  }
+
+  return AUTH_BYPASS_PATHS.some((path) => url.includes(path))
+}
+
+const getExistingAuthorizationHeader = (config: InternalAxiosRequestConfig) => {
+  const headers = config.headers as
+    | {
+        Authorization?: string
+        authorization?: string
+        get?: (name: string) => string | undefined
+      }
+    | undefined
+
+  return headers?.get?.('Authorization') ?? headers?.Authorization ?? headers?.authorization
+}
+
 const rawApiUrl = (
   (import.meta.env.VITE_API_BASE_URL as string | undefined) ??
   (import.meta.env.VITE_API_URL as string | undefined)
@@ -20,7 +42,8 @@ const api = axios.create({
 
 api.interceptors.request.use((config) => {
   const token = localStorage.getItem('access_token')
-  if (token) {
+
+  if (token && !shouldBypassStoredToken(config.url) && !getExistingAuthorizationHeader(config)) {
     config.headers = {
       ...config.headers,
       Authorization: `Bearer ${token}`
