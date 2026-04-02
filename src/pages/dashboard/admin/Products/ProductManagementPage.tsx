@@ -15,8 +15,10 @@ import {
   CheckCircleIcon,
   XCircleIcon,
   ArrowPathIcon,
+  ExclamationTriangleIcon,
   SparklesIcon,
   DocumentDuplicateIcon,
+  BanknotesIcon,
   EyeIcon,
   EyeSlashIcon,
   ChevronDownIcon,
@@ -24,17 +26,25 @@ import {
 } from '@heroicons/react/24/outline'
 import { Button, DataTable, Select, TextArea, TextInput, type Column } from '@components/common'
 import {
+  getStockStatusRequest,
+  type ProductStockStatusResponse as InventoryProductStockStatusResponse
+} from '@api/modules/inventory.api'
+import {
   createCategoryRequest,
   createProductRequest,
   deleteProductRequest,
+  getProductRequest,
   listCategoriesRequest,
   listProductsRequest,
   type ProductCreate,
   type ProductResponse,
   type ProductUpdate,
+  updateProductPriceRequest,
+  uploadProductImagesRequest,
   updateProductRequest
 } from '@api/modules/products.api'
 import { AppTheme, withOpacity } from '@constants/theme'
+import { resolveMediaUrl, resolveMediaUrls } from '@utils/media'
 
 type ProductFormState = {
   sku: string
@@ -46,7 +56,6 @@ type ProductFormState = {
   isActive: boolean
   isOnOffer: boolean
   maxOffer: string
-  imageUrlsText: string
   imageFiles: File[]
 }
 
@@ -60,7 +69,6 @@ const EMPTY_FORM: ProductFormState = {
   isActive: true,
   isOnOffer: false,
   maxOffer: '0',
-  imageUrlsText: '',
   imageFiles: []
 }
 
@@ -74,14 +82,13 @@ const formatCurrency = (amount: number): string =>
     maximumFractionDigits: 0
   }).format(amount)
 
+const getBasePrice = (product: ProductResponse): number => product.selling_price ?? product.price
+
 const getOfferPrice = (price: number, isOnOffer?: boolean, maxOffer?: number): number =>
   isOnOffer ? Math.max(price - (maxOffer ?? 0), 0) : price
 
-const parseImageUrls = (value: string): string[] =>
-  value
-    .split('\n')
-    .map((item) => item.trim())
-    .filter((item) => item.length > 0)
+const getBlockingStockStatuses = (statuses: InventoryProductStockStatusResponse[]) =>
+  statuses.filter((status) => status.stock_quantity > 0 || status.business_stock_quantity > 0)
 
 // Animation variants
 const fadeInUp = {
@@ -113,6 +120,11 @@ const ProductManagementPage = () => {
   const [categoryDescription, setCategoryDescription] = useState('')
   const [showFilters, setShowFilters] = useState(false)
   const [previewImage, setPreviewImage] = useState<string | null>(null)
+  const [selectedProduct, setSelectedProduct] = useState<ProductResponse | null>(null)
+  const [pricingProduct, setPricingProduct] = useState<ProductResponse | null>(null)
+  const [deleteCandidate, setDeleteCandidate] = useState<ProductResponse | null>(null)
+  const [priceValue, setPriceValue] = useState('')
+  const [priceError, setPriceError] = useState<string | null>(null)
 
   const categoriesQuery = useQuery({
     queryKey: ['products', 'categories'],
@@ -133,13 +145,22 @@ const ProductManagementPage = () => {
       })
   })
 
+  const deleteProductStockStatusQuery = useQuery({
+    queryKey: ['inventory', 'stock-status', 'delete-product', deleteCandidate?.id ?? null],
+    queryFn: () =>
+      getStockStatusRequest({
+        product_id: deleteCandidate?.id,
+        limit: 300
+      }),
+    enabled: Boolean(deleteCandidate?.id)
+  })
+
   const saveProductMutation = useMutation({
     mutationFn: async (payload: ProductFormState) => {
       const stockQuantity = Number(payload.stockQuantity)
       const reorderLevel = Number(payload.reorderLevel)
       const maxOffer = Number(payload.maxOffer)
       const categoryId = payload.categoryId ? Number(payload.categoryId) : undefined
-      const imageUrls = parseImageUrls(payload.imageUrlsText)
 
       if (Number.isNaN(stockQuantity) || stockQuantity < 0) {
         throw new Error('Stock quantity must be a number greater than or equal to 0.')
@@ -160,10 +181,11 @@ const ProductManagementPage = () => {
           reorder_level: reorderLevel,
           is_active: payload.isActive,
           is_on_offer: payload.isOnOffer,
-          max_offer: payload.isOnOffer ? maxOffer : 0,
-          image_urls: imageUrls
+          max_offer: payload.isOnOffer ? maxOffer : 0
         }
-        return updateProductRequest(editingProductId, updatePayload, payload.imageFiles)
+        await updateProductRequest(editingProductId, updatePayload)
+        await uploadProductImagesRequest(editingProductId, payload.imageFiles)
+        return getProductRequest(editingProductId)
       }
 
       const createPayload: ProductCreate = {
@@ -175,11 +197,12 @@ const ProductManagementPage = () => {
         reorder_level: reorderLevel,
         is_active: payload.isActive,
         is_on_offer: payload.isOnOffer,
-        max_offer: payload.isOnOffer ? maxOffer : 0,
-        image_urls: imageUrls
+        max_offer: payload.isOnOffer ? maxOffer : 0
       }
 
-      return createProductRequest(createPayload, payload.imageFiles)
+      const createdProduct = await createProductRequest(createPayload)
+      await uploadProductImagesRequest(createdProduct.id, payload.imageFiles)
+      return getProductRequest(createdProduct.id)
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['products', 'list'] })
@@ -212,6 +235,23 @@ const ProductManagementPage = () => {
     mutationFn: (productId: number) => deleteProductRequest(productId),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['products', 'list'] })
+      setDeleteCandidate(null)
+    }
+  })
+
+  const updatePriceMutation = useMutation({
+    mutationFn: async ({ productId, sellingPrice }: { productId: number; sellingPrice: number }) =>
+      updateProductPriceRequest(productId, { selling_price: sellingPrice }),
+    onSuccess: (updatedProduct) => {
+      queryClient.invalidateQueries({ queryKey: ['products', 'list'] })
+      setSelectedProduct((current) => (current?.id === updatedProduct.id ? updatedProduct : current))
+      setPricingProduct((current) => (current?.id === updatedProduct.id ? updatedProduct : current))
+      setPriceValue('')
+      setPriceError(null)
+      setPricingProduct(null)
+    },
+    onError: (error: Error) => {
+      setPriceError(error.message || 'Could not update product price.')
     }
   })
 
@@ -242,6 +282,17 @@ const ProductManagementPage = () => {
     [editingProductId, productsQuery.data]
   )
 
+  const openPriceModal = (product: ProductResponse) => {
+    setPricingProduct(product)
+    setPriceValue(String(getBasePrice(product)))
+    setPriceError(null)
+  }
+
+  const deleteBlockingStocks = useMemo(
+    () => getBlockingStockStatuses(deleteProductStockStatusQuery.data ?? []),
+    [deleteProductStockStatusQuery.data]
+  )
+
   const columns: Column<ProductResponse>[] = [
     {
       key: 'name',
@@ -251,7 +302,7 @@ const ProductManagementPage = () => {
           <div className="h-10 w-10 rounded-lg bg-gradient-to-br from-primary/10 to-secondary/10 flex items-center justify-center">
             {row.image_urls?.[0] ? (
               <img 
-                src={row.image_urls[0]} 
+                src={resolveMediaUrl(row.image_urls[0]) ?? row.image_urls[0]} 
                 alt={row.name} 
                 className="h-10 w-10 rounded-lg object-cover"
               />
@@ -313,11 +364,11 @@ const ProductManagementPage = () => {
         <div className="text-right">
           {row.is_on_offer && (
             <p className="text-xs text-text-tertiary line-through">
-              {formatCurrency(row.price)}
+              {formatCurrency(getBasePrice(row))}
             </p>
           )}
           <p className="text-sm font-bold text-primary">
-            {formatCurrency(getOfferPrice(row.price, row.is_on_offer, row.max_offer))}
+            {formatCurrency(getOfferPrice(getBasePrice(row), row.is_on_offer, row.max_offer))}
           </p>
         </div>
       ),
@@ -381,6 +432,22 @@ const ProductManagementPage = () => {
           <button
             type="button"
             className="p-2 text-text-secondary hover:text-primary hover:bg-primary/5 rounded-lg transition-all"
+            onClick={() => setSelectedProduct(row)}
+            title="View details"
+          >
+            <EyeIcon className="h-4 w-4" />
+          </button>
+          <button
+            type="button"
+            className="p-2 text-text-secondary hover:text-primary hover:bg-primary/5 rounded-lg transition-all"
+            onClick={() => openPriceModal(row)}
+            title="Update price"
+          >
+            <BanknotesIcon className="h-4 w-4" />
+          </button>
+          <button
+            type="button"
+            className="p-2 text-text-secondary hover:text-primary hover:bg-primary/5 rounded-lg transition-all"
             onClick={() => navigate(`/dashboard/admin/products/${row.id}`)}
             title="Manage product"
           >
@@ -389,11 +456,7 @@ const ProductManagementPage = () => {
           <button
             type="button"
             className="p-2 text-text-secondary hover:text-error hover:bg-error/5 rounded-lg transition-all"
-            onClick={() => {
-              if (window.confirm(`Delete "${row.name}"? This action cannot be undone.`)) {
-                deleteProductMutation.mutate(row.id)
-              }
-            }}
+            onClick={() => setDeleteCandidate(row)}
             title="Delete product"
           >
             <TrashIcon className="h-4 w-4" />
@@ -415,6 +478,27 @@ const ProductManagementPage = () => {
       return
     }
     createCategoryMutation.mutate()
+  }
+
+  const onSubmitPriceUpdate = (event: FormEvent) => {
+    event.preventDefault()
+
+    if (!pricingProduct) {
+      return
+    }
+
+    const nextPrice = Number(priceValue)
+
+    if (Number.isNaN(nextPrice) || nextPrice < 0) {
+      setPriceError('Price must be a number greater than or equal to 0.')
+      return
+    }
+
+    setPriceError(null)
+    updatePriceMutation.mutate({
+      productId: pricingProduct.id,
+      sellingPrice: nextPrice
+    })
   }
 
   return (
@@ -701,16 +785,9 @@ const ProductManagementPage = () => {
                     placeholder="Product description..."
                     rows={4}
                   />
-                  <TextArea
-                    label="Image URLs (One per line)"
-                    helperText="Enter image URLs, one per line"
-                    value={form.imageUrlsText}
-                    onChange={(e) => setForm({ ...form, imageUrlsText: e.target.value })}
-                    rows={4}
-                  />
                 </div>
 
-                <div className="grid gap-4 md:grid-cols-2">
+                <div className="grid gap-4 md:grid-cols-[minmax(0,1fr)_auto]">
                   <div className="space-y-2">
                     <label className="block text-xs font-medium text-text-secondary">
                       Upload Images
@@ -874,6 +951,397 @@ const ProductManagementPage = () => {
           </div>
         )}
       </motion.section>
+
+      {/* Product Details Modal */}
+      <AnimatePresence>
+        {selectedProduct && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4"
+            onClick={() => setSelectedProduct(null)}
+          >
+            <motion.div
+              initial={{ scale: 0.96, y: 16 }}
+              animate={{ scale: 1, y: 0 }}
+              exit={{ scale: 0.96, y: 16 }}
+              className="w-full max-w-4xl rounded-2xl bg-white shadow-2xl"
+              onClick={(event) => event.stopPropagation()}
+            >
+              <div className="flex items-start justify-between border-b border-border p-6">
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-[0.18em] text-primary">
+                    Product Details
+                  </p>
+                  <h2 className="mt-2 text-2xl font-bold text-text">{selectedProduct.name}</h2>
+                  <p className="mt-1 text-sm text-text-tertiary">SKU: {selectedProduct.sku}</p>
+                </div>
+                <button
+                  type="button"
+                  className="rounded-lg p-2 text-text-tertiary transition-colors hover:bg-background hover:text-text"
+                  onClick={() => setSelectedProduct(null)}
+                  title="Close"
+                >
+                  <XMarkIcon className="h-5 w-5" />
+                </button>
+              </div>
+
+              <div className="grid gap-6 p-6 lg:grid-cols-[1.1fr_0.9fr]">
+                <div className="space-y-6">
+                  <div>
+                    <h3 className="text-sm font-semibold text-text">Description</h3>
+                    <p className="mt-2 text-sm leading-6 text-text-secondary">
+                      {selectedProduct.description?.trim() || 'No description provided for this product yet.'}
+                    </p>
+                  </div>
+
+                  <div className="grid gap-4 sm:grid-cols-2">
+                    <div className="rounded-xl border border-border bg-background p-4">
+                      <p className="text-xs text-text-tertiary">Category</p>
+                      <p className="mt-1 font-semibold text-text">
+                        {selectedProduct.category_name ?? 'Uncategorized'}
+                      </p>
+                    </div>
+                    <div className="rounded-xl border border-border bg-background p-4">
+                      <p className="text-xs text-text-tertiary">Status</p>
+                      <p className="mt-1 font-semibold text-text">
+                        {selectedProduct.is_active ? 'Active' : 'Inactive'}
+                      </p>
+                    </div>
+                    <div className="rounded-xl border border-border bg-background p-4">
+                      <p className="text-xs text-text-tertiary">Stock</p>
+                      <p className="mt-1 font-semibold text-text">
+                        {selectedProduct.stock_quantity} units
+                      </p>
+                      <p className="mt-1 text-xs text-text-tertiary">
+                        Reorder level: {selectedProduct.reorder_level}
+                      </p>
+                    </div>
+                    <div className="rounded-xl border border-border bg-background p-4">
+                      <p className="text-xs text-text-tertiary">Price</p>
+                      <p className="mt-1 font-semibold text-primary">
+                        {formatCurrency(getOfferPrice(getBasePrice(selectedProduct), selectedProduct.is_on_offer, selectedProduct.max_offer))}
+                      </p>
+                      {selectedProduct.is_on_offer ? (
+                        <p className="mt-1 text-xs text-text-tertiary">
+                          Base: {formatCurrency(getBasePrice(selectedProduct))} • Offer: {formatCurrency(selectedProduct.max_offer ?? 0)} off
+                        </p>
+                      ) : null}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between">
+                    <h3 className="text-sm font-semibold text-text">Images</h3>
+                    <span className="text-xs text-text-tertiary">
+                      {selectedProduct.image_urls?.length ?? 0} image{(selectedProduct.image_urls?.length ?? 0) === 1 ? '' : 's'}
+                    </span>
+                  </div>
+
+                  {(resolveMediaUrls(selectedProduct.image_urls ?? [])).length > 0 ? (
+                    <div className="grid grid-cols-2 gap-3">
+                      {resolveMediaUrls(selectedProduct.image_urls ?? []).map((imageUrl, index) => (
+                        <button
+                          key={`${selectedProduct.id}-image-${index}`}
+                          type="button"
+                          className="overflow-hidden rounded-xl border border-border bg-background text-left"
+                          onClick={() => setPreviewImage(imageUrl)}
+                        >
+                          <img
+                            src={imageUrl}
+                            alt={`${selectedProduct.name} ${index + 1}`}
+                            className="h-36 w-full object-cover transition-transform duration-300 hover:scale-105"
+                          />
+                        </button>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="rounded-xl border border-dashed border-border bg-background px-4 py-8 text-center">
+                      <PhotoIcon className="mx-auto h-10 w-10 text-text-tertiary/40" />
+                      <p className="mt-3 text-sm text-text-secondary">No images uploaded for this product yet.</p>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              <div className="flex items-center justify-end gap-3 border-t border-border p-6">
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => setSelectedProduct(null)}
+                >
+                  Close
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => openPriceModal(selectedProduct)}
+                >
+                  Update Price
+                </Button>
+                <Button
+                  type="button"
+                  onClick={() => navigate(`/dashboard/admin/products/${selectedProduct.id}`)}
+                >
+                  Manage Product
+                </Button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Delete Product Modal */}
+      <AnimatePresence>
+        {deleteCandidate && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm"
+            onClick={() => {
+              if (!deleteProductMutation.isPending) {
+                setDeleteCandidate(null)
+              }
+            }}
+          >
+            <motion.div
+              initial={{ scale: 0.96, y: 18 }}
+              animate={{ scale: 1, y: 0 }}
+              exit={{ scale: 0.96, y: 18 }}
+              className="w-full max-w-xl overflow-hidden rounded-3xl bg-white shadow-2xl"
+              onClick={(event) => event.stopPropagation()}
+            >
+              <div className="border-b border-border bg-gradient-to-r from-error/10 via-white to-warning/10 px-6 py-5">
+                <div className="flex items-start gap-4">
+                  <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-error/10 ring-1 ring-error/15">
+                    <ExclamationTriangleIcon className="h-7 w-7 text-error" />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-xs font-semibold uppercase tracking-[0.18em] text-error">
+                      Delete Product
+                    </p>
+                    <h2 className="mt-2 text-2xl font-bold text-text">Remove this product?</h2>
+                    <p className="mt-2 text-sm leading-6 text-text-secondary">
+                      You are about to permanently delete{' '}
+                      <span className="font-semibold text-text">{deleteCandidate.name}</span>. This
+                      action cannot be undone.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    className="rounded-lg p-2 text-text-tertiary transition-colors hover:bg-white/80 hover:text-text"
+                    onClick={() => {
+                      if (!deleteProductMutation.isPending) {
+                        setDeleteCandidate(null)
+                      }
+                    }}
+                    title="Close"
+                  >
+                    <XMarkIcon className="h-5 w-5" />
+                  </button>
+                </div>
+              </div>
+
+              <div className="space-y-5 p-6">
+                <div className="grid gap-4 sm:grid-cols-[auto_minmax(0,1fr)]">
+                  <div className="flex h-20 w-20 items-center justify-center overflow-hidden rounded-2xl bg-gradient-to-br from-primary/10 to-secondary/10 ring-1 ring-border">
+                    {deleteCandidate.image_urls?.[0] ? (
+                      <img
+                        src={resolveMediaUrl(deleteCandidate.image_urls[0]) ?? deleteCandidate.image_urls[0]}
+                        alt={deleteCandidate.name}
+                        className="h-full w-full object-cover"
+                      />
+                    ) : (
+                      <CubeIcon className="h-8 w-8 text-primary/40" />
+                    )}
+                  </div>
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <div className="rounded-2xl border border-border bg-background px-4 py-3">
+                      <p className="text-xs text-text-tertiary">SKU</p>
+                      <p className="mt-1 font-semibold text-text">{deleteCandidate.sku}</p>
+                    </div>
+                    <div className="rounded-2xl border border-border bg-background px-4 py-3">
+                      <p className="text-xs text-text-tertiary">Category</p>
+                      <p className="mt-1 font-semibold text-text">
+                        {deleteCandidate.category_name ?? 'Uncategorized'}
+                      </p>
+                    </div>
+                    <div className="rounded-2xl border border-border bg-background px-4 py-3">
+                      <p className="text-xs text-text-tertiary">Stock on Hand</p>
+                      <p className="mt-1 font-semibold text-text">{deleteCandidate.stock_quantity}</p>
+                    </div>
+                    <div className="rounded-2xl border border-border bg-background px-4 py-3">
+                      <p className="text-xs text-text-tertiary">Selling Price</p>
+                      <p className="mt-1 font-semibold text-primary">
+                        {formatCurrency(getBasePrice(deleteCandidate))}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="rounded-2xl border border-error/15 bg-error/5 px-4 py-3">
+                  {deleteProductStockStatusQuery.isLoading ? (
+                    <div className="flex items-center gap-2 text-sm text-text-secondary">
+                      <ArrowPathIcon className="h-4 w-4 animate-spin text-primary" />
+                      Checking stock across branches before deletion...
+                    </div>
+                  ) : deleteProductStockStatusQuery.isError ? (
+                    <p className="text-sm text-error">
+                      Could not verify stock across branches. Deletion is disabled until stock
+                      status can be checked.
+                    </p>
+                  ) : deleteBlockingStocks.length > 0 ? (
+                    <>
+                      <p className="text-sm font-medium text-text">
+                        This product cannot be deleted because it still has stock in these branches:
+                      </p>
+                      <div className="mt-3 flex flex-wrap gap-2">
+                        {deleteBlockingStocks.map((stock) => (
+                          <span
+                            key={`${stock.branch_id ?? 'global'}-${stock.product_id}`}
+                            className="rounded-full bg-white px-3 py-1 text-xs font-medium text-text-secondary ring-1 ring-border"
+                          >
+                            {(stock.branch_name ?? 'Unknown branch')}: {stock.stock_quantity}
+                          </span>
+                        ))}
+                      </div>
+                    </>
+                  ) : (
+                    <>
+                      <p className="text-sm font-medium text-text">This will remove:</p>
+                      <div className="mt-2 flex flex-wrap gap-2">
+                        <span className="rounded-full bg-white px-3 py-1 text-xs font-medium text-text-secondary ring-1 ring-border">
+                          Product record
+                        </span>
+                        <span className="rounded-full bg-white px-3 py-1 text-xs font-medium text-text-secondary ring-1 ring-border">
+                          Uploaded images
+                        </span>
+                        <span className="rounded-full bg-white px-3 py-1 text-xs font-medium text-text-secondary ring-1 ring-border">
+                          Catalog visibility
+                        </span>
+                      </div>
+                    </>
+                  )}
+                </div>
+              </div>
+
+              <div className="flex items-center justify-end gap-3 border-t border-border px-6 py-5">
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => setDeleteCandidate(null)}
+                  disabled={deleteProductMutation.isPending}
+                >
+                  Keep Product
+                </Button>
+                <Button
+                  type="button"
+                  className="bg-error text-white hover:bg-error-dark"
+                  loading={deleteProductMutation.isPending}
+                  disabled={
+                    deleteProductStockStatusQuery.isLoading ||
+                    deleteProductStockStatusQuery.isError ||
+                    deleteBlockingStocks.length > 0
+                  }
+                  onClick={() => deleteProductMutation.mutate(deleteCandidate.id)}
+                >
+                  {deleteBlockingStocks.length > 0 ? 'Stock Exists in Branches' : 'Delete Permanently'}
+                </Button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Price Update Modal */}
+      <AnimatePresence>
+        {pricingProduct && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4"
+            onClick={() => {
+              if (!updatePriceMutation.isPending) {
+                setPricingProduct(null)
+                setPriceError(null)
+              }
+            }}
+          >
+            <motion.div
+              initial={{ scale: 0.96, y: 16 }}
+              animate={{ scale: 1, y: 0 }}
+              exit={{ scale: 0.96, y: 16 }}
+              className="w-full max-w-lg rounded-2xl bg-white shadow-2xl"
+              onClick={(event) => event.stopPropagation()}
+            >
+              <form onSubmit={onSubmitPriceUpdate}>
+                <div className="border-b border-border p-6">
+                  <p className="text-xs font-semibold uppercase tracking-[0.18em] text-primary">
+                    Update Product Price
+                  </p>
+                  <h2 className="mt-2 text-2xl font-bold text-text">{pricingProduct.name}</h2>
+                  <p className="mt-1 text-sm text-text-tertiary">SKU: {pricingProduct.sku}</p>
+                </div>
+
+                <div className="space-y-5 p-6">
+                  <div className="rounded-xl border border-border bg-background p-4">
+                    <p className="text-xs text-text-tertiary">Current selling price</p>
+                    <p className="mt-1 text-lg font-semibold text-primary">
+                      {formatCurrency(getBasePrice(pricingProduct))}
+                    </p>
+                    {pricingProduct.is_on_offer ? (
+                      <p className="mt-1 text-xs text-text-tertiary">
+                        Current offer price:{' '}
+                        {formatCurrency(
+                          getOfferPrice(
+                            getBasePrice(pricingProduct),
+                            pricingProduct.is_on_offer,
+                            pricingProduct.max_offer
+                          )
+                        )}
+                      </p>
+                    ) : null}
+                  </div>
+
+                  <TextInput
+                    label="New Selling Price"
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={priceValue}
+                    onChange={(event) => setPriceValue(event.target.value)}
+                    placeholder="Enter new selling price"
+                  />
+
+                  {priceError ? <p className="text-sm text-error">{priceError}</p> : null}
+                </div>
+
+                <div className="flex items-center justify-end gap-3 border-t border-border p-6">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => {
+                      if (!updatePriceMutation.isPending) {
+                        setPricingProduct(null)
+                        setPriceError(null)
+                      }
+                    }}
+                  >
+                    Cancel
+                  </Button>
+                  <Button type="submit" loading={updatePriceMutation.isPending}>
+                    Save Price
+                  </Button>
+                </div>
+              </form>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* Image Preview Modal */}
       <AnimatePresence>

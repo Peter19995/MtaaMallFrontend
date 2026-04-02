@@ -27,39 +27,49 @@ import { listProductsRequest, type ProductResponse } from '@api/modules/products
 import { listServicesRequest, type ServiceOfferingResponse } from '@api/modules/services.api'
 import { listPublicProjectsRequest, type PublicProjectResponse } from '@api/modules/projects.api'
 import { listPublicBlogsRequest, type BlogSummaryResponse } from '@api/modules/blogs.api'
+import { listSiteMediaRequest, type SiteMediaItem } from '@api/modules/site-media.api'
 import { resolveMediaUrl } from '@utils/media'
 import { AppTheme } from '@constants/theme'
+import staticHeroImage1 from '../../../assets/images/staticHeroImages/1.jpg'
+import staticHeroImage2 from '../../../assets/images/staticHeroImages/2.jpg'
+import staticHeroImage3 from '../../../assets/images/staticHeroImages/3.jpg'
 
-const heroImages = [
-  'https://images.unsplash.com/photo-1616486029423-aaa4789e8c9a?auto=format&fit=crop&w=1400&q=80',
-  'https://images.unsplash.com/photo-1615873968403-89e068629265?auto=format&fit=crop&w=1100&q=80',
-  'https://images.unsplash.com/photo-1616594039964-87f5c6d0fb8d?auto=format&fit=crop&w=1100&q=80',
+const staticHeroImages = [
+  staticHeroImage1,
+  staticHeroImage2,
+  staticHeroImage3,
 ]
 
-const serviceFallbacks = [
+const staticServiceFallbacks = [
   'https://images.unsplash.com/photo-1618221381711-42ca8ab6e908?auto=format&fit=crop&w=900&q=80',
   'https://images.unsplash.com/photo-1600585153490-76fb20a32601?auto=format&fit=crop&w=900&q=80',
   'https://images.unsplash.com/photo-1618219908412-a29a1bb7b86e?auto=format&fit=crop&w=900&q=80',
   'https://images.unsplash.com/photo-1617806118233-18e1de247200?auto=format&fit=crop&w=900&q=80',
 ]
 
-const projectFallbacks = [
+const staticProjectFallbacks = [
   'https://images.unsplash.com/photo-1617103996702-96ff29b1c467?auto=format&fit=crop&w=1200&q=80',
   'https://images.unsplash.com/photo-1613545325278-f24b0cae1224?auto=format&fit=crop&w=1200&q=80',
   'https://images.unsplash.com/photo-1616137466211-f939a420be84?auto=format&fit=crop&w=1200&q=80',
 ]
 
-const blogFallbacks = [
+const staticBlogFallbacks = [
   'https://images.unsplash.com/photo-1615529162924-f86053884682?auto=format&fit=crop&w=900&q=80',
   'https://images.unsplash.com/photo-1600210492493-0946911123ea?auto=format&fit=crop&w=900&q=80',
   'https://images.unsplash.com/photo-1600121848594-d8644e57abab?auto=format&fit=crop&w=900&q=80',
 ]
 
-const productFallbacks = [
+const staticProductFallbacks = [
   'https://images.unsplash.com/photo-1616047006789-b7af5afb8c20?auto=format&fit=crop&w=900&q=80',
   'https://images.unsplash.com/photo-1616593969747-4797dc75033e?auto=format&fit=crop&w=900&q=80',
   'https://images.unsplash.com/photo-1616628182509-6c4e9d1f3076?auto=format&fit=crop&w=900&q=80',
 ]
+
+const toSortedMediaUrls = (items?: SiteMediaItem[]): string[] =>
+  [...(items ?? [])]
+    .sort((a, b) => a.sort_order - b.sort_order)
+    .map((item) => resolveMediaUrl(item.image_url) ?? item.image_url)
+    .filter(Boolean)
 
 const processSteps = [
   {
@@ -174,16 +184,9 @@ const HomePage = () => {
   const heroOpacity = useTransform(scrollYProgress, [0, 0.3], [1, 0])
   const heroScale = useTransform(scrollYProgress, [0, 0.3], [1, 0.95])
 
-  useEffect(() => {
-    const interval = setInterval(() => {
-      setCurrentHeroIndex((prev) => (prev + 1) % heroImages.length)
-    }, 5000)
-    return () => clearInterval(interval)
-  }, [])
-
   const servicesQuery = useQuery({
     queryKey: ['home', 'services'],
-    queryFn: () => listServicesRequest({ limit: 6, is_active: true }),
+    queryFn: () => listServicesRequest({ limit: 200 }),
   })
 
   const projectsQuery = useQuery({
@@ -201,30 +204,102 @@ const HomePage = () => {
     queryFn: () => listPublicBlogsRequest({ skip: 0, limit: 3 }),
   })
 
+  const siteMediaQuery = useQuery({
+    queryKey: ['site-media'],
+    queryFn: listSiteMediaRequest,
+  })
+
   const services = useMemo<ServiceOfferingResponse[]>(
-    () => (servicesQuery.data ?? []).filter((item) => item.is_active !== false),
+    () =>
+      (Array.isArray(servicesQuery.data) ? servicesQuery.data : []).filter(
+        (item) => item?.is_active !== false
+      ),
     [servicesQuery.data]
   )
 
   const projects = useMemo<PublicProjectResponse[]>(
-    () => projectsQuery.data ?? [],
+    () => (Array.isArray(projectsQuery.data) ? projectsQuery.data : []),
     [projectsQuery.data]
   )
 
   const products = useMemo<ProductResponse[]>(
-    () => (productsQuery.data ?? []).filter((item) => item.is_active !== false),
+    () =>
+      (Array.isArray(productsQuery.data) ? productsQuery.data : []).filter(
+        (item) => item?.is_active !== false
+      ),
     [productsQuery.data]
   )
 
   const blogs = useMemo<BlogSummaryResponse[]>(
     () =>
-      [...(blogsQuery.data ?? [])].sort((a, b) => {
+      [...(Array.isArray(blogsQuery.data) ? blogsQuery.data : [])].sort((a, b) => {
         const aDate = new Date(a.publish_date ?? a.created_at ?? 0).getTime()
         const bDate = new Date(b.publish_date ?? b.created_at ?? 0).getTime()
         return bDate - aDate
       }),
     [blogsQuery.data]
   )
+
+  const heroImages = useMemo<string[]>(
+    () => {
+      const remoteImages = toSortedMediaUrls(siteMediaQuery.data?.groups.heroImages)
+      return remoteImages.length > 0 ? remoteImages : staticHeroImages
+    },
+    [siteMediaQuery.data?.groups.heroImages]
+  )
+
+  const serviceFallbacks = useMemo<string[]>(
+    () => {
+      const remoteImages = toSortedMediaUrls(siteMediaQuery.data?.groups.serviceFallbackImages)
+      return remoteImages.length > 0 ? remoteImages : staticServiceFallbacks
+    },
+    [siteMediaQuery.data?.groups.serviceFallbackImages]
+  )
+
+  const projectFallbacks = useMemo<string[]>(
+    () => {
+      const remoteImages = toSortedMediaUrls(siteMediaQuery.data?.groups.projectFallbacks)
+      return remoteImages.length > 0 ? remoteImages : staticProjectFallbacks
+    },
+    [siteMediaQuery.data?.groups.projectFallbacks]
+  )
+
+  const blogFallbacks = useMemo<string[]>(
+    () => {
+      const remoteImages = toSortedMediaUrls(siteMediaQuery.data?.groups.blogFallbacks)
+      return remoteImages.length > 0 ? remoteImages : staticBlogFallbacks
+    },
+    [siteMediaQuery.data?.groups.blogFallbacks]
+  )
+
+  const productFallbacks = useMemo<string[]>(
+    () => {
+      const remoteImages = toSortedMediaUrls(siteMediaQuery.data?.groups.productFallbacks)
+      return remoteImages.length > 0 ? remoteImages : staticProductFallbacks
+    },
+    [siteMediaQuery.data?.groups.productFallbacks]
+  )
+
+  const displayedServices = useMemo<ServiceOfferingResponse[]>(
+    () => services.slice(0, 6),
+    [services]
+  )
+
+  useEffect(() => {
+    setCurrentHeroIndex((prev) => (prev < heroImages.length ? prev : 0))
+  }, [heroImages.length])
+
+  useEffect(() => {
+    if (heroImages.length <= 1) {
+      return
+    }
+
+    const interval = setInterval(() => {
+      setCurrentHeroIndex((prev) => (prev + 1) % heroImages.length)
+    }, 5000)
+
+    return () => clearInterval(interval)
+  }, [heroImages.length])
 
   const highlights = useMemo(
     () => [
@@ -461,49 +536,82 @@ const HomePage = () => {
           </motion.div>
         </div>
 
-        <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-3">
-          {(services.length > 0 ? services : new Array(3).fill(null)).slice(0, 6).map((service, index) => {
-            const image = resolveMediaUrl(service?.image_urls?.[0]) ?? serviceFallbacks[index % serviceFallbacks.length]
-            return (
-              <motion.article
-                key={service?.id ?? `service-fallback-${index}`}
-                variants={fadeInUp}
-                whileHover={{ y: -8 }}
-                className="group overflow-hidden rounded-3xl border border-border bg-white shadow-lg hover:shadow-2xl transition-all"
+        {servicesQuery.isLoading ? (
+          <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-3">
+            {Array.from({ length: 3 }).map((_, index) => (
+              <div
+                key={`service-loading-${index}`}
+                className="overflow-hidden rounded-3xl border border-border bg-white shadow-lg"
               >
-                <div className="relative overflow-hidden">
-                  <img 
-                    src={image} 
-                    alt={service?.name ?? 'Interior service'} 
-                    className="h-56 w-full object-cover transition-transform duration-500 group-hover:scale-110" 
-                    loading="lazy" 
-                  />
-                  <div className="absolute inset-0 bg-gradient-to-t from-black/50 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
-                </div>
-                <div className="p-6">
-                  <h3 className="text-xl font-bold text-text group-hover:text-primary transition-colors">
-                    {service?.name ?? 'Premium Interior Service'}
-                  </h3>
-                  <p className="mt-2 text-text-secondary line-clamp-2">
-                    {service?.description ??
-                      'Professional planning, quality materials, and sharp finishing delivered by our team.'}
-                  </p>
-                  <div className="mt-4 flex items-center justify-between">
-                    <span className="text-lg font-bold text-primary">
-                      {service?.price ? `From ${formatCurrency(service.price)}` : 'Custom quotation'}
-                    </span>
-                    {service?.duration_minutes ? (
-                      <span className="inline-flex items-center gap-1 text-sm text-text-tertiary">
-                        <ClockIcon className="h-4 w-4" />
-                        {service.duration_minutes} min
-                      </span>
-                    ) : null}
+                <div className="h-56 w-full animate-pulse bg-background" />
+                <div className="space-y-3 p-6">
+                  <div className="h-6 w-2/3 animate-pulse rounded bg-background" />
+                  <div className="h-4 w-full animate-pulse rounded bg-background" />
+                  <div className="h-4 w-5/6 animate-pulse rounded bg-background" />
+                  <div className="flex items-center justify-between pt-2">
+                    <div className="h-5 w-24 animate-pulse rounded bg-background" />
+                    <div className="h-4 w-16 animate-pulse rounded bg-background" />
                   </div>
                 </div>
-              </motion.article>
-            )
-          })}
-        </div>
+              </div>
+            ))}
+          </div>
+        ) : displayedServices.length > 0 ? (
+          <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-3">
+            {displayedServices.map((service, index) => {
+              const image =
+                resolveMediaUrl(service.image_urls?.[0]) ??
+                serviceFallbacks[index % serviceFallbacks.length] ??
+                staticServiceFallbacks[index % staticServiceFallbacks.length]
+
+              return (
+                <motion.article
+                  key={service.id}
+                  variants={fadeInUp}
+                  whileHover={{ y: -8 }}
+                  className="group overflow-hidden rounded-3xl border border-border bg-white shadow-lg hover:shadow-2xl transition-all"
+                >
+                  <div className="relative overflow-hidden">
+                    <img 
+                      src={image} 
+                      alt={service.name} 
+                      className="h-56 w-full object-cover transition-transform duration-500 group-hover:scale-110" 
+                      loading="lazy" 
+                    />
+                    <div className="absolute inset-0 bg-gradient-to-t from-black/50 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
+                  </div>
+                  <div className="p-6">
+                    <h3 className="text-xl font-bold text-text group-hover:text-primary transition-colors">
+                      {service.name}
+                    </h3>
+                    <p className="mt-2 text-text-secondary line-clamp-2">
+                      {service.description ??
+                        'Professional planning, quality materials, and sharp finishing delivered by our team.'}
+                    </p>
+                    <div className="mt-4 flex items-center justify-between">
+                      <span className="text-lg font-bold text-primary">
+                        {service.price ? `From ${formatCurrency(service.price)}` : 'Custom quotation'}
+                      </span>
+                      {service.duration_minutes ? (
+                        <span className="inline-flex items-center gap-1 text-sm text-text-tertiary">
+                          <ClockIcon className="h-4 w-4" />
+                          {service.duration_minutes} min
+                        </span>
+                      ) : null}
+                    </div>
+                  </div>
+                </motion.article>
+              )
+            })}
+          </div>
+        ) : (
+          <div className="rounded-3xl border border-dashed border-border bg-white/70 px-6 py-12 text-center">
+            <p className="text-lg font-semibold text-text">No services available right now</p>
+            <p className="mt-2 text-sm text-text-secondary">
+              This section now loads directly from the services API.
+            </p>
+          </div>
+        )}
       </motion.section>
 
       {/* Projects Showcase */}

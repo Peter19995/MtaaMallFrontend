@@ -1,5 +1,5 @@
-import { FormEvent, useMemo, useState } from 'react'
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { FormEvent, useEffect, useMemo, useState } from 'react'
+import { useMutation, useQueries, useQuery, useQueryClient } from '@tanstack/react-query'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   PlusIcon,
@@ -28,13 +28,16 @@ import {
 } from '@heroicons/react/24/outline'
 import { Button, DataTable, Select, TextInput, type Column } from '@components/common'
 import { listProductsRequest } from '@api/modules/products.api'
-import { listBranchesRequest } from '@api/modules/branches.api'
+import { listBranchesRequest, type BranchResponse } from '@api/modules/branches.api'
 import {
   createRestockRequest,
   createStockCountRequest,
   getInventoryDashboardRequest,
+  getStockStatusRequest,
+  getStockCountAdjustmentReasonsRequest,
   getSupportedValuationMethodsRequest,
   type InventoryDashboardAlert,
+  type StockCountAdjustmentReason,
   type InventoryValuationMethod,
   type ProductStockStatusResponse,
   type RestockResponse,
@@ -61,11 +64,18 @@ type RestockRowState = {
 }
 
 type StockCountFormState = {
-  productId: string
   branchId: string
   countDate: string
+  rows: StockCountRowState[]
+}
+
+type StockCountRowState = {
+  id: string
+  productId: string
   physicalStock: string
   applyAdjustment: boolean
+  adjustmentReason: string
+  adjustmentReference: string
   valuationMethod: string
   adjustmentBuyingPrice: string
   adjustmentSellingPrice: string
@@ -96,6 +106,19 @@ const createRestockRow = (): RestockRowState => ({
   notes: ''
 })
 
+const createStockCountRow = (): StockCountRowState => ({
+  id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+  productId: '',
+  physicalStock: '0',
+  applyAdjustment: false,
+  adjustmentReason: '',
+  adjustmentReference: '',
+  valuationMethod: '',
+  adjustmentBuyingPrice: '',
+  adjustmentSellingPrice: '',
+  notes: ''
+})
+
 const syncMaxOffer = (row: RestockRowState): RestockRowState => {
   const quantity = toSafeNumber(row.quantity)
   const sellingPrice = toSafeNumber(row.sellingPrice)
@@ -112,23 +135,35 @@ const syncMaxOffer = (row: RestockRowState): RestockRowState => {
   return { ...row, maxOfferAmount: formatNumber(amount) }
 }
 
-const createEmptyRestockForm = (): RestockFormState => ({
-  branchId: '',
+const getDefaultInventoryBranchId = (branches: BranchResponse[]): string => {
+  const mainBranch = branches.find((branch) => {
+    const code = branch.code?.trim().toLowerCase() ?? ''
+    const name = branch.name?.trim().toLowerCase() ?? ''
+    return code === 'main' || name === 'main' || name.includes('main branch')
+  })
+
+  return mainBranch ? String(mainBranch.id) : branches[0] ? String(branches[0].id) : ''
+}
+
+const isLowStockStatus = (status: ProductStockStatusResponse): boolean => {
+  if (typeof status.is_low_stock === 'boolean') {
+    return status.is_low_stock
+  }
+
+  return status.reorder_level > 0 && status.stock_quantity <= status.reorder_level
+}
+
+const createEmptyRestockForm = (branchId = ''): RestockFormState => ({
+  branchId,
   restockDate: today,
   rows: [createRestockRow()]
 })
 
-const EMPTY_STOCK_COUNT_FORM: StockCountFormState = {
-  productId: '',
-  branchId: '',
+const createEmptyStockCountForm = (branchId = ''): StockCountFormState => ({
+  branchId,
   countDate: today,
-  physicalStock: '0',
-  applyAdjustment: false,
-  valuationMethod: '',
-  adjustmentBuyingPrice: '',
-  adjustmentSellingPrice: '',
-  notes: ''
-}
+  rows: [createStockCountRow()]
+})
 
 const formatCurrency = (amount: number): string =>
   new Intl.NumberFormat('en-KE', {
@@ -160,10 +195,11 @@ const InventoryManagementPage = () => {
   const [showRestockForm, setShowRestockForm] = useState(false)
   const [showStockCountForm, setShowStockCountForm] = useState(false)
   const [restockForm, setRestockForm] = useState<RestockFormState>(createEmptyRestockForm())
-  const [stockCountForm, setStockCountForm] = useState<StockCountFormState>(EMPTY_STOCK_COUNT_FORM)
+  const [stockCountForm, setStockCountForm] = useState<StockCountFormState>(createEmptyStockCountForm())
   const [restockError, setRestockError] = useState<string | null>(null)
   const [stockCountError, setStockCountError] = useState<string | null>(null)
-  const [showAdvancedFilters, setShowAdvancedFilters] = useState(false)
+  const [stockStatusBranchFilter, setStockStatusBranchFilter] = useState('all')
+  const [stockStatusProductFilter, setStockStatusProductFilter] = useState('all')
 
   const productsQuery = useQuery({
     queryKey: ['products', 'inventory-select'],
@@ -184,9 +220,42 @@ const InventoryManagementPage = () => {
       })
   })
 
+  const selectedStockStatusBranchId = useMemo(() => {
+    const branchId = Number(stockStatusBranchFilter)
+    return Number.isFinite(branchId) && branchId > 0 ? branchId : undefined
+  }, [stockStatusBranchFilter])
+
+  const selectedStockStatusProductId = useMemo(() => {
+    const productId = Number(stockStatusProductFilter)
+    return Number.isFinite(productId) && productId > 0 ? productId : undefined
+  }, [stockStatusProductFilter])
+
+  const stockStatusQuery = useQuery({
+    queryKey: [
+      'inventory',
+      'stock-status',
+      'table',
+      selectedStockStatusBranchId ?? 'all',
+      selectedStockStatusProductId ?? 'all'
+    ],
+    queryFn: () =>
+      getStockStatusRequest({
+        branch_id: selectedStockStatusBranchId,
+        product_id: selectedStockStatusProductId,
+        skip: 0,
+        limit: 300
+      }),
+    staleTime: 30_000
+  })
+
   const valuationMethodsQuery = useQuery({
     queryKey: ['inventory', 'valuation-methods'],
     queryFn: getSupportedValuationMethodsRequest
+  })
+
+  const stockCountAdjustmentReasonsQuery = useQuery({
+    queryKey: ['inventory', 'stock-count-adjustment-reasons'],
+    queryFn: getStockCountAdjustmentReasonsRequest
   })
 
   const branchOptions = useMemo(
@@ -200,6 +269,22 @@ const InventoryManagementPage = () => {
     [branchesQuery.data]
   )
 
+  const stockStatusBranchOptions = useMemo(
+    () => [
+      { label: 'All branches', value: 'all' },
+      ...((branchesQuery.data ?? []).map((branch) => ({
+        label: `${branch.name} (${branch.code})`,
+        value: String(branch.id)
+      })) || [])
+    ],
+    [branchesQuery.data]
+  )
+
+  const defaultInventoryBranchId = useMemo(
+    () => getDefaultInventoryBranchId(branchesQuery.data ?? []),
+    [branchesQuery.data]
+  )
+
   const stockCountValuationOptions = useMemo(
     () => [
       { label: 'Use default valuation method', value: '' },
@@ -210,6 +295,147 @@ const InventoryManagementPage = () => {
     ],
     [valuationMethodsQuery.data]
   )
+
+  const stockCountAdjustmentReasonOptions = useMemo(
+    () => [
+      { label: 'Select adjustment reason', value: '' },
+      ...((stockCountAdjustmentReasonsQuery.data ?? []).map((reason) => ({
+        label: reason.name,
+        value: reason.reason
+      })) || [])
+    ],
+    [stockCountAdjustmentReasonsQuery.data]
+  )
+
+  const stockStatusProductOptions = useMemo(
+    () => [
+      { label: 'All products', value: 'all' },
+      ...((productsQuery.data ?? []).map((product) => ({
+        label: `${product.name} (${product.sku})`,
+        value: String(product.id)
+      })) || [])
+    ],
+    [productsQuery.data]
+  )
+
+  const selectedRestockBranchId = useMemo(() => {
+    const branchId = Number(restockForm.branchId)
+    return Number.isFinite(branchId) && branchId > 0 ? branchId : undefined
+  }, [restockForm.branchId])
+
+  const selectedRestockBranchName = useMemo(() => {
+    if (!selectedRestockBranchId) {
+      return ''
+    }
+
+    return (
+      branchesQuery.data?.find((branch) => branch.id === selectedRestockBranchId)?.name ??
+      'selected branch'
+    )
+  }, [branchesQuery.data, selectedRestockBranchId])
+
+  const selectedStockCountBranchId = useMemo(() => {
+    const branchId = Number(stockCountForm.branchId)
+    return Number.isFinite(branchId) && branchId > 0 ? branchId : undefined
+  }, [stockCountForm.branchId])
+
+  const selectedStockCountBranchName = useMemo(() => {
+    if (!selectedStockCountBranchId) {
+      return ''
+    }
+
+    return (
+      branchesQuery.data?.find((branch) => branch.id === selectedStockCountBranchId)?.name ??
+      'selected branch'
+    )
+  }, [branchesQuery.data, selectedStockCountBranchId])
+
+  const restockRowStockQueries = useQueries({
+    queries: restockForm.rows.map((row) => {
+      const productId = Number(row.productId)
+      const isEnabled =
+        Number.isFinite(productId) &&
+        productId > 0 &&
+        typeof selectedRestockBranchId === 'number' &&
+        selectedRestockBranchId > 0
+
+      return {
+        queryKey: [
+          'inventory',
+          'stock-status',
+          'restock-row',
+          selectedRestockBranchId ?? 'none',
+          productId || 'none'
+        ],
+        queryFn: async () => {
+          const response = await getStockStatusRequest({
+            branch_id: selectedRestockBranchId,
+            product_id: productId,
+            limit: 1
+          })
+
+          return response.find((item) => item.product_id === productId) ?? response[0] ?? null
+        },
+        enabled: isEnabled,
+        staleTime: 30_000
+      }
+    })
+  })
+
+  const stockCountRowStockQueries = useQueries({
+    queries: stockCountForm.rows.map((row) => {
+      const productId = Number(row.productId)
+      const isEnabled =
+        Number.isFinite(productId) &&
+        productId > 0 &&
+        typeof selectedStockCountBranchId === 'number' &&
+        selectedStockCountBranchId > 0
+
+      return {
+        queryKey: [
+          'inventory',
+          'stock-status',
+          'stock-count-row',
+          selectedStockCountBranchId ?? 'none',
+          productId || 'none'
+        ],
+        queryFn: async () => {
+          const response = await getStockStatusRequest({
+            branch_id: selectedStockCountBranchId,
+            product_id: productId,
+            limit: 1
+          })
+
+          return response.find((item) => item.product_id === productId) ?? response[0] ?? null
+        },
+        enabled: isEnabled,
+        staleTime: 30_000
+      }
+    })
+  })
+
+  useEffect(() => {
+    if (!defaultInventoryBranchId) {
+      return
+    }
+
+    setRestockForm((prev) =>
+      prev.branchId
+        ? prev
+        : {
+            ...prev,
+            branchId: defaultInventoryBranchId
+          }
+    )
+    setStockCountForm((prev) =>
+      prev.branchId
+        ? prev
+        : {
+            ...prev,
+            branchId: defaultInventoryBranchId
+          }
+    )
+  }, [defaultInventoryBranchId])
 
   const updateRestockRow = (
     rowId: string,
@@ -247,6 +473,43 @@ const InventoryManagementPage = () => {
     )
   }
 
+  const updateStockCountRow = (
+    rowId: string,
+    updater: (row: StockCountRowState) => StockCountRowState
+  ) => {
+    setStockCountForm((prev) => ({
+      ...prev,
+      rows: prev.rows.map((row) => (row.id === rowId ? updater(row) : row))
+    }))
+  }
+
+  const updateStockCountRowField = (
+    rowId: string,
+    field:
+      | 'productId'
+      | 'physicalStock'
+      | 'adjustmentReason'
+      | 'adjustmentReference'
+      | 'valuationMethod'
+      | 'adjustmentBuyingPrice'
+      | 'adjustmentSellingPrice'
+      | 'notes',
+    value: string
+  ) => {
+    updateStockCountRow(rowId, (row) => ({ ...row, [field]: value }))
+  }
+
+  const updateStockCountRowAdjustment = (rowId: string, applyAdjustment: boolean) => {
+    updateStockCountRow(rowId, (row) => ({
+      ...row,
+      applyAdjustment,
+      adjustmentReason: applyAdjustment ? row.adjustmentReason : '',
+      adjustmentReference: applyAdjustment ? row.adjustmentReference : '',
+      adjustmentBuyingPrice: applyAdjustment ? row.adjustmentBuyingPrice : '',
+      adjustmentSellingPrice: applyAdjustment ? row.adjustmentSellingPrice : ''
+    }))
+  }
+
   const addRestockRow = () => {
     setRestockForm((prev) => ({
       ...prev,
@@ -256,6 +519,20 @@ const InventoryManagementPage = () => {
 
   const removeRestockRow = (rowId: string) => {
     setRestockForm((prev) => ({
+      ...prev,
+      rows: prev.rows.length > 1 ? prev.rows.filter((row) => row.id !== rowId) : prev.rows
+    }))
+  }
+
+  const addStockCountRow = () => {
+    setStockCountForm((prev) => ({
+      ...prev,
+      rows: [...prev.rows, createStockCountRow()]
+    }))
+  }
+
+  const removeStockCountRow = (rowId: string) => {
+    setStockCountForm((prev) => ({
       ...prev,
       rows: prev.rows.length > 1 ? prev.rows.filter((row) => row.id !== rowId) : prev.rows
     }))
@@ -280,9 +557,46 @@ const InventoryManagementPage = () => {
     )
   }, [restockForm.rows])
 
+  const stockCountTotals = useMemo(() => {
+    return stockCountForm.rows.reduce(
+      (acc, row, index) => {
+        const physicalStock = toSafeNumber(row.physicalStock)
+        const currentStock = stockCountRowStockQueries[index]?.data?.stock_quantity ?? 0
+        acc.totalPhysical += physicalStock
+        acc.totalVariance += physicalStock - currentStock
+        return acc
+      },
+      {
+        totalPhysical: 0,
+        totalVariance: 0
+      }
+    )
+  }, [stockCountForm.rows, stockCountRowStockQueries])
+
   const getProductOptionsForRow = (rowId: string, currentProductId: string) => {
     const selectedInOtherRows = new Set(
       restockForm.rows
+        .filter((row) => row.id !== rowId && row.productId)
+        .map((row) => row.productId)
+    )
+
+    return [
+      { label: 'Select product', value: '' },
+      ...((productsQuery.data ?? [])
+        .filter((product) => {
+          const productId = String(product.id)
+          return productId === currentProductId || !selectedInOtherRows.has(productId)
+        })
+        .map((product) => ({
+          label: `${product.name} (${product.sku})`,
+          value: String(product.id)
+        })) || [])
+    ]
+  }
+
+  const getProductOptionsForStockCountRow = (rowId: string, currentProductId: string) => {
+    const selectedInOtherRows = new Set(
+      stockCountForm.rows
         .filter((row) => row.id !== rowId && row.productId)
         .map((row) => row.productId)
     )
@@ -352,7 +666,7 @@ const InventoryManagementPage = () => {
       })
     },
     onSuccess: () => {
-      setRestockForm(createEmptyRestockForm())
+      setRestockForm(createEmptyRestockForm(defaultInventoryBranchId))
       setRestockError(null)
       setShowRestockForm(false)
       queryClient.invalidateQueries({ queryKey: ['inventory', 'dashboard'] })
@@ -365,58 +679,75 @@ const InventoryManagementPage = () => {
 
   const createStockCountMutation = useMutation({
     mutationFn: async (payload: StockCountFormState) => {
-      const productId = Number(payload.productId)
-      const branchId = payload.branchId ? Number(payload.branchId) : undefined
-      const physicalStock = Number(payload.physicalStock)
-      const hasAdjustmentBuyingPrice =
-        payload.applyAdjustment && payload.adjustmentBuyingPrice.trim() !== ''
-      const hasAdjustmentSellingPrice =
-        payload.applyAdjustment && payload.adjustmentSellingPrice.trim() !== ''
-      const adjustmentBuyingPrice = hasAdjustmentBuyingPrice
-        ? Number(payload.adjustmentBuyingPrice)
-        : undefined
-      const adjustmentSellingPrice = hasAdjustmentSellingPrice
-        ? Number(payload.adjustmentSellingPrice)
-        : undefined
+      const branchId = Number(payload.branchId)
 
-      if (!productId) {
-        throw new Error('Please select a product.')
+      if (!branchId) {
+        throw new Error('Please select a branch.')
       }
-      if (payload.branchId && !branchId) {
-        throw new Error('Please select a valid branch.')
-      }
-      if (Number.isNaN(physicalStock) || physicalStock < 0) {
-        throw new Error('Physical stock must be 0 or more.')
-      }
-      if (
-        hasAdjustmentBuyingPrice &&
-        (Number.isNaN(adjustmentBuyingPrice ?? NaN) || (adjustmentBuyingPrice ?? 0) < 0)
-      ) {
-        throw new Error('Adjustment buying price must be 0 or more.')
-      }
-      if (
-        hasAdjustmentSellingPrice &&
-        (Number.isNaN(adjustmentSellingPrice ?? NaN) || (adjustmentSellingPrice ?? 0) < 0)
-      ) {
-        throw new Error('Adjustment selling price must be 0 or more.')
+      if (!payload.rows.length) {
+        throw new Error('Add at least one product row.')
       }
 
-      return createStockCountRequest({
-        product_id: productId,
-        branch_id: branchId,
-        count_date: payload.countDate,
-        physical_stock: physicalStock,
-        apply_adjustment: payload.applyAdjustment,
-        valuation_method: payload.valuationMethod
-          ? (payload.valuationMethod as InventoryValuationMethod)
-          : undefined,
-        adjustment_buying_price: adjustmentBuyingPrice,
-        adjustment_selling_price: adjustmentSellingPrice,
-        notes: payload.notes.trim() || undefined
+      const requests = payload.rows.map((row, index) => {
+        const productId = Number(row.productId)
+        const physicalStock = Number(row.physicalStock)
+        const hasAdjustmentBuyingPrice =
+          row.applyAdjustment && row.adjustmentBuyingPrice.trim() !== ''
+        const hasAdjustmentSellingPrice =
+          row.applyAdjustment && row.adjustmentSellingPrice.trim() !== ''
+        const adjustmentReason = row.applyAdjustment
+          ? ((row.adjustmentReason || undefined) as StockCountAdjustmentReason | undefined)
+          : undefined
+        const adjustmentReference = row.applyAdjustment
+          ? row.adjustmentReference.trim() || undefined
+          : undefined
+        const adjustmentBuyingPrice = hasAdjustmentBuyingPrice
+          ? Number(row.adjustmentBuyingPrice)
+          : undefined
+        const adjustmentSellingPrice = hasAdjustmentSellingPrice
+          ? Number(row.adjustmentSellingPrice)
+          : undefined
+
+        if (!productId) {
+          throw new Error(`Row ${index + 1}: select a product.`)
+        }
+        if (Number.isNaN(physicalStock) || physicalStock < 0) {
+          throw new Error(`Row ${index + 1}: physical stock must be 0 or more.`)
+        }
+        if (
+          hasAdjustmentBuyingPrice &&
+          (Number.isNaN(adjustmentBuyingPrice ?? NaN) || (adjustmentBuyingPrice ?? 0) < 0)
+        ) {
+          throw new Error(`Row ${index + 1}: adjustment buying price must be 0 or more.`)
+        }
+        if (
+          hasAdjustmentSellingPrice &&
+          (Number.isNaN(adjustmentSellingPrice ?? NaN) || (adjustmentSellingPrice ?? 0) < 0)
+        ) {
+          throw new Error(`Row ${index + 1}: adjustment selling price must be 0 or more.`)
+        }
+
+        return createStockCountRequest({
+          product_id: productId,
+          branch_id: branchId,
+          count_date: payload.countDate,
+          physical_stock: physicalStock,
+          apply_adjustment: row.applyAdjustment,
+          adjustment_reason: adjustmentReason,
+          adjustment_reference: adjustmentReference,
+          valuation_method: row.valuationMethod
+            ? (row.valuationMethod as InventoryValuationMethod)
+            : undefined,
+          adjustment_buying_price: adjustmentBuyingPrice,
+          adjustment_selling_price: adjustmentSellingPrice,
+          notes: row.notes.trim() || undefined
+        })
       })
+
+      return Promise.all(requests)
     },
     onSuccess: () => {
-      setStockCountForm(EMPTY_STOCK_COUNT_FORM)
+      setStockCountForm(createEmptyStockCountForm(defaultInventoryBranchId))
       setStockCountError(null)
       setShowStockCountForm(false)
       queryClient.invalidateQueries({ queryKey: ['inventory', 'dashboard'] })
@@ -437,6 +768,11 @@ const InventoryManagementPage = () => {
     }
   }, [inventoryDashboardQuery.data?.summary])
 
+  const stockStatusTotalValue = useMemo(
+    () => (stockStatusQuery.data ?? []).reduce((total, row) => total + row.in_stock_value, 0),
+    [stockStatusQuery.data]
+  )
+
   const stockStatusColumns: Column<ProductStockStatusResponse>[] = [
     {
       key: 'product_name',
@@ -454,6 +790,16 @@ const InventoryManagementPage = () => {
       )
     },
     {
+      key: 'branch_name',
+      header: 'Branch',
+      render: (row) => (
+        <span className="inline-flex items-center gap-1 rounded-full bg-secondary/10 px-3 py-1 text-xs font-medium text-secondary">
+          <BuildingStorefrontIcon className="h-3 w-3" />
+          {row.branch_name ?? 'All branches'}
+        </span>
+      )
+    },
+    {
       key: 'category_name',
       header: 'Category',
       render: (row) => (
@@ -466,28 +812,37 @@ const InventoryManagementPage = () => {
     {
       key: 'stock_quantity',
       header: 'Stock',
-      render: (row) => (
-        <div>
-          <div className="flex items-center gap-2">
-            <span className={`text-sm font-medium ${
-              row.is_low_stock ? 'text-warning' : 'text-success'
-            }`}>
-              {row.stock_quantity}
-            </span>
-            <span className="text-xs text-text-tertiary">/ {row.reorder_level}</span>
+      render: (row) => {
+        const lowStock = isLowStockStatus(row)
+
+        return (
+          <div>
+            <p className="mt-1 text-xs text-text-tertiary">
+              Branch stock:{' '}
+              <span className={`font-medium ${lowStock ? 'text-warning' : 'text-success'}`}>
+                {row.stock_quantity}
+              </span>
+            </p>
+            <p className="mt-1 text-xs text-text-tertiary">
+              Reorder level: <span className="font-medium text-text">{row.reorder_level}</span>
+            </p>
+            <p className="mt-1 text-xs text-text-tertiary">
+              Business total:{' '}
+              <span className="font-medium text-text">{row.business_stock_quantity}</span>
+            </p>
+            <div className="mt-1 h-1.5 w-20 rounded-full bg-background">
+              <div
+                className={`h-full rounded-full ${
+                  lowStock ? 'bg-warning' : 'bg-success'
+                }`}
+                style={{
+                  width: `${Math.min((row.stock_quantity / (row.reorder_level * 2)) * 100, 100)}%`
+                }}
+              />
+            </div>
           </div>
-          <div className="w-20 h-1.5 bg-background rounded-full mt-1">
-            <div 
-              className={`h-full rounded-full ${
-                row.is_low_stock ? 'bg-warning' : 'bg-success'
-              }`}
-              style={{ 
-                width: `${Math.min((row.stock_quantity / (row.reorder_level * 2)) * 100, 100)}%` 
-              }}
-            />
-          </div>
-        </div>
-      )
+        )
+      }
     },
     {
       key: 'selling_price',
@@ -495,6 +850,7 @@ const InventoryManagementPage = () => {
       render: (row) => (
         <span className="font-medium text-primary">{formatCurrency(row.selling_price)}</span>
       ),
+      footer: <span className="text-text-secondary">Total</span>,
       align: 'right'
     },
     {
@@ -503,6 +859,7 @@ const InventoryManagementPage = () => {
       render: (row) => (
         <span className="font-medium text-text">{formatCurrency(row.in_stock_value)}</span>
       ),
+      footer: <span className="text-base font-semibold text-primary">{formatCurrency(stockStatusTotalValue)}</span>,
       align: 'right'
     }
   ]
@@ -791,7 +1148,12 @@ const InventoryManagementPage = () => {
             <div className="bg-white rounded-xl border border-border p-4 shadow-sm">
               <div className="flex items-center gap-2 mb-4">
                 <ShoppingCartIcon className="h-5 w-5 text-primary" />
-                <h2 className="text-sm font-semibold text-text">Create New Restock</h2>
+                <div>
+                  <h2 className="text-sm font-semibold text-text">Create New Restock</h2>
+                  <p className="mt-1 text-xs text-text-tertiary">
+                    Choose the branch you are restocking for. Main branch is selected by default.
+                  </p>
+                </div>
               </div>
 
               <form onSubmit={onSubmitRestock} className="space-y-4">
@@ -824,6 +1186,8 @@ const InventoryManagementPage = () => {
                     const totalBuyingAmount = quantity * buyingPrice
                     const totalSellingAmount = quantity * sellingPrice
                     const expectedProfit = totalSellingAmount - totalBuyingAmount
+                    const rowStockQuery = restockRowStockQueries[index]
+                    const currentStock = rowStockQuery?.data ?? null
 
                     return (
                       <motion.div
@@ -893,6 +1257,48 @@ const InventoryManagementPage = () => {
                             }
                             required
                           />
+                        </div>
+
+                        <div className="mt-3 rounded-lg border border-border bg-white px-3 py-2">
+                          {!restockForm.branchId ? (
+                            <p className="text-xs text-text-tertiary">
+                              Select a branch to load current stock for this product.
+                            </p>
+                          ) : !row.productId ? (
+                            <p className="text-xs text-text-tertiary">
+                              Select a product to see current stock in {selectedRestockBranchName}.
+                            </p>
+                          ) : rowStockQuery?.isLoading ? (
+                            <div className="flex items-center gap-2 text-xs text-text-secondary">
+                              <ArrowPathIcon className="h-3.5 w-3.5 animate-spin" />
+                              Loading current stock for {selectedRestockBranchName}...
+                            </div>
+                          ) : rowStockQuery?.isError ? (
+                            <p className="text-xs text-error">
+                              Could not load current stock for this branch.
+                            </p>
+                          ) : currentStock ? (
+                            <div className="flex flex-col gap-1 text-xs text-text-secondary sm:flex-row sm:flex-wrap sm:items-center sm:gap-4">
+                              <span>
+                                Current stock in {currentStock.branch_name ?? selectedRestockBranchName}:{' '}
+                                <strong className="text-text">{currentStock.stock_quantity}</strong>
+                              </span>
+                              <span>
+                                Business stock:{' '}
+                                <strong className="text-text">
+                                  {currentStock.business_stock_quantity}
+                                </strong>
+                              </span>
+                              <span>
+                                Reorder level:{' '}
+                                <strong className="text-text">{currentStock.reorder_level}</strong>
+                              </span>
+                            </div>
+                          ) : (
+                            <p className="text-xs text-text-tertiary">
+                              No stock record found for this product in {selectedRestockBranchName}.
+                            </p>
+                          )}
                         </div>
 
                         <div className="grid gap-4 md:grid-cols-4 mt-3">
@@ -1003,7 +1409,7 @@ const InventoryManagementPage = () => {
                     variant="outline"
                     onClick={() => {
                       setShowRestockForm(false)
-                      setRestockForm(createEmptyRestockForm())
+                      setRestockForm(createEmptyRestockForm(defaultInventoryBranchId))
                       setRestockError(null)
                     }}
                   >
@@ -1034,34 +1440,16 @@ const InventoryManagementPage = () => {
             <div className="bg-white rounded-xl border border-border p-4 shadow-sm">
               <div className="flex items-center gap-2 mb-4">
                 <ScaleIcon className="h-5 w-5 text-primary" />
-                <h2 className="text-sm font-semibold text-text">Create Stock Count</h2>
+                <div>
+                  <h2 className="text-sm font-semibold text-text">Create Stock Count</h2>
+                  <p className="mt-1 text-xs text-text-tertiary">
+                    Choose the branch you are counting for. Main branch is selected by default.
+                  </p>
+                </div>
               </div>
 
               <form onSubmit={onSubmitStockCount} className="space-y-4">
-                <div className="grid gap-4 md:grid-cols-3">
-                  <Select
-                    label="Product"
-                    options={[
-                      { label: 'Select product', value: '' },
-                      ...((productsQuery.data ?? []).map((product) => ({
-                        label: `${product.name} (${product.sku})`,
-                        value: String(product.id)
-                      })) || [])
-                    ]}
-                    value={stockCountForm.productId}
-                    onChange={(event) =>
-                      setStockCountForm((prev) => ({ ...prev, productId: String(event.target.value) }))
-                    }
-                    required
-                  />
-                  <Select
-                    label="Branch (optional)"
-                    options={branchOptions}
-                    value={stockCountForm.branchId}
-                    onChange={(event) =>
-                      setStockCountForm((prev) => ({ ...prev, branchId: String(event.target.value) }))
-                    }
-                  />
+                <div className="grid gap-4 md:grid-cols-2">
                   <TextInput
                     label="Count Date"
                     type="date"
@@ -1071,86 +1459,253 @@ const InventoryManagementPage = () => {
                     }
                     required
                   />
-                  <TextInput
-                    label="Physical Stock"
-                    type="number"
-                    min={0}
-                    value={stockCountForm.physicalStock}
+                  <Select
+                    label="Branch"
+                    options={branchOptions}
+                    value={stockCountForm.branchId}
                     onChange={(event) =>
-                      setStockCountForm((prev) => ({ ...prev, physicalStock: event.target.value }))
+                      setStockCountForm((prev) => ({ ...prev, branchId: String(event.target.value) }))
                     }
                     required
                   />
-                  <Select
-                    label="Valuation Method (optional)"
-                    options={stockCountValuationOptions}
-                    value={stockCountForm.valuationMethod}
-                    onChange={(event) =>
-                      setStockCountForm((prev) => ({
-                        ...prev,
-                        valuationMethod: String(event.target.value)
-                      }))
-                    }
-                  />
-                  <div className="md:col-span-2">
-                    <TextInput
-                      label="Notes"
-                      value={stockCountForm.notes}
-                      onChange={(event) =>
-                        setStockCountForm((prev) => ({ ...prev, notes: event.target.value }))
-                      }
-                      placeholder="Optional notes about this count"
-                    />
-                  </div>
                 </div>
 
-                <label className="flex items-center gap-2 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={stockCountForm.applyAdjustment}
-                    onChange={(event) =>
-                      setStockCountForm((prev) => ({
-                        ...prev,
-                        applyAdjustment: event.target.checked,
-                        adjustmentBuyingPrice: event.target.checked ? prev.adjustmentBuyingPrice : '',
-                        adjustmentSellingPrice: event.target.checked ? prev.adjustmentSellingPrice : ''
-                      }))
-                    }
-                    className="w-4 h-4 rounded border-border text-primary focus:ring-primary/20"
-                  />
-                  <span className="text-sm text-text-secondary">Apply adjustment immediately</span>
-                </label>
+                <div className="space-y-3">
+                  {stockCountForm.rows.map((row, index) => {
+                    const rowStockQuery = stockCountRowStockQueries[index]
+                    const currentStock = rowStockQuery?.data ?? null
+                    const physicalStock = toSafeNumber(row.physicalStock)
+                    const variance = currentStock ? physicalStock - currentStock.stock_quantity : null
 
-                {stockCountForm.applyAdjustment && (
-                  <div className="grid gap-4 md:grid-cols-2">
-                    <TextInput
-                      label="Adjustment Buying Price (optional)"
-                      type="number"
-                      min={0}
-                      step="0.01"
-                      value={stockCountForm.adjustmentBuyingPrice}
-                      onChange={(event) =>
-                        setStockCountForm((prev) => ({
-                          ...prev,
-                          adjustmentBuyingPrice: event.target.value
-                        }))
-                      }
-                    />
-                    <TextInput
-                      label="Adjustment Selling Price (optional)"
-                      type="number"
-                      min={0}
-                      step="0.01"
-                      value={stockCountForm.adjustmentSellingPrice}
-                      onChange={(event) =>
-                        setStockCountForm((prev) => ({
-                          ...prev,
-                          adjustmentSellingPrice: event.target.value
-                        }))
-                      }
-                    />
+                    return (
+                      <motion.div
+                        key={row.id}
+                        initial={{ opacity: 0, x: -20 }}
+                        animate={{ opacity: 1, x: 0 }}
+                        exit={{ opacity: 0, x: -20 }}
+                        className="bg-background rounded-lg border border-border p-4"
+                      >
+                        <div className="mb-3 flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            <span className="rounded bg-white px-2 py-1 text-xs font-semibold text-text-secondary">
+                              Product {index + 1}
+                            </span>
+                          </div>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => removeStockCountRow(row.id)}
+                            disabled={stockCountForm.rows.length === 1}
+                            className="text-error hover:bg-error/5"
+                          >
+                            <XMarkIcon className="h-4 w-4" />
+                          </Button>
+                        </div>
+
+                        <div className="grid gap-4 md:grid-cols-3">
+                          <Select
+                            label="Product"
+                            options={getProductOptionsForStockCountRow(row.id, row.productId)}
+                            value={row.productId}
+                            onChange={(event) =>
+                              updateStockCountRowField(row.id, 'productId', String(event.target.value))
+                            }
+                            required
+                          />
+                          <TextInput
+                            label="Physical Stock"
+                            type="number"
+                            min={0}
+                            value={row.physicalStock}
+                            onChange={(event) =>
+                              updateStockCountRowField(row.id, 'physicalStock', event.target.value)
+                            }
+                            required
+                          />
+                          <Select
+                            label="Valuation Method (optional)"
+                            options={stockCountValuationOptions}
+                            value={row.valuationMethod}
+                            onChange={(event) =>
+                              updateStockCountRowField(
+                                row.id,
+                                'valuationMethod',
+                                String(event.target.value)
+                              )
+                            }
+                          />
+                        </div>
+
+                        <div className="mt-3 rounded-lg border border-border bg-white px-3 py-2">
+                          {!stockCountForm.branchId ? (
+                            <p className="text-xs text-text-tertiary">
+                              Select a branch to load current stock for this product.
+                            </p>
+                          ) : !row.productId ? (
+                            <p className="text-xs text-text-tertiary">
+                              Select a product to see current stock in {selectedStockCountBranchName}.
+                            </p>
+                          ) : rowStockQuery?.isLoading ? (
+                            <div className="flex items-center gap-2 text-xs text-text-secondary">
+                              <ArrowPathIcon className="h-3.5 w-3.5 animate-spin" />
+                              Loading current stock for {selectedStockCountBranchName}...
+                            </div>
+                          ) : rowStockQuery?.isError ? (
+                            <p className="text-xs text-error">
+                              Could not load current stock for this branch.
+                            </p>
+                          ) : currentStock ? (
+                            <div className="flex flex-col gap-1 text-xs text-text-secondary sm:flex-row sm:flex-wrap sm:items-center sm:gap-4">
+                              <span>
+                                Current stock in {currentStock.branch_name ?? selectedStockCountBranchName}:{' '}
+                                <strong className="text-text">{currentStock.stock_quantity}</strong>
+                              </span>
+                              <span>
+                                Business stock:{' '}
+                                <strong className="text-text">
+                                  {currentStock.business_stock_quantity}
+                                </strong>
+                              </span>
+                              <span>
+                                Variance after count:{' '}
+                                <strong
+                                  className={
+                                    variance === null
+                                      ? 'text-text'
+                                      : variance >= 0
+                                        ? 'text-success'
+                                        : 'text-error'
+                                  }
+                                >
+                                  {variance !== null ? `${variance > 0 ? '+' : ''}${variance}` : '--'}
+                                </strong>
+                              </span>
+                            </div>
+                          ) : (
+                            <p className="text-xs text-text-tertiary">
+                              No stock record found for this product in {selectedStockCountBranchName}.
+                            </p>
+                          )}
+                        </div>
+
+                        <label className="mt-3 flex items-center gap-2 cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={row.applyAdjustment}
+                            onChange={(event) =>
+                              updateStockCountRowAdjustment(row.id, event.target.checked)
+                            }
+                            className="h-4 w-4 rounded border-border text-primary focus:ring-primary/20"
+                          />
+                          <span className="text-sm text-text-secondary">
+                            Apply adjustment immediately
+                          </span>
+                        </label>
+
+                        {row.applyAdjustment && (
+                          <div className="mt-3 grid gap-4 md:grid-cols-2">
+                            <Select
+                              label="Adjustment Reason"
+                              options={stockCountAdjustmentReasonOptions}
+                              value={row.adjustmentReason}
+                              onChange={(event) =>
+                                updateStockCountRowField(
+                                  row.id,
+                                  'adjustmentReason',
+                                  String(event.target.value)
+                                )
+                              }
+                            />
+                            <TextInput
+                              label="Adjustment Reference (optional)"
+                              value={row.adjustmentReference}
+                              onChange={(event) =>
+                                updateStockCountRowField(
+                                  row.id,
+                                  'adjustmentReference',
+                                  event.target.value
+                                )
+                              }
+                              placeholder="Reference, note, or document number"
+                            />
+                            <TextInput
+                              label="Adjustment Buying Price (optional)"
+                              type="number"
+                              min={0}
+                              step="0.01"
+                              value={row.adjustmentBuyingPrice}
+                              onChange={(event) =>
+                                updateStockCountRowField(
+                                  row.id,
+                                  'adjustmentBuyingPrice',
+                                  event.target.value
+                                )
+                              }
+                            />
+                            <TextInput
+                              label="Adjustment Selling Price (optional)"
+                              type="number"
+                              min={0}
+                              step="0.01"
+                              value={row.adjustmentSellingPrice}
+                              onChange={(event) =>
+                                updateStockCountRowField(
+                                  row.id,
+                                  'adjustmentSellingPrice',
+                                  event.target.value
+                                )
+                              }
+                            />
+                          </div>
+                        )}
+
+                        <div className="mt-3">
+                          <TextInput
+                            label="Notes"
+                            value={row.notes}
+                            onChange={(event) =>
+                              updateStockCountRowField(row.id, 'notes', event.target.value)
+                            }
+                            placeholder="Optional notes about this count"
+                          />
+                        </div>
+                      </motion.div>
+                    )
+                  })}
+
+                  <div className="flex flex-col gap-4 pt-2 sm:flex-row sm:items-center sm:justify-between">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={addStockCountRow}
+                      className="flex items-center gap-2"
+                    >
+                      <PlusIcon className="h-4 w-4" />
+                      Add Product Row
+                    </Button>
+
+                    <div className="rounded-lg border border-primary/20 bg-primary/5 p-3">
+                      <div className="grid grid-cols-2 gap-4 text-sm">
+                        <div>
+                          <p className="text-xs text-text-tertiary">Total Physical Count</p>
+                          <p className="font-semibold text-text">{stockCountTotals.totalPhysical}</p>
+                        </div>
+                        <div>
+                          <p className="text-xs text-text-tertiary">Total Variance</p>
+                          <p
+                            className={`font-semibold ${
+                              stockCountTotals.totalVariance >= 0 ? 'text-success' : 'text-error'
+                            }`}
+                          >
+                            {stockCountTotals.totalVariance > 0 ? '+' : ''}
+                            {stockCountTotals.totalVariance}
+                          </p>
+                        </div>
+                      </div>
+                    </div>
                   </div>
-                )}
+                </div>
 
                 <div className="flex items-center gap-3 pt-2">
                   <Button 
@@ -1165,7 +1720,7 @@ const InventoryManagementPage = () => {
                     variant="outline"
                     onClick={() => {
                       setShowStockCountForm(false)
-                      setStockCountForm(EMPTY_STOCK_COUNT_FORM)
+                      setStockCountForm(createEmptyStockCountForm(defaultInventoryBranchId))
                       setStockCountError(null)
                     }}
                   >
@@ -1192,32 +1747,81 @@ const InventoryManagementPage = () => {
         className="mb-6"
       >
         <div className="bg-white rounded-xl border border-border shadow-sm overflow-hidden">
-          <div className="p-4 border-b border-border flex items-center justify-between">
-            <h2 className="text-sm font-semibold text-text flex items-center gap-2">
-              <CubeIcon className="h-4 w-4 text-primary" />
-              Stock Status
-            </h2>
-            {inventoryDashboardQuery.isFetching && (
-              <span className="text-xs text-text-tertiary flex items-center gap-1">
-                <ArrowPathIcon className="h-3 w-3 animate-spin" />
-                Refreshing...
-              </span>
+          <div className="border-b border-border p-4">
+            <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+              <div>
+                <h2 className="text-sm font-semibold text-text flex items-center gap-2">
+                  <CubeIcon className="h-4 w-4 text-primary" />
+                  Stock Status
+                </h2>
+                <p className="mt-1 text-xs text-text-tertiary">
+                  Filter live stock by branch, product, or leave both on all to view everything.
+                </p>
+              </div>
+
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
+                <Select
+                  label="Branch"
+                  value={stockStatusBranchFilter}
+                  onChange={(event) => setStockStatusBranchFilter(event.target.value)}
+                  options={stockStatusBranchOptions}
+                  className="min-w-[220px]"
+                />
+                <Select
+                  label="Product"
+                  value={stockStatusProductFilter}
+                  onChange={(event) => setStockStatusProductFilter(event.target.value)}
+                  options={stockStatusProductOptions}
+                  className="min-w-[260px]"
+                />
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => {
+                    setStockStatusBranchFilter('all')
+                    setStockStatusProductFilter('all')
+                  }}
+                  disabled={
+                    stockStatusBranchFilter === 'all' && stockStatusProductFilter === 'all'
+                  }
+                  className="sm:self-end"
+                >
+                  View All
+                </Button>
+              </div>
+            </div>
+
+            {stockStatusQuery.isFetching && (
+              <div className="mt-3">
+                <span className="text-xs text-text-tertiary flex items-center gap-1">
+                  <ArrowPathIcon className="h-3 w-3 animate-spin" />
+                  Refreshing stock status...
+                </span>
+              </div>
             )}
           </div>
           <DataTable
             columns={stockStatusColumns}
-            data={inventoryDashboardQuery.data?.stock_status ?? []}
-            getRowKey={(row) => row.product_id}
+            data={stockStatusQuery.data ?? []}
+            getRowKey={(row) => `${row.branch_id ?? 'all'}-${row.product_id}`}
             emptyState={
-              inventoryDashboardQuery.isLoading ? (
+              stockStatusQuery.isLoading ? (
                 <div className="p-8 text-center">
                   <ArrowPathIcon className="h-8 w-8 mx-auto text-primary/30 animate-spin mb-3" />
                   <p className="text-sm text-text-secondary">Loading stock status...</p>
+                </div>
+              ) : stockStatusQuery.isError ? (
+                <div className="p-8 text-center">
+                  <XCircleIcon className="h-10 w-10 mx-auto text-error/40 mb-3" />
+                  <p className="text-sm text-error">Could not load stock status.</p>
                 </div>
               ) : (
                 <div className="p-8 text-center">
                   <CubeIcon className="h-12 w-12 mx-auto text-text-tertiary/30 mb-3" />
                   <p className="text-sm text-text-secondary">No stock records found</p>
+                  <p className="mt-1 text-xs text-text-tertiary">
+                    Try another branch or product filter, or switch back to View All.
+                  </p>
                 </div>
               )
             }

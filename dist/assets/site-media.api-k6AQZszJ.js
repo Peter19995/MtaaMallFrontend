@@ -1,0 +1,2 @@
+import{a as e}from"./axios.config-BhEUyyTG.js";const r=async()=>{const{data:t}=await e.get("/site-media/");return t},c=async()=>{const{data:t}=await e.get("/site-media/groups");return t},m=async(t,s)=>{const a=new FormData;s.forEach(n=>{a.append("files",n)});const i=encodeURIComponent(t.trim()),{data:o}=await e.post(`/site-media/${i}`,a,{headers:{"Content-Type":"multipart/form-data"}});return o},p=async t=>{await e.delete(`/site-media/assets/${t}`)};export{c as a,p as d,r as l,m as u};
+//# sourceMappingURL=site-media.api-k6AQZszJ.js.map

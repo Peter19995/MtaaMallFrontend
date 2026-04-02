@@ -5,6 +5,7 @@ export interface Column<T> {
   key: keyof T | string
   header: string
   render?: (row: T) => ReactNode
+  footer?: ReactNode | ((rows: T[]) => ReactNode)
   align?: 'left' | 'center' | 'right'
 }
 
@@ -23,6 +24,8 @@ export function DataTable<T>({
   emptyState,
   className
 }: DataTableProps<T>) {
+  const hasFooter = columns.some((column) => column.footer !== undefined)
+
   return (
     <div className={clsx('overflow-hidden rounded-lg border border-border bg-surface', className)}>
       <table className="min-w-full divide-y divide-divider text-xs sm:text-sm">
@@ -76,10 +79,29 @@ export function DataTable<T>({
             </tr>
           ))}
         </tbody>
+        {hasFooter && (
+          <tfoot className="border-t border-divider bg-background/80">
+            <tr>
+              {columns.map((column) => (
+                <td
+                  key={column.key as string}
+                  className={clsx(
+                    'px-3 py-3 font-medium text-text',
+                    column.align === 'center' && 'text-center',
+                    column.align === 'right' && 'text-right'
+                  )}
+                >
+                  {typeof column.footer === 'function'
+                    ? column.footer(data)
+                    : column.footer ?? null}
+                </td>
+              ))}
+            </tr>
+          </tfoot>
+        )}
       </table>
     </div>
   )
 }
 
 export default DataTable
-

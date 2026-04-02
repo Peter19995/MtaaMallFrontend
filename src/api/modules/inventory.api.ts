@@ -51,6 +51,8 @@ export type StockCountCreate = {
   count_date: string
   physical_stock: number
   apply_adjustment?: boolean
+  adjustment_reason?: StockCountAdjustmentReason
+  adjustment_reference?: string
   valuation_method?: InventoryValuationMethod
   adjustment_buying_price?: number
   adjustment_selling_price?: number
@@ -68,8 +70,14 @@ export type StockCountResponse = {
   physical_stock: number
   variance: number
   apply_adjustment: boolean
+  adjustment_reason?: StockCountAdjustmentReason | null
+  adjustment_reference?: string | null
   valuation_method_used?: InventoryValuationMethod | null
+  accounting_entry_id?: number | null
+  accounting_entry_number?: string | null
+  accounting_amount?: number | null
   location: string
+  notes?: string | null
   category_id?: number | null
   category_name?: string | null
   category_in_stock_value: number
@@ -93,6 +101,7 @@ export type ProductStockStatusResponse = {
   category_id?: number | null
   category_name?: string | null
   stock_quantity: number
+  business_stock_quantity: number
   selling_price: number
   in_stock_value: number
   reorder_level: number
@@ -101,6 +110,7 @@ export type ProductStockStatusResponse = {
 
 export type StockStatusListParams = {
   branch_id?: number
+  product_id?: number
   skip?: number
   limit?: number
 }
@@ -151,8 +161,23 @@ export type InventoryDashboardParams = {
 
 export type InventoryValuationMethod = 'fifo' | 'lifo' | 'weighted_average'
 
+export type StockCountAdjustmentReason =
+  | 'restock_correction'
+  | 'sale_correction'
+  | 'lost'
+  | 'damaged'
+  | 'theft'
+  | 'found'
+  | 'other'
+
 export type InventoryValuationMethodInfoResponse = {
   method: InventoryValuationMethod
+  name: string
+  description: string
+}
+
+export type StockCountAdjustmentReasonInfoResponse = {
+  reason: StockCountAdjustmentReason
   name: string
   description: string
 }
@@ -227,6 +252,15 @@ export const getSupportedValuationMethodsRequest = async (): Promise<
   InventoryValuationMethodInfoResponse[]
 > => {
   const { data } = await api.get<InventoryValuationMethodInfoResponse[]>('/inventory/valuation-methods')
+  return data
+}
+
+export const getStockCountAdjustmentReasonsRequest = async (): Promise<
+  StockCountAdjustmentReasonInfoResponse[]
+> => {
+  const { data } = await api.get<StockCountAdjustmentReasonInfoResponse[]>(
+    '/inventory/stock-count-adjustment-reasons'
+  )
   return data
 }
 

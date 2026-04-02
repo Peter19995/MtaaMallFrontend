@@ -12,8 +12,7 @@ import {
   Bars3Icon,
   XMarkIcon,
   MagnifyingGlassIcon,
-  HeartIcon,
-  ChevronDownIcon
+  HeartIcon
 } from '@heroicons/react/24/outline'
 import { CartContext } from '@contexts/CartContext'
 import { useAuth } from '@hooks/useAuth'
@@ -34,7 +33,7 @@ const navItems = [
 
 export const MainLayout = () => {
   const cart = useContext(CartContext)
-  const { user, isAuthenticated, logout } = useAuth()
+  const { user, logout } = useAuth()
   const location = useLocation()
   const navigate = useNavigate()
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false)
@@ -51,6 +50,9 @@ export const MainLayout = () => {
     () => cart?.total ?? 0,
     [cart?.total]
   )
+
+  const isAuthenticated = Boolean(user)
+  const dashboardPath = '/dashboard/admin'
 
   // Handle scroll effect
   useEffect(() => {
@@ -228,52 +230,24 @@ export const MainLayout = () => {
                 </Link>
               )}
 
-              {/* User Menu / Sign In */}
+              {/* Dashboard / Sign In */}
               {isAuthenticated ? (
-                <div className="relative group">
-                  <motion.button
+                <Link to={dashboardPath}>
+                  <motion.div
                     whileHover={{ scale: 1.05 }}
                     whileTap={{ scale: 0.95 }}
-                    className="flex items-center gap-2 px-3 py-2 rounded-full bg-gradient-to-r from-primary/10 to-secondary/10 hover:from-primary/20 hover:to-secondary/20 transition-all"
+                    className="relative group overflow-hidden rounded-full bg-gradient-to-r from-primary to-secondary p-0.5"
                   >
-                    <div className="w-8 h-8 rounded-full bg-gradient-to-r from-primary to-secondary flex items-center justify-center text-white font-semibold">
-                      {user?.fullName?.charAt(0) || user?.email?.charAt(0) || 'U'}
-                    </div>
-                    <ChevronDownIcon className="w-4 h-4 text-text-secondary group-hover:text-primary transition-colors" />
-                  </motion.button>
-                  
-                  {/* Dropdown Menu */}
-                  <div className="absolute top-full right-0 mt-2 w-48 bg-white rounded-xl shadow-2xl border border-border opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-300">
-                    <div className="p-2">
-                      <Link 
-                        to="/dashboard" 
-                        className="block px-4 py-2 text-sm text-text hover:bg-primary/5 rounded-lg transition-colors"
-                      >
+                    <div className="relative flex items-center gap-2 rounded-full bg-white px-4 py-2 transition-all group-hover:bg-transparent">
+                      <div className="flex h-7 w-7 items-center justify-center rounded-full bg-gradient-to-r from-primary to-secondary text-xs font-semibold text-white">
+                        {user?.name?.charAt(0) || user?.email?.charAt(0) || 'U'}
+                      </div>
+                      <span className="text-sm font-medium bg-gradient-to-r from-primary to-secondary bg-clip-text text-transparent group-hover:text-white">
                         Dashboard
-                      </Link>
-                      <Link 
-                        to="/profile" 
-                        className="block px-4 py-2 text-sm text-text hover:bg-primary/5 rounded-lg transition-colors"
-                      >
-                        Profile
-                      </Link>
-                      <Link 
-                        to="/orders" 
-                        className="block px-4 py-2 text-sm text-text hover:bg-primary/5 rounded-lg transition-colors"
-                      >
-                        Orders
-                      </Link>
-                      <hr className="my-2 border-border" />
-                      <button 
-                        type="button"
-                        onClick={handleLogout}
-                        className="w-full text-left px-4 py-2 text-sm text-error hover:bg-error/5 rounded-lg transition-colors"
-                      >
-                        Sign Out
-                      </button>
+                      </span>
                     </div>
-                  </div>
-                </div>
+                  </motion.div>
+                </Link>
               ) : (
                 <Link to="/login">
                   <motion.button
@@ -386,11 +360,11 @@ export const MainLayout = () => {
                 <div className="mb-6">
                   <div className="flex items-center gap-3 p-3 bg-gradient-to-r from-primary/10 to-secondary/10 rounded-xl">
                     <div className="w-10 h-10 rounded-full bg-gradient-to-r from-primary to-secondary flex items-center justify-center text-white font-semibold">
-                      {user?.fullName?.charAt(0) || user?.email?.charAt(0) || 'G'}
+                        {user?.name?.charAt(0) || user?.email?.charAt(0) || 'G'}
                     </div>
                     <div>
                       <p className="text-sm font-medium text-text">
-                        {user?.fullName || 'Guest User'}
+                        {user?.name || 'Guest User'}
                       </p>
                       <p className="text-xs text-text-tertiary">
                         {isAuthenticated ? 'Signed in' : 'Not signed in'}
@@ -424,7 +398,7 @@ export const MainLayout = () => {
                     <>
                       <hr className="my-2 border-border" />
                       <Link
-                        to="/dashboard"
+                        to={dashboardPath}
                         className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-text-secondary hover:bg-primary/5 hover:text-primary transition-all"
                       >
                         <UserIcon className="w-5 h-5" />

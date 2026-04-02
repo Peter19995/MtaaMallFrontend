@@ -1,5 +1,19 @@
 import api from '@api/config/axios.config'
 
+type StandardApiResponse<T> = {
+  success?: boolean
+  message?: string
+  data?: T
+  meta?: unknown
+  errors?: unknown
+}
+
+const unwrapList = <T>(payload: T[] | StandardApiResponse<T[]>): T[] =>
+  Array.isArray(payload) ? payload : Array.isArray(payload?.data) ? payload.data : []
+
+const unwrapItem = <T>(payload: T | StandardApiResponse<T>): T =>
+  (payload as StandardApiResponse<T>)?.data ?? (payload as T)
+
 export type ServiceCategoryResponse = {
   id: number
   name: string
@@ -12,6 +26,12 @@ export type ServiceCategoryResponse = {
 
 export type ServiceCategoryCreate = {
   name: string
+  description?: string
+  is_active?: boolean
+}
+
+export type ServiceCategoryUpdate = {
+  name?: string
   description?: string
   is_active?: boolean
 }
@@ -40,7 +60,6 @@ export type ServiceOfferingCreate = {
   price: number
   duration_minutes?: number
   is_active?: boolean
-  image_urls?: string[]
 }
 
 export type ServiceOfferingUpdate = {
@@ -51,7 +70,6 @@ export type ServiceOfferingUpdate = {
   price?: number
   duration_minutes?: number
   is_active?: boolean
-  image_urls?: string[]
 }
 
 export type ServiceListParams = {
@@ -63,60 +81,95 @@ export type ServiceListParams = {
 }
 
 export const listServiceCategoriesRequest = async (): Promise<ServiceCategoryResponse[]> => {
-  const { data } = await api.get<ServiceCategoryResponse[]>('/services/categories')
-  return data
+  const { data } = await api.get<ServiceCategoryResponse[] | StandardApiResponse<ServiceCategoryResponse[]>>(
+    '/services/categories'
+  )
+  return unwrapList(data)
 }
 
 export const createServiceCategoryRequest = async (
   payload: ServiceCategoryCreate
 ): Promise<ServiceCategoryResponse> => {
-  const { data } = await api.post<ServiceCategoryResponse>('/services/categories', payload)
-  return data
+  const { data } = await api.post<ServiceCategoryResponse | StandardApiResponse<ServiceCategoryResponse>>(
+    '/services/categories',
+    payload
+  )
+  return unwrapItem(data)
+}
+
+export const getServiceCategoryRequest = async (
+  categoryId: number
+): Promise<ServiceCategoryResponse> => {
+  const { data } = await api.get<ServiceCategoryResponse | StandardApiResponse<ServiceCategoryResponse>>(
+    `/services/categories/${categoryId}`
+  )
+  return unwrapItem(data)
+}
+
+export const updateServiceCategoryRequest = async (
+  categoryId: number,
+  payload: ServiceCategoryUpdate
+): Promise<ServiceCategoryResponse> => {
+  const { data } = await api.put<ServiceCategoryResponse | StandardApiResponse<ServiceCategoryResponse>>(
+    `/services/categories/${categoryId}`,
+    payload
+  )
+  return unwrapItem(data)
+}
+
+export const deleteServiceCategoryRequest = async (categoryId: number): Promise<void> => {
+  await api.delete(`/services/categories/${categoryId}`)
 }
 
 export const listServicesRequest = async (
   params?: ServiceListParams
 ): Promise<ServiceOfferingResponse[]> => {
-  const { data } = await api.get<ServiceOfferingResponse[]>('/services/', { params })
-  return data
-}
-
-const buildServiceFormData = (
-  payload: ServiceOfferingCreate | ServiceOfferingUpdate,
-  images: File[]
-): FormData => {
-  const formData = new FormData()
-  Object.entries(payload).forEach(([key, value]) => {
-    if (value === undefined || value === null || value === '') {
-      return
-    }
-    if (Array.isArray(value)) {
-      value.forEach((item) => formData.append(key, String(item)))
-      return
-    }
-    formData.append(key, String(value))
-  })
-  images.forEach((image) => formData.append('images', image))
-  return formData
+  const { data } = await api.get<
+    ServiceOfferingResponse[] | StandardApiResponse<ServiceOfferingResponse[]>
+  >('/services/', { params })
+  return unwrapList(data)
 }
 
 export const createServiceRequest = async (
-  payload: ServiceOfferingCreate,
-  images: File[] = []
+  payload: ServiceOfferingCreate
 ): Promise<ServiceOfferingResponse> => {
-  const requestBody = images.length > 0 ? buildServiceFormData(payload, images) : payload
-  const { data } = await api.post<ServiceOfferingResponse>('/services/', requestBody)
-  return data
+  const { data } = await api.post<
+    ServiceOfferingResponse | StandardApiResponse<ServiceOfferingResponse>
+  >('/services/', payload)
+  return unwrapItem(data)
+}
+
+export const getServiceRequest = async (serviceId: number): Promise<ServiceOfferingResponse> => {
+  const { data } = await api.get<
+    ServiceOfferingResponse | StandardApiResponse<ServiceOfferingResponse>
+  >(`/services/${serviceId}`)
+  return unwrapItem(data)
 }
 
 export const updateServiceRequest = async (
   serviceId: number,
-  payload: ServiceOfferingUpdate,
-  images: File[] = []
+  payload: ServiceOfferingUpdate
 ): Promise<ServiceOfferingResponse> => {
-  const requestBody = images.length > 0 ? buildServiceFormData(payload, images) : payload
-  const { data } = await api.put<ServiceOfferingResponse>(`/services/${serviceId}`, requestBody)
-  return data
+  const { data } = await api.put<
+    ServiceOfferingResponse | StandardApiResponse<ServiceOfferingResponse>
+  >(`/services/${serviceId}`, payload)
+  return unwrapItem(data)
+}
+
+export const uploadServiceImagesRequest = async (
+  serviceId: number,
+  files: File[]
+): Promise<void> => {
+  const formData = new FormData()
+  files.forEach((file) => {
+    formData.append('files', file)
+  })
+
+  await api.post(`/services/${serviceId}/images`, formData, {
+    headers: {
+      'Content-Type': 'multipart/form-data'
+    }
+  })
 }
 
 export const deleteServiceRequest = async (serviceId: number): Promise<void> => {

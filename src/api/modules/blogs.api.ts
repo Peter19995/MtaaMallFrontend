@@ -6,6 +6,9 @@ export type BlogCategoryResponse = {
   slug?: string | null
   description?: string | null
   is_active?: boolean
+  posts_count?: number
+  created_at?: string | null
+  updated_at?: string | null
 }
 
 export type BlogSummaryResponse = {
@@ -52,6 +55,8 @@ export type BlogCommentResponse = {
   user_name?: string | null
   content: string
   status: 'pending' | 'approved' | 'rejected' | 'spam'
+  moderated_by_id?: number | null
+  moderated_at?: string | null
   created_at?: string | null
 }
 

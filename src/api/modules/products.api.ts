@@ -11,6 +11,15 @@ export type ProductCategoryCreate = {
   description?: string
 }
 
+export type ProductImageRecord = {
+  id: number
+  image_url?: string | null
+  file_url?: string | null
+  file_path?: string | null
+  url?: string | null
+  alt_text?: string | null
+}
+
 export type ProductResponse = {
   id: number
   sku: string
@@ -26,6 +35,7 @@ export type ProductResponse = {
   is_on_offer?: boolean
   max_offer?: number
   image_urls?: string[]
+  images?: ProductImageRecord[]
   branch_id?: number | null
   branch_name?: string | null
   created_at: string
@@ -39,9 +49,9 @@ export type ProductCreate = {
   stock_quantity?: number
   reorder_level?: number
   is_active?: boolean
+  selling_price?: number
   is_on_offer?: boolean
   max_offer?: number
-  image_urls?: string[]
 }
 
 export type ProductUpdate = {
@@ -51,9 +61,18 @@ export type ProductUpdate = {
   stock_quantity?: number
   reorder_level?: number
   is_active?: boolean
+  selling_price?: number
   is_on_offer?: boolean
   max_offer?: number
-  image_urls?: string[]
+}
+
+export type ProductPriceUpdate = {
+  selling_price: number
+}
+
+export type ProductOfferUpdate = {
+  is_on_offer: boolean
+  max_offer?: number
 }
 
 export type ProductListParams = {
@@ -78,6 +97,11 @@ export type InStockProductsParams = {
   limit?: number
   search?: string
   category_id?: number
+}
+
+export type ProductImagesResponse = {
+  image_urls: string[]
+  images?: ProductImageRecord[]
 }
 
 export const listCategoriesRequest = async (): Promise<ProductCategoryResponse[]> => {
@@ -114,40 +138,60 @@ export const getProductRequest = async (
   return data
 }
 
-const buildProductFormData = (payload: ProductCreate | ProductUpdate, images: File[]): FormData => {
+const buildProductImagesFormData = (images: File[]): FormData => {
   const formData = new FormData()
-  Object.entries(payload).forEach(([key, value]) => {
-    if (value === undefined || value === null || value === '') {
-      return
-    }
-    if (Array.isArray(value)) {
-      value.forEach((item) => formData.append(key, String(item)))
-      return
-    }
-    formData.append(key, String(value))
-  })
   images.forEach((image) => {
-    formData.append('images', image)
+    formData.append('files', image)
   })
   return formData
 }
 
-export const createProductRequest = async (
-  payload: ProductCreate,
-  images: File[] = []
-): Promise<ProductResponse> => {
-  const requestBody = images.length > 0 ? buildProductFormData(payload, images) : payload
-  const { data } = await api.post<ProductResponse>('/products/', requestBody)
+export const createProductRequest = async (payload: ProductCreate): Promise<ProductResponse> => {
+  const { data } = await api.post<ProductResponse>('/products/', payload)
   return data
 }
 
 export const updateProductRequest = async (
   productId: number,
-  payload: ProductUpdate,
-  images: File[] = []
+  payload: ProductUpdate
 ): Promise<ProductResponse> => {
-  const requestBody = images.length > 0 ? buildProductFormData(payload, images) : payload
-  const { data } = await api.put<ProductResponse>(`/products/${productId}`, requestBody)
+  const { data } = await api.put<ProductResponse>(`/products/${productId}`, payload)
+  return data
+}
+
+export const updateProductPriceRequest = async (
+  productId: number,
+  payload: ProductPriceUpdate
+): Promise<ProductResponse> => {
+  const { data } = await api.patch<ProductResponse>(`/products/${productId}/price`, payload)
+  return data
+}
+
+export const updateProductOfferRequest = async (
+  productId: number,
+  payload: ProductOfferUpdate
+): Promise<ProductResponse> => {
+  const { data } = await api.patch<ProductResponse>(`/products/${productId}/offer`, payload)
+  return data
+}
+
+export const uploadProductImagesRequest = async (
+  productId: number,
+  images: File[]
+): Promise<void> => {
+  if (images.length === 0) {
+    return
+  }
+
+  const formData = buildProductImagesFormData(images)
+  await api.post(`/products/${productId}/images`, formData)
+}
+
+export const deleteProductImageRequest = async (
+  productId: number,
+  imageId: number
+): Promise<ProductImagesResponse> => {
+  const { data } = await api.delete<ProductImagesResponse>(`/products/${productId}/images/${imageId}`)
   return data
 }
 

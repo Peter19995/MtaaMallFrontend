@@ -285,7 +285,10 @@ export const createProjectTaskRequest = async (
   projectId: number,
   payload: ProjectTaskCreatePayload
 ): Promise<ProjectTaskResponse> => {
-  const { data } = await api.post<ProjectTaskResponse>(`/projects/${projectId}/tasks`, payload)
+  const { data } = await api.post<ProjectTaskResponse>(`/projects/${projectId}/tasks`, {
+    ...payload,
+    project_id: projectId
+  })
   return data
 }
 

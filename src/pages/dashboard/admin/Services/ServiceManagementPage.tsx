@@ -33,9 +33,11 @@ import {
   type ServiceOfferingCreate,
   type ServiceOfferingResponse,
   type ServiceOfferingUpdate,
+  uploadServiceImagesRequest,
   updateServiceRequest
 } from '@api/modules/services.api'
 import { AppTheme, withOpacity } from '@constants/theme'
+import { resolveMediaUrl, resolveMediaUrls } from '@utils/media'
 
 type ServiceFormState = {
   code: string
@@ -45,7 +47,6 @@ type ServiceFormState = {
   price: string
   durationMinutes: string
   isActive: boolean
-  imageUrlsText: string
   imageFiles: File[]
 }
 
@@ -57,7 +58,6 @@ const EMPTY_FORM: ServiceFormState = {
   price: '',
   durationMinutes: '',
   isActive: true,
-  imageUrlsText: '',
   imageFiles: []
 }
 
@@ -68,12 +68,6 @@ const formatCurrency = (amount: number): string =>
     minimumFractionDigits: 0,
     maximumFractionDigits: 0
   }).format(amount)
-
-const parseImageUrls = (value: string): string[] =>
-  value
-    .split('\n')
-    .map((item) => item.trim())
-    .filter((item) => item.length > 0)
 
 // Animation variants
 const fadeInUp = {
@@ -102,6 +96,7 @@ const ServiceManagementPage = () => {
   const [categoryDescription, setCategoryDescription] = useState('')
   const [showAdvancedFilters, setShowAdvancedFilters] = useState(false)
   const [previewImage, setPreviewImage] = useState<string | null>(null)
+  const [selectedServiceDetails, setSelectedServiceDetails] = useState<ServiceOfferingResponse | null>(null)
   const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'inactive'>('all')
 
   const categoriesQuery = useQuery({
@@ -123,7 +118,6 @@ const ServiceManagementPage = () => {
       const categoryId = Number(payload.categoryId)
       const price = Number(payload.price)
       const durationMinutes = payload.durationMinutes ? Number(payload.durationMinutes) : undefined
-      const imageUrls = parseImageUrls(payload.imageUrlsText)
 
       if (!payload.name.trim() || !payload.code.trim()) {
         throw new Error('Service name and code are required.')
@@ -146,10 +140,15 @@ const ServiceManagementPage = () => {
           category_id: categoryId,
           price,
           duration_minutes: durationMinutes,
-          is_active: payload.isActive,
-          image_urls: imageUrls
+          is_active: payload.isActive
         }
-        return updateServiceRequest(editingServiceId, updatePayload, payload.imageFiles)
+
+        const updatedService = await updateServiceRequest(editingServiceId, updatePayload)
+        if (payload.imageFiles.length > 0) {
+          await uploadServiceImagesRequest(updatedService.id, payload.imageFiles)
+        }
+
+        return updatedService
       }
 
       const createPayload: ServiceOfferingCreate = {
@@ -159,10 +158,15 @@ const ServiceManagementPage = () => {
         category_id: categoryId,
         price,
         duration_minutes: durationMinutes,
-        is_active: payload.isActive,
-        image_urls: imageUrls
+        is_active: payload.isActive
       }
-      return createServiceRequest(createPayload, payload.imageFiles)
+
+      const createdService = await createServiceRequest(createPayload)
+      if (payload.imageFiles.length > 0) {
+        await uploadServiceImagesRequest(createdService.id, payload.imageFiles)
+      }
+
+      return createdService
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['services', 'list'] })
@@ -214,29 +218,33 @@ const ServiceManagementPage = () => {
     {
       key: 'name',
       header: 'Service',
-      render: (row) => (
-        <div className="flex items-center gap-3">
-          <div className="h-10 w-10 rounded-lg bg-gradient-to-br from-primary/10 to-secondary/10 flex items-center justify-center">
-            {row.image_urls?.[0] ? (
-              <img 
-                src={row.image_urls[0]} 
-                alt={row.name} 
-                className="h-10 w-10 rounded-lg object-cover cursor-pointer hover:opacity-80 transition-opacity"
-                onClick={(e) => {
-                  e.stopPropagation()
-                  setPreviewImage(row.image_urls![0])
-                }}
-              />
-            ) : (
-              <WrenchScrewdriverIcon className="h-5 w-5 text-primary/50" />
-            )}
+      render: (row) => {
+        const thumbnailUrl = resolveMediaUrl(row.image_urls?.[0]) ?? row.image_urls?.[0]
+
+        return (
+          <div className="flex items-center gap-3">
+            <div className="h-10 w-10 rounded-lg bg-gradient-to-br from-primary/10 to-secondary/10 flex items-center justify-center">
+              {thumbnailUrl ? (
+                <img 
+                  src={thumbnailUrl} 
+                  alt={row.name} 
+                  className="h-10 w-10 rounded-lg object-cover cursor-pointer hover:opacity-80 transition-opacity"
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    setPreviewImage(thumbnailUrl)
+                  }}
+                />
+              ) : (
+                <WrenchScrewdriverIcon className="h-5 w-5 text-primary/50" />
+              )}
+            </div>
+            <div>
+              <p className="font-medium text-text">{row.name}</p>
+              <p className="text-xs text-text-tertiary">Code: {row.code}</p>
+            </div>
           </div>
-          <div>
-            <p className="font-medium text-text">{row.name}</p>
-            <p className="text-xs text-text-tertiary">Code: {row.code}</p>
-          </div>
-        </div>
-      )
+        )
+      }
     },
     {
       key: 'category_name',
@@ -301,6 +309,14 @@ const ServiceManagementPage = () => {
           <button
             type="button"
             className="p-2 text-text-secondary hover:text-primary hover:bg-primary/5 rounded-lg transition-all"
+            onClick={() => setSelectedServiceDetails(row)}
+            title="View details"
+          >
+            <EyeIcon className="h-4 w-4" />
+          </button>
+          <button
+            type="button"
+            className="p-2 text-text-secondary hover:text-primary hover:bg-primary/5 rounded-lg transition-all"
             onClick={() => {
               setEditingServiceId(row.id)
               setForm({
@@ -311,7 +327,6 @@ const ServiceManagementPage = () => {
                 price: String(row.price),
                 durationMinutes: row.duration_minutes ? String(row.duration_minutes) : '',
                 isActive: row.is_active,
-                imageUrlsText: (row.image_urls ?? []).join('\n'),
                 imageFiles: []
               })
               setShowForm(true)
@@ -682,19 +697,12 @@ const ServiceManagementPage = () => {
                   />
                 </div>
 
-                <div className="grid gap-4 md:grid-cols-2">
+                <div>
                   <TextArea
                     label="Description"
                     value={form.description}
                     onChange={(e) => setForm({ ...form, description: e.target.value })}
                     placeholder="Service description..."
-                    rows={4}
-                  />
-                  <TextArea
-                    label="Image URLs (One per line)"
-                    helperText="Enter image URLs, one per line"
-                    value={form.imageUrlsText}
-                    onChange={(e) => setForm({ ...form, imageUrlsText: e.target.value })}
                     rows={4}
                   />
                 </div>
@@ -818,6 +826,161 @@ const ServiceManagementPage = () => {
           )}
         </div>
       </motion.section>
+
+      {/* Service Details Modal */}
+      <AnimatePresence>
+        {selectedServiceDetails && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm"
+            onClick={() => setSelectedServiceDetails(null)}
+          >
+            <motion.div
+              initial={{ scale: 0.96, y: 12 }}
+              animate={{ scale: 1, y: 0 }}
+              exit={{ scale: 0.96, y: 12 }}
+              className="w-full max-w-3xl rounded-2xl border border-border bg-white shadow-2xl"
+              onClick={(event) => event.stopPropagation()}
+            >
+              {(() => {
+                const service = selectedServiceDetails
+                const serviceImages = resolveMediaUrls(service.image_urls ?? [])
+                const primaryImage = serviceImages[0]
+
+                return (
+                  <>
+                    <div className="flex items-start justify-between border-b border-border p-6">
+                      <div>
+                        <p className="text-xs font-semibold uppercase tracking-[0.18em] text-primary">
+                          Service Details
+                        </p>
+                        <h3 className="mt-2 text-2xl font-bold text-text">{service.name}</h3>
+                        <p className="mt-1 text-sm text-text-tertiary">Code: {service.code}</p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setSelectedServiceDetails(null)}
+                        className="rounded-full p-2 text-text-secondary transition-colors hover:bg-background hover:text-text"
+                        aria-label="Close service details"
+                      >
+                        <XMarkIcon className="h-5 w-5" />
+                      </button>
+                    </div>
+
+                    <div className="grid gap-6 p-6 lg:grid-cols-[1.2fr_1fr]">
+                      <div className="space-y-4">
+                        <div className="overflow-hidden rounded-2xl bg-background">
+                          {primaryImage ? (
+                            <img
+                              src={primaryImage}
+                              alt={service.name}
+                              className="h-72 w-full cursor-pointer object-cover"
+                              onClick={() => setPreviewImage(primaryImage)}
+                            />
+                          ) : (
+                            <div className="flex h-72 items-center justify-center">
+                              <WrenchScrewdriverIcon className="h-12 w-12 text-primary/30" />
+                            </div>
+                          )}
+                        </div>
+
+                        {serviceImages.length > 1 && (
+                          <div className="grid grid-cols-4 gap-3">
+                            {serviceImages.map((imageUrl, index) => (
+                              <button
+                                key={`${service.id}-image-${index}`}
+                                type="button"
+                                className="overflow-hidden rounded-xl border border-border bg-background"
+                                onClick={() => setPreviewImage(imageUrl)}
+                              >
+                                <img
+                                  src={imageUrl}
+                                  alt={`${service.name} ${index + 1}`}
+                                  className="h-20 w-full object-cover"
+                                />
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+
+                      <div className="space-y-4">
+                        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-1">
+                          <div className="rounded-xl border border-border bg-background p-4">
+                            <p className="text-xs text-text-tertiary">Category</p>
+                            <p className="mt-1 font-semibold text-text">
+                              {service.category_name ?? 'Uncategorized'}
+                            </p>
+                          </div>
+                          <div className="rounded-xl border border-border bg-background p-4">
+                            <p className="text-xs text-text-tertiary">Price</p>
+                            <p className="mt-1 font-semibold text-primary">
+                              {formatCurrency(service.price)}
+                            </p>
+                          </div>
+                          <div className="rounded-xl border border-border bg-background p-4">
+                            <p className="text-xs text-text-tertiary">Duration</p>
+                            <p className="mt-1 font-semibold text-text">
+                              {service.duration_minutes ? `${service.duration_minutes} minutes` : 'Custom'}
+                            </p>
+                          </div>
+                          <div className="rounded-xl border border-border bg-background p-4">
+                            <p className="text-xs text-text-tertiary">Status</p>
+                            <p className={`mt-1 font-semibold ${service.is_active ? 'text-success' : 'text-error'}`}>
+                              {service.is_active ? 'Active' : 'Inactive'}
+                            </p>
+                          </div>
+                        </div>
+
+                        <div className="rounded-xl border border-border bg-background p-4">
+                          <p className="text-xs text-text-tertiary">Description</p>
+                          <p className="mt-2 text-sm leading-6 text-text-secondary">
+                            {service.description?.trim() || 'No service description provided yet.'}
+                          </p>
+                        </div>
+
+                        <div className="flex gap-3">
+                          <Button
+                            onClick={() => {
+                              setSelectedServiceDetails(null)
+                              setEditingServiceId(service.id)
+                              setForm({
+                                code: service.code,
+                                name: service.name,
+                                description: service.description ?? '',
+                                categoryId: String(service.category_id),
+                                price: String(service.price),
+                                durationMinutes: service.duration_minutes ? String(service.duration_minutes) : '',
+                                isActive: service.is_active,
+                                imageFiles: []
+                              })
+                              setShowForm(true)
+                              setFormError(null)
+                            }}
+                            className="flex-1"
+                          >
+                            Edit Service
+                          </Button>
+                          <Button
+                            type="button"
+                            variant="outline"
+                            onClick={() => setSelectedServiceDetails(null)}
+                            className="flex-1"
+                          >
+                            Close
+                          </Button>
+                        </div>
+                      </div>
+                    </div>
+                  </>
+                )
+              })()}
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* Image Preview Modal */}
       <AnimatePresence>

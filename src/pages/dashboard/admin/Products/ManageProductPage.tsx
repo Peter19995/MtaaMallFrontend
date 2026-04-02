@@ -1,15 +1,41 @@
 import { FormEvent, useEffect, useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useNavigate, useParams } from 'react-router-dom'
-import { ArrowLeftIcon, TrashIcon } from '@heroicons/react/24/outline'
+import { motion, AnimatePresence } from 'framer-motion'
+import {
+  ArrowLeftIcon,
+  TrashIcon,
+  PencilIcon,
+  PhotoIcon,
+  CubeIcon,
+  TagIcon,
+  CheckCircleIcon,
+  XCircleIcon,
+  ArrowPathIcon,
+  SparklesIcon,
+  ExclamationTriangleIcon,
+  CloudArrowUpIcon,
+  XMarkIcon,
+  EyeIcon,
+} from '@heroicons/react/24/outline'
+import { CheckCircleIcon as CheckCircleSolid } from '@heroicons/react/24/solid'
 import { Button, Select, TextArea, TextInput } from '@components/common'
 import {
+  getStockStatusRequest,
+  type ProductStockStatusResponse as InventoryProductStockStatusResponse
+} from '@api/modules/inventory.api'
+import {
+  deleteProductImageRequest,
   deleteProductRequest,
   getProductRequest,
   listCategoriesRequest,
+  type ProductResponse,
+  uploadProductImagesRequest,
   updateProductRequest,
   type ProductUpdate
 } from '@api/modules/products.api'
+import { AppTheme, withOpacity } from '@constants/theme'
+import { resolveMediaUrl } from '@utils/media'
 
 type ManageProductFormState = {
   name: string
@@ -20,7 +46,6 @@ type ManageProductFormState = {
   isActive: boolean
   isOnOffer: boolean
   maxOffer: string
-  imageUrlsText: string
   imageFiles: File[]
 }
 
@@ -33,15 +58,34 @@ const EMPTY_FORM: ManageProductFormState = {
   isActive: true,
   isOnOffer: false,
   maxOffer: '0',
-  imageUrlsText: '',
   imageFiles: []
 }
 
-const parseImageUrls = (value: string): string[] =>
-  value
-    .split('\n')
-    .map((item) => item.trim())
-    .filter((item) => item.length > 0)
+const formatCurrency = (amount: number): string =>
+  new Intl.NumberFormat('en-KE', {
+    style: 'currency',
+    currency: 'KES',
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 0
+  }).format(amount)
+
+// Animation variants
+const fadeInUp = {
+  initial: { opacity: 0, y: 20 },
+  animate: { opacity: 1, y: 0 },
+  exit: { opacity: 0, y: -20 }
+}
+
+const getProductImageId = (product: ProductResponse, index: number) =>
+  product.images?.[index]?.id ?? index + 1
+
+const getProductImageSrc = (product: ProductResponse, index: number) =>
+  resolveMediaUrl(product.images?.[index]?.image_url ?? product.images?.[index]?.file_url ?? product.images?.[index]?.url ?? product.image_urls?.[index]) ??
+  product.image_urls?.[index] ??
+  ''
+
+const getBlockingStockStatuses = (statuses: InventoryProductStockStatusResponse[]) =>
+  statuses.filter((status) => status.stock_quantity > 0 || status.business_stock_quantity > 0)
 
 const ManageProductPage = () => {
   const queryClient = useQueryClient()
@@ -51,6 +95,10 @@ const ManageProductPage = () => {
 
   const [form, setForm] = useState<ManageProductFormState>(EMPTY_FORM)
   const [formError, setFormError] = useState<string | null>(null)
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
+  const [previewImage, setPreviewImage] = useState<string | null>(null)
+  const [activeTab, setActiveTab] = useState<'details' | 'images'>('details')
+  const [uploadProgress, setUploadProgress] = useState(0)
 
   const productQuery = useQuery({
     queryKey: ['products', 'details', productId],
@@ -61,6 +109,16 @@ const ManageProductPage = () => {
   const categoriesQuery = useQuery({
     queryKey: ['products', 'categories'],
     queryFn: listCategoriesRequest
+  })
+
+  const deleteProductStockStatusQuery = useQuery({
+    queryKey: ['inventory', 'stock-status', 'manage-delete-product', productId],
+    queryFn: () =>
+      getStockStatusRequest({
+        product_id: productId,
+        limit: 300
+      }),
+    enabled: showDeleteConfirm && Number.isFinite(productId) && productId > 0
   })
 
   useEffect(() => {
@@ -78,7 +136,6 @@ const ManageProductPage = () => {
       isActive: product.is_active,
       isOnOffer: Boolean(product.is_on_offer),
       maxOffer: String(product.max_offer ?? 0),
-      imageUrlsText: (product.image_urls ?? []).join('\n'),
       imageFiles: []
     })
   }, [productQuery.data])
@@ -94,6 +151,11 @@ const ManageProductPage = () => {
     [categoriesQuery.data]
   )
 
+  const deleteBlockingStocks = useMemo(
+    () => getBlockingStockStatuses(deleteProductStockStatusQuery.data ?? []),
+    [deleteProductStockStatusQuery.data]
+  )
+
   const updateProductMutation = useMutation({
     mutationFn: async (payload: ManageProductFormState) => {
       if (!Number.isFinite(productId) || productId <= 0) {
@@ -104,7 +166,6 @@ const ManageProductPage = () => {
       const reorderLevel = Number(payload.reorderLevel)
       const maxOffer = Number(payload.maxOffer)
       const categoryId = payload.categoryId ? Number(payload.categoryId) : undefined
-      const imageUrls = parseImageUrls(payload.imageUrlsText)
 
       if (!payload.name.trim()) {
         throw new Error('Product name is required.')
@@ -127,11 +188,31 @@ const ManageProductPage = () => {
         reorder_level: reorderLevel,
         is_active: payload.isActive,
         is_on_offer: payload.isOnOffer,
-        max_offer: payload.isOnOffer ? maxOffer : 0,
-        image_urls: imageUrls
+        max_offer: payload.isOnOffer ? maxOffer : 0
       }
 
-      return updateProductRequest(productId, updatePayload, payload.imageFiles)
+      await updateProductRequest(productId, updatePayload)
+      
+      // Simulate upload progress
+      if (payload.imageFiles.length > 0) {
+        setUploadProgress(0)
+        const interval = setInterval(() => {
+          setUploadProgress(prev => {
+            if (prev >= 100) {
+              clearInterval(interval)
+              return 100
+            }
+            return prev + 10
+          })
+        }, 200)
+        
+        await uploadProductImagesRequest(productId, payload.imageFiles)
+        clearInterval(interval)
+        setUploadProgress(100)
+        setTimeout(() => setUploadProgress(0), 1000)
+      }
+      
+      return getProductRequest(productId)
     },
     onSuccess: () => {
       setFormError(null)
@@ -160,6 +241,46 @@ const ManageProductPage = () => {
     }
   })
 
+  const deleteProductImageMutation = useMutation({
+    mutationFn: async ({ imageId }: { imageId: number }) => {
+      if (!Number.isFinite(productId) || productId <= 0) {
+        throw new Error('Invalid product ID.')
+      }
+
+      return deleteProductImageRequest(productId, imageId)
+    },
+    onSuccess: (data) => {
+      setFormError(null)
+      setPreviewImage((currentPreview) => {
+        if (!currentPreview) {
+          return currentPreview
+        }
+
+        const remainingUrls = (data.image_urls ?? [])
+          .map((url) => resolveMediaUrl(url) ?? url)
+          .filter(Boolean)
+
+        return remainingUrls.includes(currentPreview) ? currentPreview : null
+      })
+
+      queryClient.setQueryData<ProductResponse | undefined>(
+        ['products', 'details', productId],
+        (current) =>
+          current
+            ? {
+                ...current,
+                image_urls: data.image_urls ?? [],
+                images: data.images ?? current.images
+              }
+            : current
+      )
+      queryClient.invalidateQueries({ queryKey: ['products', 'list'] })
+    },
+    onError: (error: Error) => {
+      setFormError(error.message || 'Could not delete product image.')
+    }
+  })
+
   const onSubmit = (event: FormEvent) => {
     event.preventDefault()
     setFormError(null)
@@ -168,179 +289,637 @@ const ManageProductPage = () => {
 
   if (!Number.isFinite(productId) || productId <= 0) {
     return (
-      <div className="space-y-4 text-text">
-        <p className="text-sm text-error">Invalid product ID.</p>
-        <Button variant="outline" onClick={() => navigate('/dashboard/admin/products')}>
-          Back to Products
-        </Button>
+      <div className="min-h-screen bg-gradient-to-br from-background via-white to-background p-6">
+        <div className="max-w-2xl mx-auto text-center py-12">
+          <ExclamationTriangleIcon className="h-16 w-16 mx-auto text-error/30 mb-4" />
+          <h2 className="text-2xl font-bold text-text mb-2">Invalid Product ID</h2>
+          <p className="text-text-secondary mb-6">The product ID provided is not valid.</p>
+          <Button onClick={() => navigate('/dashboard/admin/products')}>
+            <ArrowLeftIcon className="h-4 w-4 mr-2" />
+            Back to Products
+          </Button>
+        </div>
       </div>
     )
   }
 
   return (
-    <div className="space-y-6 text-text">
-      <div className="flex items-center gap-2">
-        <Button
-          type="button"
-          variant="ghost"
-          onClick={() => navigate('/dashboard/admin/products')}
-        >
-          <ArrowLeftIcon className="h-4 w-4" />
-          Back
-        </Button>
-        <h1 className="text-lg font-semibold tracking-tight sm:text-xl">
-          Manage Product {productQuery.data ? `- ${productQuery.data.name}` : ''}
-        </h1>
+    <div className="min-h-screen bg-gradient-to-br from-background via-white to-background p-6">
+      {/* Floating Background Elements */}
+      <div className="absolute inset-0 -z-10 overflow-hidden">
+        <div className="absolute -top-40 -right-40 h-80 w-80 rounded-full bg-primary/5 blur-3xl" />
+        <div className="absolute -bottom-40 -left-40 h-80 w-80 rounded-full bg-secondary/5 blur-3xl" />
       </div>
 
-      {productQuery.isLoading ? (
-        <p className="text-sm text-text-tertiary">Loading product...</p>
-      ) : productQuery.isError || !productQuery.data ? (
-        <div className="space-y-2">
-          <p className="text-sm text-error">Could not load product details.</p>
-          <Button variant="outline" onClick={() => productQuery.refetch()}>
+      {/* Header */}
+      <motion.div
+        initial={{ opacity: 0, y: -20 }}
+        animate={{ opacity: 1, y: 0 }}
+        className="mb-6"
+      >
+        <div className="flex items-center gap-4">
+          <Button
+            type="button"
+            variant="ghost"
+            onClick={() => navigate('/dashboard/admin/products')}
+            className="!p-2"
+          >
+            <ArrowLeftIcon className="h-5 w-5" />
+          </Button>
+          <div>
+            <h1 className="text-2xl font-bold text-text flex items-center gap-2">
+              <CubeIcon className="h-6 w-6 text-primary" />
+              Manage Product
+            </h1>
+            {productQuery.data && (
+              <p className="text-text-secondary mt-1">
+                Editing: {productQuery.data.name} • SKU: {productQuery.data.sku}
+              </p>
+            )}
+          </div>
+        </div>
+      </motion.div>
+
+      {/* Loading State */}
+      {productQuery.isLoading && (
+        <div className="flex items-center justify-center py-12">
+          <div className="text-center">
+            <ArrowPathIcon className="h-12 w-12 animate-spin text-primary/50 mx-auto mb-4" />
+            <p className="text-text-secondary">Loading product details...</p>
+          </div>
+        </div>
+      )}
+
+      {/* Error State */}
+      {productQuery.isError && (
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="max-w-2xl mx-auto text-center py-12"
+        >
+          <XCircleIcon className="h-16 w-16 mx-auto text-error/30 mb-4" />
+          <h2 className="text-2xl font-bold text-text mb-2">Failed to Load Product</h2>
+          <p className="text-text-secondary mb-6">Could not load product details. Please try again.</p>
+          <Button onClick={() => productQuery.refetch()}>
+            <ArrowPathIcon className="h-4 w-4 mr-2" />
             Retry
           </Button>
-        </div>
-      ) : (
-        <section className="rounded-xl border border-border bg-surface p-4">
-          <div className="mb-4 rounded-md border border-border bg-background p-3 text-xs text-text-secondary">
-            <p>SKU: {productQuery.data.sku}</p>
-            <p>Created: {new Date(productQuery.data.created_at).toLocaleString()}</p>
-          </div>
-
-          <form onSubmit={onSubmit} className="space-y-4">
-            <div className="grid gap-4 md:grid-cols-3">
-              <TextInput
-                label="Product Name"
-                value={form.name}
-                onChange={(event) => setForm((prev) => ({ ...prev, name: event.target.value }))}
-                required
-              />
-              <Select
-                label="Category"
-                options={categoryOptions}
-                value={form.categoryId}
-                onChange={(event) =>
-                  setForm((prev) => ({ ...prev, categoryId: String(event.target.value) }))
-                }
-              />
-              <TextInput
-                label="Stock Quantity"
-                type="number"
-                min={0}
-                value={form.stockQuantity}
-                onChange={(event) =>
-                  setForm((prev) => ({ ...prev, stockQuantity: event.target.value }))
-                }
-                required
-              />
-              <TextInput
-                label="Reorder Level"
-                type="number"
-                min={0}
-                value={form.reorderLevel}
-                onChange={(event) =>
-                  setForm((prev) => ({ ...prev, reorderLevel: event.target.value }))
-                }
-                required
-              />
-              <TextInput
-                label="Max Offer Amount"
-                type="number"
-                min={0}
-                step="0.01"
-                value={form.maxOffer}
-                onChange={(event) => setForm((prev) => ({ ...prev, maxOffer: event.target.value }))}
-                disabled={!form.isOnOffer}
-              />
-            </div>
-
-            <div className="grid gap-4 md:grid-cols-2">
-              <TextArea
-                label="Description"
-                value={form.description}
-                onChange={(event) => setForm((prev) => ({ ...prev, description: event.target.value }))}
-                rows={4}
-              />
-              <TextArea
-                label="Image URLs (One per line)"
-                value={form.imageUrlsText}
-                onChange={(event) => setForm((prev) => ({ ...prev, imageUrlsText: event.target.value }))}
-                rows={4}
-              />
-            </div>
-
-            <div className="grid gap-4 md:grid-cols-2">
-              <div className="space-y-2">
-                <label className="block text-xs font-medium text-text-secondary">Upload Images</label>
-                <input
-                  type="file"
-                  accept="image/*"
-                  multiple
-                  onChange={(event) =>
-                    setForm((prev) => ({
-                      ...prev,
-                      imageFiles: Array.from(event.target.files ?? [])
-                    }))
-                  }
-                  className="w-full rounded-md border border-border bg-surface px-3 py-2 text-xs sm:text-sm"
-                />
-                {form.imageFiles.length > 0 ? (
-                  <p className="text-xs text-text-tertiary">{form.imageFiles.length} file(s) selected</p>
-                ) : null}
-              </div>
-              <div className="flex items-center gap-6">
-                <label className="flex items-center gap-2 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={form.isOnOffer}
-                    onChange={(event) =>
-                      setForm((prev) => ({ ...prev, isOnOffer: event.target.checked }))
-                    }
-                    className="h-4 w-4 rounded border-border text-primary focus:ring-primary/20"
-                  />
-                  <span className="text-sm text-text-secondary">On offer</span>
-                </label>
-                <label className="flex items-center gap-2 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={form.isActive}
-                    onChange={(event) =>
-                      setForm((prev) => ({ ...prev, isActive: event.target.checked }))
-                    }
-                    className="h-4 w-4 rounded border-border text-primary focus:ring-primary/20"
-                  />
-                  <span className="text-sm text-text-secondary">Active</span>
-                </label>
-              </div>
-            </div>
-
-            <div className="flex items-center gap-2">
-              <Button type="submit" loading={updateProductMutation.isPending}>
-                Save Changes
-              </Button>
-              <Button
-                type="button"
-                variant="ghost"
-                loading={deleteProductMutation.isPending}
-                onClick={() => {
-                  const shouldDelete = window.confirm(
-                    `Delete \"${productQuery.data?.name}\"? This action cannot be undone.`
-                  )
-                  if (shouldDelete) {
-                    deleteProductMutation.mutate()
-                  }
-                }}
-              >
-                <TrashIcon className="h-4 w-4" />
-                Delete Product
-              </Button>
-              {formError ? <span className="text-xs text-error">{formError}</span> : null}
-            </div>
-          </form>
-        </section>
+        </motion.div>
       )}
+
+      {/* Main Content */}
+      {productQuery.data && (
+        <div className="grid gap-6 lg:grid-cols-3">
+          {/* Left Column - Form */}
+          <motion.div
+            initial={{ opacity: 0, x: -20 }}
+            animate={{ opacity: 1, x: 0 }}
+            className="lg:col-span-2"
+          >
+            <div className="bg-white rounded-xl border border-border shadow-lg overflow-hidden">
+              {/* Tabs */}
+              <div className="border-b border-border bg-gradient-to-r from-primary/5 to-secondary/5">
+                <nav className="flex gap-2 p-2">
+                  <button
+                    onClick={() => setActiveTab('details')}
+                    className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all ${
+                      activeTab === 'details'
+                        ? 'bg-primary text-white'
+                        : 'text-text-secondary hover:bg-primary/5 hover:text-primary'
+                    }`}
+                  >
+                    <PencilIcon className="h-4 w-4" />
+                    Product Details
+                  </button>
+                  <button
+                    onClick={() => setActiveTab('images')}
+                    className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all ${
+                      activeTab === 'images'
+                        ? 'bg-primary text-white'
+                        : 'text-text-secondary hover:bg-primary/5 hover:text-primary'
+                    }`}
+                  >
+                    <PhotoIcon className="h-4 w-4" />
+                    Images ({productQuery.data.image_urls?.length || 0})
+                  </button>
+                </nav>
+              </div>
+
+              {/* Tab Content */}
+              <div className="p-6">
+                <AnimatePresence mode="wait">
+                  {activeTab === 'details' && (
+                    <motion.div
+                      key="details"
+                      initial={{ opacity: 0, y: 10 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      exit={{ opacity: 0, y: -10 }}
+                    >
+                      <form onSubmit={onSubmit} className="space-y-6">
+                        {/* Product Info Grid */}
+                        <div className="grid gap-6 md:grid-cols-2">
+                          <TextInput
+                            label="Product Name"
+                            value={form.name}
+                            onChange={(e) => setForm({ ...form, name: e.target.value })}
+                            required
+                            placeholder="e.g., Premium Cotton Curtains"
+                            icon={<CubeIcon className="h-4 w-4 text-text-tertiary" />}
+                          />
+
+                          <Select
+                            label="Category"
+                            options={categoryOptions}
+                            value={form.categoryId}
+                            onChange={(e) => setForm({ ...form, categoryId: String(e.target.value) })}
+                            icon={<TagIcon className="h-4 w-4 text-text-tertiary" />}
+                          />
+
+                          <TextInput
+                            label="Stock Quantity"
+                            type="number"
+                            min={0}
+                            value={form.stockQuantity}
+                            onChange={(e) => setForm({ ...form, stockQuantity: e.target.value })}
+                            required
+                            helperText="Current available stock"
+                          />
+
+                          <TextInput
+                            label="Reorder Level"
+                            type="number"
+                            min={0}
+                            value={form.reorderLevel}
+                            onChange={(e) => setForm({ ...form, reorderLevel: e.target.value })}
+                            required
+                            helperText="Alert when stock falls below this"
+                          />
+                        </div>
+
+                        {/* Description */}
+                        <TextArea
+                          label="Description"
+                          value={form.description}
+                          onChange={(e) => setForm({ ...form, description: e.target.value })}
+                          rows={4}
+                          placeholder="Product description..."
+                        />
+
+                        {/* Offer Section */}
+                        <div className="bg-background rounded-lg p-4 border border-border">
+                          <div className="flex items-center gap-4 mb-4">
+                            <label className="flex items-center gap-2 cursor-pointer">
+                              <input
+                                type="checkbox"
+                                checked={form.isOnOffer}
+                                onChange={(e) => setForm({ ...form, isOnOffer: e.target.checked })}
+                                className="w-4 h-4 rounded border-border text-primary focus:ring-primary/20"
+                              />
+                              <span className="text-sm font-medium text-text">Product is on offer</span>
+                            </label>
+
+                            <label className="flex items-center gap-2 cursor-pointer">
+                              <input
+                                type="checkbox"
+                                checked={form.isActive}
+                                onChange={(e) => setForm({ ...form, isActive: e.target.checked })}
+                                className="w-4 h-4 rounded border-border text-primary focus:ring-primary/20"
+                              />
+                              <span className="text-sm font-medium text-text">Product is active</span>
+                            </label>
+                          </div>
+
+                          {form.isOnOffer && (
+                            <motion.div
+                              initial={{ opacity: 0, height: 0 }}
+                              animate={{ opacity: 1, height: 'auto' }}
+                              className="overflow-hidden"
+                            >
+                              <TextInput
+                                label="Max Offer Amount (KES)"
+                                type="number"
+                                min={0}
+                                step="0.01"
+                                value={form.maxOffer}
+                                onChange={(e) => setForm({ ...form, maxOffer: e.target.value })}
+                                icon={<SparklesIcon className="h-4 w-4 text-text-tertiary" />}
+                                helperText="Maximum discount amount"
+                              />
+                            </motion.div>
+                          )}
+                        </div>
+
+                        {/* Form Actions */}
+                        <div className="flex items-center gap-3 pt-4 border-t border-border">
+                          <Button 
+                            type="submit" 
+                            loading={updateProductMutation.isPending}
+                            className="min-w-[140px]"
+                          >
+                            Save Changes
+                          </Button>
+                          
+                          <Button
+                            type="button"
+                            variant="outline"
+                            onClick={() => setShowDeleteConfirm(true)}
+                            className="text-error hover:bg-error/5 border-error/20"
+                          >
+                            <TrashIcon className="h-4 w-4 mr-2" />
+                            Delete Product
+                          </Button>
+
+                          {formError && (
+                            <span className="text-xs text-error flex items-center gap-1">
+                              <XCircleIcon className="h-4 w-4" />
+                              {formError}
+                            </span>
+                          )}
+                        </div>
+                      </form>
+                    </motion.div>
+                  )}
+
+                  {activeTab === 'images' && (
+                    <motion.div
+                      key="images"
+                      initial={{ opacity: 0, y: 10 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      exit={{ opacity: 0, y: -10 }}
+                      className="space-y-6"
+                    >
+                      {formError && (
+                        <div className="flex items-center gap-2 rounded-lg border border-error/20 bg-error/5 px-3 py-2 text-sm text-error">
+                          <XCircleIcon className="h-4 w-4 shrink-0" />
+                          <span>{formError}</span>
+                        </div>
+                      )}
+
+                      {/* Existing Images */}
+                      <div>
+                        <h3 className="text-sm font-semibold text-text mb-3">Current Images</h3>
+                        {productQuery.data.image_urls?.length > 0 ? (
+                          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
+                            {productQuery.data.image_urls.map((url, index) => {
+                              const imageSrc = getProductImageSrc(productQuery.data, index)
+                              const imageId = getProductImageId(productQuery.data, index)
+
+                              return (
+                                <motion.div
+                                  key={`${url}-${imageId}`}
+                                  initial={{ opacity: 0, scale: 0.9 }}
+                                  animate={{ opacity: 1, scale: 1 }}
+                                  transition={{ delay: index * 0.05 }}
+                                  className="group relative aspect-square rounded-lg overflow-hidden border border-border bg-background cursor-pointer"
+                                  onClick={() => setPreviewImage(imageSrc)}
+                                >
+                                  <img
+                                    src={imageSrc}
+                                    alt={`${productQuery.data.name} ${index + 1}`}
+                                    className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-300"
+                                  />
+                                  <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                                    <EyeIcon className="h-6 w-6 text-white" />
+                                  </div>
+                                  <button
+                                    type="button"
+                                    className="absolute right-2 top-2 rounded-full bg-white/90 p-1.5 text-error shadow transition hover:bg-white disabled:cursor-not-allowed disabled:opacity-70"
+                                    onClick={(event) => {
+                                      event.stopPropagation()
+                                      setFormError(null)
+                                      deleteProductImageMutation.mutate({ imageId })
+                                    }}
+                                    disabled={deleteProductImageMutation.isPending}
+                                    title="Delete image"
+                                  >
+                                    {deleteProductImageMutation.isPending ? (
+                                      <ArrowPathIcon className="h-4 w-4 animate-spin" />
+                                    ) : (
+                                      <TrashIcon className="h-4 w-4" />
+                                    )}
+                                  </button>
+                                </motion.div>
+                              )
+                            })}
+                          </div>
+                        ) : (
+                          <div className="text-center py-8 bg-background rounded-lg border border-dashed border-border">
+                            <PhotoIcon className="h-12 w-12 mx-auto text-text-tertiary/30 mb-2" />
+                            <p className="text-sm text-text-secondary">No images uploaded yet</p>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Upload New Images */}
+                      <div>
+                        <h3 className="text-sm font-semibold text-text mb-3">Upload New Images</h3>
+                        <div className="bg-background rounded-lg p-6 border border-dashed border-primary/30">
+                          <div className="text-center">
+                            <CloudArrowUpIcon className="h-12 w-12 mx-auto text-primary/50 mb-3" />
+                            <p className="text-sm text-text-secondary mb-2">
+                              Select one or more images to upload
+                            </p>
+                            <input
+                              type="file"
+                              accept="image/*"
+                              multiple
+                              onChange={(e) =>
+                                setForm({ ...form, imageFiles: Array.from(e.target.files ?? []) })
+                              }
+                              className="mx-auto block w-full max-w-sm rounded-lg border border-border bg-white px-3 py-2 text-sm text-text file:mr-3 file:rounded-md file:border-0 file:bg-primary file:px-3 file:py-2 file:text-sm file:font-medium file:text-white hover:file:bg-primary-dark"
+                            />
+                          </div>
+
+                          {form.imageFiles.length > 0 && (
+                            <motion.div
+                              initial={{ opacity: 0, y: 10 }}
+                              animate={{ opacity: 1, y: 0 }}
+                              className="mt-4 space-y-3"
+                            >
+                              <p className="text-sm font-medium text-text">
+                                {form.imageFiles.length} file(s) selected
+                              </p>
+                              
+                              {uploadProgress > 0 && (
+                                <div className="space-y-1">
+                                  <div className="flex justify-between text-xs">
+                                    <span className="text-text-secondary">Uploading...</span>
+                                    <span className="text-primary">{uploadProgress}%</span>
+                                  </div>
+                                  <div className="w-full bg-background rounded-full h-2">
+                                    <div
+                                      className="bg-primary rounded-full h-2 transition-all duration-300"
+                                      style={{ width: `${uploadProgress}%` }}
+                                    />
+                                  </div>
+                                </div>
+                              )}
+
+                              <div className="flex gap-2">
+                                <Button
+                                  size="sm"
+                                  onClick={() => {
+                                    // Trigger form submission to upload images
+                                    updateProductMutation.mutate(form)
+                                  }}
+                                  loading={updateProductMutation.isPending}
+                                >
+                                  Upload Images
+                                </Button>
+                                <Button
+                                  size="sm"
+                                  variant="ghost"
+                                  onClick={() => setForm({ ...form, imageFiles: [] })}
+                                >
+                                  Clear Selection
+                                </Button>
+                              </div>
+                            </motion.div>
+                          )}
+                        </div>
+                      </div>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+              </div>
+            </div>
+          </motion.div>
+
+          {/* Right Column - Product Summary */}
+          <motion.div
+            initial={{ opacity: 0, x: 20 }}
+            animate={{ opacity: 1, x: 0 }}
+            className="space-y-4"
+          >
+            {/* Product Stats Card */}
+            <div className="bg-white rounded-xl border border-border p-4 shadow-lg">
+              <h3 className="text-sm font-semibold text-text mb-3 flex items-center gap-2">
+                <CubeIcon className="h-4 w-4 text-primary" />
+                Product Summary
+              </h3>
+
+              <div className="space-y-3">
+                <div className="flex justify-between items-center">
+                  <span className="text-xs text-text-tertiary">SKU</span>
+                  <span className="text-sm font-mono font-medium">{productQuery.data.sku}</span>
+                </div>
+
+                <div className="flex justify-between items-center">
+                  <span className="text-xs text-text-tertiary">Price</span>
+                  <span className="text-lg font-bold text-primary">
+                    {formatCurrency(productQuery.data.selling_price || productQuery.data.price)}
+                  </span>
+                </div>
+
+                {productQuery.data.is_on_offer && (
+                  <div className="flex justify-between items-center">
+                    <span className="text-xs text-text-tertiary">Offer Price</span>
+                    <span className="text-sm font-medium text-success">
+                      {formatCurrency((productQuery.data.selling_price || productQuery.data.price) - (productQuery.data.max_offer || 0))}
+                    </span>
+                  </div>
+                )}
+
+                <div className="pt-2 border-t border-border">
+                  <div className="flex justify-between items-center mb-1">
+                    <span className="text-xs text-text-tertiary">Stock Status</span>
+                    <span className={`text-xs font-medium px-2 py-1 rounded-full ${
+                      productQuery.data.stock_quantity > productQuery.data.reorder_level
+                        ? 'bg-success/10 text-success'
+                        : productQuery.data.stock_quantity > 0
+                        ? 'bg-warning/10 text-warning'
+                        : 'bg-error/10 text-error'
+                    }`}>
+                      {productQuery.data.stock_quantity > productQuery.data.reorder_level
+                        ? 'In Stock'
+                        : productQuery.data.stock_quantity > 0
+                        ? 'Low Stock'
+                        : 'Out of Stock'}
+                    </span>
+                  </div>
+                  <div className="w-full bg-background rounded-full h-2">
+                    <div
+                      className={`h-2 rounded-full ${
+                        productQuery.data.stock_quantity > productQuery.data.reorder_level
+                          ? 'bg-success'
+                          : productQuery.data.stock_quantity > 0
+                          ? 'bg-warning'
+                          : 'bg-error'
+                      }`}
+                      style={{
+                        width: `${Math.min((productQuery.data.stock_quantity / (productQuery.data.reorder_level * 2)) * 100, 100)}%`
+                      }}
+                    />
+                  </div>
+                </div>
+
+                <div className="pt-2 border-t border-border">
+                  <div className="flex items-center gap-2 text-xs">
+                    <TagIcon className="h-3 w-3 text-text-tertiary" />
+                    <span className="text-text-tertiary">Created:</span>
+                    <span className="text-text">{new Date(productQuery.data.created_at).toLocaleDateString()}</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Quick Actions */}
+            <div className="bg-white rounded-xl border border-border p-4 shadow-lg">
+              <h3 className="text-sm font-semibold text-text mb-3">Quick Actions</h3>
+              <div className="space-y-2">
+                <Button
+                  fullWidth
+                  variant="outline"
+                  onClick={() => navigate('/dashboard/admin/products')}
+                >
+                  View All Products
+                </Button>
+                <Button
+                  fullWidth
+                  variant="outline"
+                  onClick={() => {
+                    // Navigate to create new product
+                    navigate('/dashboard/admin/products/new')
+                  }}
+                >
+                  Create New Product
+                </Button>
+              </div>
+            </div>
+          </motion.div>
+        </div>
+      )}
+
+      {/* Delete Confirmation Modal */}
+      <AnimatePresence>
+        {showDeleteConfirm && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm"
+            onClick={() => setShowDeleteConfirm(false)}
+          >
+            <motion.div
+              initial={{ scale: 0.9, y: 20 }}
+              animate={{ scale: 1, y: 0 }}
+              exit={{ scale: 0.9, y: 20 }}
+              className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="text-center">
+                <div className="mx-auto w-16 h-16 bg-error/10 rounded-full flex items-center justify-center mb-4">
+                  <ExclamationTriangleIcon className="h-8 w-8 text-error" />
+                </div>
+                <h3 className="text-xl font-bold text-text mb-2">Delete Product?</h3>
+                <p className="text-text-secondary mb-4">
+                  Are you sure you want to delete <span className="font-semibold text-text">"{productQuery.data?.name}"</span>? 
+                  This action cannot be undone and will remove all associated data.
+                </p>
+                
+                <div className="bg-background rounded-lg p-3 mb-6">
+                  <p className="text-sm text-text-secondary">
+                    SKU: {productQuery.data?.sku}<br />
+                    Stock: {productQuery.data?.stock_quantity} units
+                  </p>
+                </div>
+
+                <div className="bg-background rounded-lg p-3 mb-6 text-left">
+                  {deleteProductStockStatusQuery.isLoading ? (
+                    <div className="flex items-center gap-2 text-sm text-text-secondary">
+                      <ArrowPathIcon className="h-4 w-4 animate-spin text-primary" />
+                      Checking stock across branches before deletion...
+                    </div>
+                  ) : deleteProductStockStatusQuery.isError ? (
+                    <p className="text-sm text-error">
+                      Could not verify stock across branches. Deletion is disabled until stock
+                      status can be checked.
+                    </p>
+                  ) : deleteBlockingStocks.length > 0 ? (
+                    <>
+                      <p className="text-sm font-medium text-text">
+                        This product cannot be deleted because stock still exists in:
+                      </p>
+                      <div className="mt-3 flex flex-wrap gap-2">
+                        {deleteBlockingStocks.map((stock) => (
+                          <span
+                            key={`${stock.branch_id ?? 'global'}-${stock.product_id}`}
+                            className="rounded-full bg-white px-3 py-1 text-xs font-medium text-text-secondary ring-1 ring-border"
+                          >
+                            {(stock.branch_name ?? 'Unknown branch')}: {stock.stock_quantity}
+                          </span>
+                        ))}
+                      </div>
+                    </>
+                  ) : (
+                    <p className="text-sm text-text-secondary">
+                      No branch stock found. This product can be deleted.
+                    </p>
+                  )}
+                </div>
+
+                <div className="flex gap-3">
+                  <Button
+                    variant="outline"
+                    onClick={() => setShowDeleteConfirm(false)}
+                    className="flex-1"
+                  >
+                    Cancel
+                  </Button>
+                  <Button
+                    onClick={() => {
+                      setShowDeleteConfirm(false)
+                      deleteProductMutation.mutate()
+                    }}
+                    className="flex-1 bg-error text-white hover:bg-error-dark"
+                    loading={deleteProductMutation.isPending}
+                    disabled={
+                      deleteProductStockStatusQuery.isLoading ||
+                      deleteProductStockStatusQuery.isError ||
+                      deleteBlockingStocks.length > 0
+                    }
+                  >
+                    {deleteBlockingStocks.length > 0 ? 'Stock Exists in Branches' : 'Delete Product'}
+                  </Button>
+                </div>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Image Preview Modal */}
+      <AnimatePresence>
+        {previewImage && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4"
+            onClick={() => setPreviewImage(null)}
+          >
+            <motion.div
+              initial={{ scale: 0.9 }}
+              animate={{ scale: 1 }}
+              exit={{ scale: 0.9 }}
+              className="relative max-w-4xl max-h-[90vh]"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <img
+                src={previewImage}
+                alt="Preview"
+                className="max-w-full max-h-[90vh] rounded-lg"
+              />
+              <button
+                onClick={() => setPreviewImage(null)}
+                className="absolute top-4 right-4 p-2 bg-black/50 rounded-full text-white hover:bg-black/70 transition-colors"
+              >
+                <XMarkIcon className="h-5 w-5" />
+              </button>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   )
 }

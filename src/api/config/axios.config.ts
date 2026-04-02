@@ -2,6 +2,16 @@ import axios, { type InternalAxiosRequestConfig } from 'axios'
 
 type RetryableRequest = InternalAxiosRequestConfig & { _retry?: boolean }
 type RefreshResponse = { access_token: string; refresh_token?: string }
+type ApiEnvelope<T> = {
+  data?: T
+  message?: string
+  success?: boolean
+  meta?: unknown
+  errors?: unknown
+  detail?: unknown
+  status?: string | number
+  code?: string | number
+}
 
 const AUTH_BYPASS_PATHS = ['/auth/login', '/auth/register', '/auth/refresh']
 
@@ -23,6 +33,35 @@ const getExistingAuthorizationHeader = (config: InternalAxiosRequestConfig) => {
     | undefined
 
   return headers?.get?.('Authorization') ?? headers?.Authorization ?? headers?.authorization
+}
+
+const isPlainObject = (value: unknown): value is Record<string, unknown> =>
+  Object.prototype.toString.call(value) === '[object Object]'
+
+const unwrapApiPayload = <T>(payload: T | ApiEnvelope<T>): T => {
+  if (!isPlainObject(payload) || !Object.prototype.hasOwnProperty.call(payload, 'data')) {
+    return payload as T
+  }
+
+  const envelopeKeys = new Set([
+    'data',
+    'message',
+    'success',
+    'meta',
+    'errors',
+    'detail',
+    'status',
+    'code'
+  ])
+
+  const keys = Object.keys(payload)
+  const hasOnlyEnvelopeKeys = keys.every((key) => envelopeKeys.has(key))
+
+  if (!hasOnlyEnvelopeKeys && keys.length > 1) {
+    return payload as T
+  }
+
+  return payload.data as T
 }
 
 const rawApiUrl = (
@@ -83,12 +122,14 @@ const refreshAccessToken = async (): Promise<string | null> => {
       }
     )
 
-    localStorage.setItem('access_token', data.access_token)
-    if (data.refresh_token) {
-      localStorage.setItem('refresh_token', data.refresh_token)
+    const refreshPayload = unwrapApiPayload<RefreshResponse>(data)
+
+    localStorage.setItem('access_token', refreshPayload.access_token)
+    if (refreshPayload.refresh_token) {
+      localStorage.setItem('refresh_token', refreshPayload.refresh_token)
     }
 
-    return data.access_token
+    return refreshPayload.access_token
   } catch {
     localStorage.removeItem('access_token')
     localStorage.removeItem('refresh_token')
@@ -98,7 +139,10 @@ const refreshAccessToken = async (): Promise<string | null> => {
 }
 
 api.interceptors.response.use(
-  (response) => response,
+  (response) => {
+    response.data = unwrapApiPayload(response.data)
+    return response
+  },
   async (error) => {
     const originalRequest = error.config as RetryableRequest | undefined
 
