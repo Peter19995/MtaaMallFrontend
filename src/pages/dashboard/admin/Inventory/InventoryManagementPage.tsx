@@ -1,5 +1,6 @@
 import { FormEvent, useEffect, useMemo, useState } from 'react'
 import { useMutation, useQueries, useQuery, useQueryClient } from '@tanstack/react-query'
+import { isAxiosError } from 'axios'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   PlusIcon,
@@ -25,13 +26,15 @@ import {
   ScaleIcon,
   ArchiveBoxIcon,
   ShoppingCartIcon,
+  ArrowsRightLeftIcon,
 } from '@heroicons/react/24/outline'
-import { Button, DataTable, Select, TextInput, type Column } from '@components/common'
+import { Button, DataTable, Select, TextArea, TextInput, type Column } from '@components/common'
 import { listProductsRequest } from '@api/modules/products.api'
 import { listBranchesRequest, type BranchResponse } from '@api/modules/branches.api'
 import {
   createRestockRequest,
   createStockCountRequest,
+  createStockTransferRequest,
   getInventoryDashboardRequest,
   getStockStatusRequest,
   getStockCountAdjustmentReasonsRequest,
@@ -41,7 +44,8 @@ import {
   type InventoryValuationMethod,
   type ProductStockStatusResponse,
   type RestockResponse,
-  type StockCountResponse
+  type StockCountResponse,
+  type StockTransferResponse
 } from '@api/modules/inventory.api'
 import { AppTheme, withOpacity } from '@constants/theme'
 
@@ -82,6 +86,25 @@ type StockCountRowState = {
   notes: string
 }
 
+type StockTransferFormState = {
+  productId: string
+  fromBranchId: string
+  toBranchId: string
+  quantity: string
+  transferDate: string
+  notes: string
+}
+
+type ApiErrorItem = {
+  message?: string
+}
+
+type ApiErrorResponse = {
+  message?: string
+  detail?: string | Array<{ msg?: string }>
+  errors?: ApiErrorItem[]
+}
+
 const today = new Date().toISOString().slice(0, 10)
 
 const formatNumber = (value: number): string => {
@@ -116,6 +139,15 @@ const createStockCountRow = (): StockCountRowState => ({
   valuationMethod: '',
   adjustmentBuyingPrice: '',
   adjustmentSellingPrice: '',
+  notes: ''
+})
+
+const createEmptyStockTransferForm = (fromBranchId = ''): StockTransferFormState => ({
+  productId: '',
+  fromBranchId,
+  toBranchId: '',
+  quantity: '1',
+  transferDate: today,
   notes: ''
 })
 
@@ -173,6 +205,56 @@ const formatCurrency = (amount: number): string =>
     maximumFractionDigits: 0
   }).format(amount)
 
+const extractApiErrorMessage = (error: unknown, fallback: string): string => {
+  if (!isAxiosError(error)) {
+    return error instanceof Error ? error.message : fallback
+  }
+
+  const responseData = error.response?.data as string | ApiErrorResponse | undefined
+
+  if (typeof responseData === 'string' && responseData.trim()) {
+    return responseData
+  }
+
+  if (typeof responseData === 'object' && responseData) {
+    if (typeof responseData.message === 'string' && responseData.message.trim()) {
+      return responseData.message
+    }
+
+    if (typeof responseData.detail === 'string' && responseData.detail.trim()) {
+      return responseData.detail
+    }
+
+    if (Array.isArray(responseData.detail) && responseData.detail.length > 0) {
+      const joinedDetails = responseData.detail
+        .map((item) => item?.msg)
+        .filter((message): message is string => Boolean(message))
+        .join('; ')
+
+      if (joinedDetails) {
+        return joinedDetails
+      }
+    }
+
+    if (Array.isArray(responseData.errors) && responseData.errors.length > 0) {
+      const joinedErrors = responseData.errors
+        .map((item) => item?.message)
+        .filter((message): message is string => Boolean(message))
+        .join('; ')
+
+      if (joinedErrors) {
+        return joinedErrors
+      }
+    }
+  }
+
+  if (error.response?.status) {
+    return `Request failed with status code ${error.response.status}`
+  }
+
+  return error.message || fallback
+}
+
 // Animation variants
 const fadeInUp = {
   initial: { opacity: 0, y: 20 },
@@ -194,10 +276,16 @@ const InventoryManagementPage = () => {
   const recentLimit = 10
   const [showRestockForm, setShowRestockForm] = useState(false)
   const [showStockCountForm, setShowStockCountForm] = useState(false)
+  const [showStockTransferForm, setShowStockTransferForm] = useState(false)
   const [restockForm, setRestockForm] = useState<RestockFormState>(createEmptyRestockForm())
   const [stockCountForm, setStockCountForm] = useState<StockCountFormState>(createEmptyStockCountForm())
+  const [stockTransferForm, setStockTransferForm] = useState<StockTransferFormState>(
+    createEmptyStockTransferForm()
+  )
   const [restockError, setRestockError] = useState<string | null>(null)
   const [stockCountError, setStockCountError] = useState<string | null>(null)
+  const [stockTransferError, setStockTransferError] = useState<string | null>(null)
+  const [stockTransferSuccess, setStockTransferSuccess] = useState<string | null>(null)
   const [stockStatusBranchFilter, setStockStatusBranchFilter] = useState('all')
   const [stockStatusProductFilter, setStockStatusProductFilter] = useState('all')
 
@@ -318,6 +406,41 @@ const InventoryManagementPage = () => {
     [productsQuery.data]
   )
 
+  const stockTransferProductOptions = useMemo(
+    () => [
+      { label: 'Select product', value: '' },
+      ...((productsQuery.data ?? []).map((product) => ({
+        label: `${product.name} (${product.sku})`,
+        value: String(product.id)
+      })) || [])
+    ],
+    [productsQuery.data]
+  )
+
+  const stockTransferFromBranchOptions = useMemo(
+    () => [
+      { label: 'Select source branch', value: '' },
+      ...((branchesQuery.data ?? []).map((branch) => ({
+        label: `${branch.name} (${branch.code})`,
+        value: String(branch.id)
+      })) || [])
+    ],
+    [branchesQuery.data]
+  )
+
+  const stockTransferToBranchOptions = useMemo(
+    () => [
+      { label: 'Select destination branch', value: '' },
+      ...((branchesQuery.data ?? [])
+        .filter((branch) => String(branch.id) !== stockTransferForm.fromBranchId)
+        .map((branch) => ({
+          label: `${branch.name} (${branch.code})`,
+          value: String(branch.id)
+        })) || [])
+    ],
+    [branchesQuery.data, stockTransferForm.fromBranchId]
+  )
+
   const selectedRestockBranchId = useMemo(() => {
     const branchId = Number(restockForm.branchId)
     return Number.isFinite(branchId) && branchId > 0 ? branchId : undefined
@@ -339,6 +462,21 @@ const InventoryManagementPage = () => {
     return Number.isFinite(branchId) && branchId > 0 ? branchId : undefined
   }, [stockCountForm.branchId])
 
+  const selectedStockTransferProductId = useMemo(() => {
+    const productId = Number(stockTransferForm.productId)
+    return Number.isFinite(productId) && productId > 0 ? productId : undefined
+  }, [stockTransferForm.productId])
+
+  const selectedStockTransferFromBranchId = useMemo(() => {
+    const branchId = Number(stockTransferForm.fromBranchId)
+    return Number.isFinite(branchId) && branchId > 0 ? branchId : undefined
+  }, [stockTransferForm.fromBranchId])
+
+  const selectedStockTransferToBranchId = useMemo(() => {
+    const branchId = Number(stockTransferForm.toBranchId)
+    return Number.isFinite(branchId) && branchId > 0 ? branchId : undefined
+  }, [stockTransferForm.toBranchId])
+
   const selectedStockCountBranchName = useMemo(() => {
     if (!selectedStockCountBranchId) {
       return ''
@@ -349,6 +487,28 @@ const InventoryManagementPage = () => {
       'selected branch'
     )
   }, [branchesQuery.data, selectedStockCountBranchId])
+
+  const selectedStockTransferFromBranchName = useMemo(() => {
+    if (!selectedStockTransferFromBranchId) {
+      return ''
+    }
+
+    return (
+      branchesQuery.data?.find((branch) => branch.id === selectedStockTransferFromBranchId)?.name ??
+      'source branch'
+    )
+  }, [branchesQuery.data, selectedStockTransferFromBranchId])
+
+  const selectedStockTransferToBranchName = useMemo(() => {
+    if (!selectedStockTransferToBranchId) {
+      return ''
+    }
+
+    return (
+      branchesQuery.data?.find((branch) => branch.id === selectedStockTransferToBranchId)?.name ??
+      'destination branch'
+    )
+  }, [branchesQuery.data, selectedStockTransferToBranchId])
 
   const restockRowStockQueries = useQueries({
     queries: restockForm.rows.map((row) => {
@@ -414,6 +574,64 @@ const InventoryManagementPage = () => {
     })
   })
 
+  const stockTransferSourceStockQuery = useQuery({
+    queryKey: [
+      'inventory',
+      'stock-status',
+      'transfer-source',
+      selectedStockTransferFromBranchId ?? 'none',
+      selectedStockTransferProductId ?? 'none'
+    ],
+    queryFn: async () => {
+      const response = await getStockStatusRequest({
+        branch_id: selectedStockTransferFromBranchId,
+        product_id: selectedStockTransferProductId,
+        limit: 1
+      })
+
+      return (
+        response.find((item) => item.product_id === selectedStockTransferProductId) ??
+        response[0] ??
+        null
+      )
+    },
+    enabled:
+      typeof selectedStockTransferFromBranchId === 'number' &&
+      selectedStockTransferFromBranchId > 0 &&
+      typeof selectedStockTransferProductId === 'number' &&
+      selectedStockTransferProductId > 0,
+    staleTime: 30_000
+  })
+
+  const stockTransferDestinationStockQuery = useQuery({
+    queryKey: [
+      'inventory',
+      'stock-status',
+      'transfer-destination',
+      selectedStockTransferToBranchId ?? 'none',
+      selectedStockTransferProductId ?? 'none'
+    ],
+    queryFn: async () => {
+      const response = await getStockStatusRequest({
+        branch_id: selectedStockTransferToBranchId,
+        product_id: selectedStockTransferProductId,
+        limit: 1
+      })
+
+      return (
+        response.find((item) => item.product_id === selectedStockTransferProductId) ??
+        response[0] ??
+        null
+      )
+    },
+    enabled:
+      typeof selectedStockTransferToBranchId === 'number' &&
+      selectedStockTransferToBranchId > 0 &&
+      typeof selectedStockTransferProductId === 'number' &&
+      selectedStockTransferProductId > 0,
+    staleTime: 30_000
+  })
+
   useEffect(() => {
     if (!defaultInventoryBranchId) {
       return
@@ -435,7 +653,23 @@ const InventoryManagementPage = () => {
             branchId: defaultInventoryBranchId
           }
     )
+    setStockTransferForm((prev) =>
+      prev.fromBranchId
+        ? prev
+        : {
+            ...prev,
+            fromBranchId: defaultInventoryBranchId
+          }
+    )
   }, [defaultInventoryBranchId])
+
+  useEffect(() => {
+    setStockTransferForm((prev) =>
+      prev.fromBranchId && prev.fromBranchId === prev.toBranchId
+        ? { ...prev, toBranchId: '' }
+        : prev
+    )
+  }, [stockTransferForm.fromBranchId])
 
   const updateRestockRow = (
     rowId: string,
@@ -572,6 +806,18 @@ const InventoryManagementPage = () => {
       }
     )
   }, [stockCountForm.rows, stockCountRowStockQueries])
+
+  const stockTransferQuantity = useMemo(() => {
+    const quantity = Number(stockTransferForm.quantity)
+    return Number.isFinite(quantity) && quantity > 0 ? quantity : 0
+  }, [stockTransferForm.quantity])
+
+  const stockTransferSourceAvailable = stockTransferSourceStockQuery.data?.stock_quantity ?? 0
+  const stockTransferDestinationAvailable =
+    stockTransferDestinationStockQuery.data?.stock_quantity ?? 0
+  const stockTransferProjectedSource = stockTransferSourceAvailable - stockTransferQuantity
+  const stockTransferProjectedDestination =
+    stockTransferDestinationAvailable + stockTransferQuantity
 
   const getProductOptionsForRow = (rowId: string, currentProductId: string) => {
     const selectedInOtherRows = new Set(
@@ -754,6 +1000,60 @@ const InventoryManagementPage = () => {
     },
     onError: (error: Error) => {
       setStockCountError(error.message || 'Could not create stock count.')
+    }
+  })
+
+  const createStockTransferMutation = useMutation({
+    mutationFn: async (payload: StockTransferFormState) => {
+      const productId = Number(payload.productId)
+      const fromBranchId = Number(payload.fromBranchId)
+      const toBranchId = Number(payload.toBranchId)
+      const quantity = Number(payload.quantity)
+
+      if (!productId) {
+        throw new Error('Please select a product to transfer.')
+      }
+      if (!fromBranchId) {
+        throw new Error('Please select a source branch.')
+      }
+      if (!toBranchId) {
+        throw new Error('Please select a destination branch.')
+      }
+      if (fromBranchId === toBranchId) {
+        throw new Error('Source and destination branches must be different.')
+      }
+      if (Number.isNaN(quantity) || quantity < 1) {
+        throw new Error('Transfer quantity must be 1 or more.')
+      }
+      if (stockTransferSourceAvailable < quantity) {
+        throw new Error(
+          `Insufficient stock in ${selectedStockTransferFromBranchName || 'the source branch'}. Available stock is ${stockTransferSourceAvailable}.`
+        )
+      }
+
+      return createStockTransferRequest({
+        product_id: productId,
+        from_branch_id: fromBranchId,
+        to_branch_id: toBranchId,
+        quantity,
+        transfer_date: payload.transferDate,
+        notes: payload.notes.trim() || undefined
+      })
+    },
+    onSuccess: (transfer: StockTransferResponse) => {
+      setStockTransferError(null)
+      setStockTransferSuccess(
+        `${transfer.quantity} unit${transfer.quantity === 1 ? '' : 's'} moved from ${transfer.from_branch_name} to ${transfer.to_branch_name}.`
+      )
+      setStockTransferForm(createEmptyStockTransferForm(String(transfer.from_branch_id)))
+      queryClient.invalidateQueries({ queryKey: ['inventory'] })
+      queryClient.invalidateQueries({ queryKey: ['products', 'inventory-select'] })
+    },
+    onError: (error: unknown) => {
+      setStockTransferSuccess(null)
+      setStockTransferError(
+        extractApiErrorMessage(error, 'Could not transfer stock between branches.')
+      )
     }
   })
 
@@ -1013,6 +1313,13 @@ const InventoryManagementPage = () => {
     createStockCountMutation.mutate(stockCountForm)
   }
 
+  const onSubmitStockTransfer = (event: FormEvent) => {
+    event.preventDefault()
+    setStockTransferError(null)
+    setStockTransferSuccess(null)
+    createStockTransferMutation.mutate(stockTransferForm)
+  }
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-background via-white to-background p-6">
       {/* Header */}
@@ -1028,7 +1335,7 @@ const InventoryManagementPage = () => {
               Inventory Operations
             </h1>
             <p className="text-sm text-text-secondary mt-1">
-              Manage restocks, stock counts, and monitor live inventory status
+              Manage restocks, stock transfers, stock counts, and monitor live inventory status
             </p>
           </div>
           
@@ -1040,6 +1347,18 @@ const InventoryManagementPage = () => {
             >
               <ScaleIcon className="h-4 w-4" />
               {showStockCountForm ? 'Close Stock Count' : 'New Stock Count'}
+            </Button>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setShowStockTransferForm(!showStockTransferForm)
+                setStockTransferError(null)
+                setStockTransferSuccess(null)
+              }}
+              className="flex items-center gap-2"
+            >
+              <ArrowsRightLeftIcon className="h-4 w-4" />
+              {showStockTransferForm ? 'Close Transfer' : 'New Transfer'}
             </Button>
             <Button
               onClick={() => setShowRestockForm(!showRestockForm)}
@@ -1419,6 +1738,258 @@ const InventoryManagementPage = () => {
                     <span className="text-xs text-error flex items-center gap-1">
                       <XCircleIcon className="h-4 w-4" />
                       {restockError}
+                    </span>
+                  )}
+                </div>
+              </form>
+            </div>
+          </motion.section>
+        )}
+      </AnimatePresence>
+
+      {/* Stock Transfer Form */}
+      <AnimatePresence>
+        {showStockTransferForm && (
+          <motion.section
+            initial={{ opacity: 0, y: -20 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -20 }}
+            className="mb-6"
+          >
+            <div className="bg-white rounded-xl border border-border p-4 shadow-sm">
+              <div className="flex items-center gap-2 mb-4">
+                <ArrowsRightLeftIcon className="h-5 w-5 text-primary" />
+                <div>
+                  <h2 className="text-sm font-semibold text-text">Transfer Stock Between Branches</h2>
+                  <p className="mt-1 text-xs text-text-tertiary">
+                    Move stock from one branch to another without changing total business stock.
+                  </p>
+                </div>
+              </div>
+
+              <form onSubmit={onSubmitStockTransfer} className="space-y-4">
+                <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+                  <Select
+                    label="Product"
+                    options={stockTransferProductOptions}
+                    value={stockTransferForm.productId}
+                    onChange={(event) =>
+                      setStockTransferForm((prev) => ({
+                        ...prev,
+                        productId: String(event.target.value)
+                      }))
+                    }
+                    required
+                  />
+                  <Select
+                    label="Source Branch"
+                    options={stockTransferFromBranchOptions}
+                    value={stockTransferForm.fromBranchId}
+                    onChange={(event) =>
+                      setStockTransferForm((prev) => ({
+                        ...prev,
+                        fromBranchId: String(event.target.value)
+                      }))
+                    }
+                    required
+                  />
+                  <Select
+                    label="Destination Branch"
+                    options={stockTransferToBranchOptions}
+                    value={stockTransferForm.toBranchId}
+                    onChange={(event) =>
+                      setStockTransferForm((prev) => ({
+                        ...prev,
+                        toBranchId: String(event.target.value)
+                      }))
+                    }
+                    helperText="Destination must be different from the source branch."
+                    required
+                  />
+                  <TextInput
+                    label="Transfer Date"
+                    type="date"
+                    value={stockTransferForm.transferDate}
+                    onChange={(event) =>
+                      setStockTransferForm((prev) => ({
+                        ...prev,
+                        transferDate: event.target.value
+                      }))
+                    }
+                    required
+                  />
+                </div>
+
+                <div className="grid gap-4 md:grid-cols-2">
+                  <TextInput
+                    label="Quantity"
+                    type="number"
+                    min={1}
+                    value={stockTransferForm.quantity}
+                    onChange={(event) =>
+                      setStockTransferForm((prev) => ({
+                        ...prev,
+                        quantity: event.target.value
+                      }))
+                    }
+                    helperText="The source branch must have enough stock for this transfer."
+                    required
+                  />
+                  <TextArea
+                    label="Notes"
+                    rows={3}
+                    value={stockTransferForm.notes}
+                    onChange={(event) =>
+                      setStockTransferForm((prev) => ({
+                        ...prev,
+                        notes: event.target.value
+                      }))
+                    }
+                    placeholder="Move stock to Westlands showroom"
+                  />
+                </div>
+
+                <div className="grid gap-4 lg:grid-cols-2">
+                  <div className="rounded-xl border border-border bg-background p-4">
+                    <div className="flex items-center gap-2">
+                      <BuildingStorefrontIcon className="h-4 w-4 text-primary" />
+                      <p className="text-sm font-semibold text-text">Source Preview</p>
+                    </div>
+                    <div className="mt-3 text-xs text-text-secondary">
+                      {!stockTransferForm.fromBranchId ? (
+                        <p>Select a source branch.</p>
+                      ) : !stockTransferForm.productId ? (
+                        <p>Select a product to load source stock.</p>
+                      ) : stockTransferSourceStockQuery.isLoading ? (
+                        <div className="flex items-center gap-2">
+                          <ArrowPathIcon className="h-3.5 w-3.5 animate-spin" />
+                          Loading source stock...
+                        </div>
+                      ) : stockTransferSourceStockQuery.isError ? (
+                        <p className="text-error">Could not load source stock.</p>
+                      ) : (
+                        <div className="space-y-1">
+                          <p>
+                            Branch:{' '}
+                            <strong className="text-text">
+                              {selectedStockTransferFromBranchName || 'Source branch'}
+                            </strong>
+                          </p>
+                          <p>
+                            Available stock:{' '}
+                            <strong
+                              className={
+                                stockTransferSourceAvailable >= stockTransferQuantity
+                                  ? 'text-success'
+                                  : 'text-error'
+                              }
+                            >
+                              {stockTransferSourceAvailable}
+                            </strong>
+                          </p>
+                          <p>
+                            After transfer:{' '}
+                            <strong
+                              className={
+                                stockTransferProjectedSource >= 0 ? 'text-text' : 'text-error'
+                              }
+                            >
+                              {stockTransferProjectedSource}
+                            </strong>
+                          </p>
+                          <p>
+                            Business stock:{' '}
+                            <strong className="text-text">
+                              {stockTransferSourceStockQuery.data?.business_stock_quantity ?? 0}
+                            </strong>
+                          </p>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="rounded-xl border border-border bg-background p-4">
+                    <div className="flex items-center gap-2">
+                      <BuildingStorefrontIcon className="h-4 w-4 text-secondary" />
+                      <p className="text-sm font-semibold text-text">Destination Preview</p>
+                    </div>
+                    <div className="mt-3 text-xs text-text-secondary">
+                      {!stockTransferForm.toBranchId ? (
+                        <p>Select a destination branch.</p>
+                      ) : !stockTransferForm.productId ? (
+                        <p>Select a product to load destination stock.</p>
+                      ) : stockTransferDestinationStockQuery.isLoading ? (
+                        <div className="flex items-center gap-2">
+                          <ArrowPathIcon className="h-3.5 w-3.5 animate-spin" />
+                          Loading destination stock...
+                        </div>
+                      ) : stockTransferDestinationStockQuery.isError ? (
+                        <p className="text-error">Could not load destination stock.</p>
+                      ) : (
+                        <div className="space-y-1">
+                          <p>
+                            Branch:{' '}
+                            <strong className="text-text">
+                              {selectedStockTransferToBranchName || 'Destination branch'}
+                            </strong>
+                          </p>
+                          <p>
+                            Current stock:{' '}
+                            <strong className="text-text">{stockTransferDestinationAvailable}</strong>
+                          </p>
+                          <p>
+                            After transfer:{' '}
+                            <strong className="text-success">
+                              {stockTransferProjectedDestination}
+                            </strong>
+                          </p>
+                          <p>
+                            Business stock remains:{' '}
+                            <strong className="text-text">
+                              {stockTransferSourceStockQuery.data?.business_stock_quantity ??
+                                stockTransferDestinationStockQuery.data?.business_stock_quantity ??
+                                0}
+                            </strong>
+                          </p>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                {stockTransferSuccess ? (
+                  <div className="rounded-lg border border-success/20 bg-success/5 px-4 py-3 text-sm text-success">
+                    <div className="flex items-center gap-2">
+                      <CheckCircleIcon className="h-4 w-4" />
+                      {stockTransferSuccess}
+                    </div>
+                  </div>
+                ) : null}
+
+                <div className="flex items-center gap-3 pt-2">
+                  <Button
+                    type="submit"
+                    loading={createStockTransferMutation.isPending}
+                    className="min-w-[140px]"
+                  >
+                    Save Transfer
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => {
+                      setShowStockTransferForm(false)
+                      setStockTransferForm(createEmptyStockTransferForm(defaultInventoryBranchId))
+                      setStockTransferError(null)
+                      setStockTransferSuccess(null)
+                    }}
+                  >
+                    Cancel
+                  </Button>
+                  {stockTransferError && (
+                    <span className="text-xs text-error flex items-center gap-1">
+                      <XCircleIcon className="h-4 w-4" />
+                      {stockTransferError}
                     </span>
                   )}
                 </div>

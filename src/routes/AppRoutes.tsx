@@ -33,6 +33,12 @@ const ServiceManagementPage = lazy(
 const InventoryManagementPage = lazy(
   () => import('@pages/dashboard/admin/Inventory/InventoryManagementPage')
 )
+const BranchesManagementPage = lazy(
+  () => import('@pages/dashboard/admin/Branches/BranchesManagementPage')
+)
+const CustomersManagementPage = lazy(
+  () => import('@pages/dashboard/admin/Customers/CustomersManagementPage')
+)
 const ProjectsOperationsPage = lazy(
   () => import('@pages/dashboard/admin/Operations/ProjectsOperationsPage')
 )
@@ -88,6 +94,8 @@ export const AppRoutes = () => {
             <Route path="/dashboard/admin/products" element={<ProductManagementPage />} />
             <Route path="/dashboard/admin/products/:productId" element={<ManageProductPage />} />
             <Route path="/dashboard/admin/services" element={<ServiceManagementPage />} />
+            <Route path="/dashboard/admin/branches" element={<BranchesManagementPage />} />
+            <Route path="/dashboard/admin/customers" element={<CustomersManagementPage />} />
             <Route path="/dashboard/admin/inventory" element={<InventoryManagementPage />} />
             <Route path="/dashboard/admin/projects" element={<ProjectsOperationsPage />} />
             <Route path="/dashboard/admin/sales" element={<SalesOperationsPage />} />

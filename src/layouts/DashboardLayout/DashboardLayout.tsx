@@ -5,6 +5,7 @@ import {
   HomeIcon,
   CubeIcon,
   ServerStackIcon,
+  BuildingStorefrontIcon,
   WrenchScrewdriverIcon,
   BuildingOfficeIcon,
   CurrencyDollarIcon,
@@ -23,13 +24,14 @@ import {
   SparklesIcon,
 } from '@heroicons/react/24/outline'
 import { useAuth } from '@hooks/useAuth'
-import { AppTheme } from '@constants/theme'
 import brandLogo from '@/assets/business-logo.svg'
 
 // Navigation items configuration
 const navItems = [
   { path: '/dashboard/admin', label: 'Overview', icon: HomeIcon, end: true },
   { path: '/dashboard/admin/products', label: 'Products', icon: CubeIcon },
+  { path: '/dashboard/admin/branches', label: 'Branches', icon: BuildingStorefrontIcon },
+  { path: '/dashboard/admin/customers', label: 'Customers', icon: UserIcon },
   { path: '/dashboard/admin/inventory', label: 'Inventory', icon: ServerStackIcon },
   { path: '/dashboard/admin/services', label: 'Services', icon: WrenchScrewdriverIcon },
   { path: '/dashboard/admin/projects', label: 'Projects', icon: BuildingOfficeIcon },

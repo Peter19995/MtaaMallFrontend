@@ -12,7 +12,6 @@ import {
   ShoppingBagIcon,
   CurrencyDollarIcon,
   TagIcon,
-  UserIcon,
   PhoneIcon,
   ReceiptRefundIcon,
   CheckCircleIcon,
@@ -24,6 +23,10 @@ import {
 import { CheckCircleIcon as CheckCircleSolid } from '@heroicons/react/24/solid'
 import { Button, Select, TextInput } from '@components/common'
 import { listBranchesRequest } from '@api/modules/branches.api'
+import {
+  getDefaultCashCustomerRequest,
+  listCustomersRequest
+} from '@api/modules/customers.api'
 import { listInStockProductsRequest } from '@api/modules/products.api'
 import {
   createPosSaleRequest,
@@ -167,6 +170,20 @@ const CreatePosSalePage = () => {
     queryFn: listBranchesRequest
   })
 
+  const customersQuery = useQuery({
+    queryKey: ['customers', 'pos-create'],
+    queryFn: () =>
+      listCustomersRequest({
+        include_inactive: false,
+        limit: 200
+      })
+  })
+
+  const defaultCashCustomerQuery = useQuery({
+    queryKey: ['customers', 'default-cash', 'pos-create'],
+    queryFn: getDefaultCashCustomerRequest
+  })
+
   const productsQuery = useQuery({
     queryKey: ['products', 'in-stock', 'pos-create-options', selectedBranchId],
     queryFn: () =>
@@ -197,6 +214,35 @@ const CreatePosSalePage = () => {
     ],
     [branchesQuery.data]
   )
+
+  const customerOptions = useMemo(() => {
+    if (customersQuery.isLoading) {
+      return [{ label: 'Loading customers...', value: '' }]
+    }
+
+    const defaultCashCustomerId = defaultCashCustomerQuery.data?.id
+    const customers = [...(customersQuery.data ?? [])].sort((left, right) => {
+      if (left.id === defaultCashCustomerId) {
+        return -1
+      }
+
+      if (right.id === defaultCashCustomerId) {
+        return 1
+      }
+
+      return (left.full_name ?? left.username).localeCompare(right.full_name ?? right.username)
+    })
+
+    return [
+      { label: 'No customer selected', value: '' },
+      ...customers.map((customer) => ({
+        label:
+          `${customer.full_name?.trim() || customer.username} (${customer.email})` +
+          (customer.is_cash_customer ? ' - Default cash customer' : ''),
+        value: String(customer.id)
+      }))
+    ]
+  }, [customersQuery.isLoading, customersQuery.data, defaultCashCustomerQuery.data])
 
   const productOptions = useMemo(
     () => {
@@ -265,6 +311,13 @@ const CreatePosSalePage = () => {
 
   const hasSelectablePaymentModes = activePaymentModes.length > 0
   const hasSelectableProducts = (productsQuery.data ?? []).length > 0
+  const selectedCustomer = useMemo(
+    () =>
+      (customersQuery.data ?? []).find(
+        (customer) => String(customer.id) === createSaleForm.customerId
+      ) ?? null,
+    [customersQuery.data, createSaleForm.customerId]
+  )
   const selectedPaymentMode = useMemo(
     () => activePaymentModes.find((mode) => String(mode.id) === createSaleForm.paymentModeId),
     [activePaymentModes, createSaleForm.paymentModeId]
@@ -273,6 +326,43 @@ const CreatePosSalePage = () => {
     const code = selectedPaymentMode?.code?.toLowerCase() ?? ''
     return code.includes('mpesa')
   }, [selectedPaymentMode])
+
+  useEffect(() => {
+    if (customersQuery.isLoading || defaultCashCustomerQuery.isLoading) {
+      return
+    }
+
+    const activeCustomers = customersQuery.data ?? []
+    const selectedCustomerId = parseOptionalNumber(createSaleForm.customerId)
+    const hasSelectedCustomer =
+      selectedCustomerId !== undefined &&
+      activeCustomers.some((customer) => customer.id === selectedCustomerId)
+
+    if (hasSelectedCustomer) {
+      return
+    }
+
+    const defaultCashCustomerId = defaultCashCustomerQuery.data?.id
+    const fallbackCustomerId =
+      defaultCashCustomerId && activeCustomers.some((customer) => customer.id === defaultCashCustomerId)
+        ? String(defaultCashCustomerId)
+        : ''
+
+    if (createSaleForm.customerId === fallbackCustomerId) {
+      return
+    }
+
+    setCreateSaleForm((previous) => ({
+      ...previous,
+      customerId: fallbackCustomerId
+    }))
+  }, [
+    customersQuery.isLoading,
+    customersQuery.data,
+    defaultCashCustomerQuery.isLoading,
+    defaultCashCustomerQuery.data,
+    createSaleForm.customerId
+  ])
 
   useEffect(() => {
     if (!selectedBranchId) {
@@ -652,16 +742,21 @@ const CreatePosSalePage = () => {
               </div>
               
               <div className="md:col-span-1">
-                <TextInput
-                  label="Customer ID"
-                  type="number"
-                  min={1}
-                  placeholder="Optional"
+                <Select
+                  label="Customer"
+                  options={customerOptions}
                   value={createSaleForm.customerId}
                   onChange={(event) =>
                     setCreateSaleForm((previous) => ({ ...previous, customerId: event.target.value }))
                   }
-                  icon={<UserIcon className="h-4 w-4 text-text-tertiary" />}
+                  disabled={customersQuery.isLoading}
+                  helperText={
+                    selectedCustomer
+                      ? `${selectedCustomer.email}${
+                          selectedCustomer.is_cash_customer ? ' • default cash customer' : ''
+                        }`
+                      : 'Optional. Defaults to your cash customer when available.'
+                  }
                 />
               </div>
               

@@ -92,6 +92,36 @@ export type StockCountListParams = {
   product_id?: number
 }
 
+export type StockTransferCreate = {
+  product_id: number
+  from_branch_id: number
+  to_branch_id: number
+  quantity: number
+  transfer_date: string
+  notes?: string
+}
+
+export type StockTransferResponse = {
+  id: number
+  product_id: number
+  product_name: string
+  from_branch_id: number
+  from_branch_name: string
+  to_branch_id: number
+  to_branch_name: string
+  quantity: number
+  transfer_date: string
+  from_location?: string | null
+  to_location?: string | null
+  from_previous_stock: number
+  from_new_stock: number
+  to_previous_stock: number
+  to_new_stock: number
+  business_stock_quantity: number
+  notes?: string | null
+  created_at?: string | null
+}
+
 export type ProductStockStatusResponse = {
   branch_id?: number | null
   branch_name?: string | null
@@ -215,6 +245,13 @@ export const createStockCountRequest = async (
   payload: StockCountCreate
 ): Promise<StockCountResponse> => {
   const { data } = await api.post<StockCountResponse>('/inventory/stock-counts', payload)
+  return data
+}
+
+export const createStockTransferRequest = async (
+  payload: StockTransferCreate
+): Promise<StockTransferResponse> => {
+  const { data } = await api.post<StockTransferResponse>('/inventory/stock-transfers', payload)
   return data
 }
 
