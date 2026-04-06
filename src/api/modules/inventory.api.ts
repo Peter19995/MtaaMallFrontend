@@ -2,6 +2,7 @@ import api from '@api/config/axios.config'
 
 export type RestockItemCreate = {
   product_id: number
+  product_variant_id?: number
   quantity: number
   buying_price: number
   selling_price: number
@@ -47,6 +48,7 @@ export type RestockListParams = {
 
 export type StockCountCreate = {
   product_id: number
+  product_variant_id?: number
   branch_id?: number
   count_date: string
   physical_stock: number
@@ -94,6 +96,7 @@ export type StockCountListParams = {
 
 export type StockTransferCreate = {
   product_id: number
+  product_variant_id?: number
   from_branch_id: number
   to_branch_id: number
   quantity: number
@@ -127,6 +130,9 @@ export type ProductStockStatusResponse = {
   branch_name?: string | null
   product_id: number
   product_name: string
+  product_variant_id?: number | null
+  variant_sku?: string | null
+  variant_options?: Record<string, string> | null
   sku: string
   category_id?: number | null
   category_name?: string | null
@@ -141,6 +147,17 @@ export type ProductStockStatusResponse = {
 export type StockStatusListParams = {
   branch_id?: number
   product_id?: number
+  skip?: number
+  limit?: number
+}
+
+export type StockBalanceScope = 'all' | 'branch'
+
+export type StockBalanceListParams = {
+  scope?: StockBalanceScope
+  branch_id?: number
+  product_id?: number
+  product_variant_id?: number
   skip?: number
   limit?: number
 }
@@ -275,6 +292,15 @@ export const getStockStatusRequest = async (
   params?: StockStatusListParams
 ): Promise<ProductStockStatusResponse[]> => {
   const { data } = await api.get<ProductStockStatusResponse[]>('/inventory/stock-status', { params })
+  return data
+}
+
+export const getStockBalancesRequest = async (
+  params?: StockBalanceListParams
+): Promise<ProductStockStatusResponse[]> => {
+  const { data } = await api.get<ProductStockStatusResponse[]>('/inventory/stock-balances', {
+    params
+  })
   return data
 }
 

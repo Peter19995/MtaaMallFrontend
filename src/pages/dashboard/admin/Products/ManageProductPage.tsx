@@ -1,6 +1,6 @@
 import { FormEvent, useEffect, useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { useNavigate, useParams } from 'react-router-dom'
+import { useLocation, useNavigate, useParams } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   ArrowLeftIcon,
@@ -17,6 +17,7 @@ import {
   CloudArrowUpIcon,
   XMarkIcon,
   EyeIcon,
+  PlusIcon,
 } from '@heroicons/react/24/outline'
 import { CheckCircleIcon as CheckCircleSolid } from '@heroicons/react/24/solid'
 import { Button, Select, TextArea, TextInput } from '@components/common'
@@ -25,10 +26,14 @@ import {
   type ProductStockStatusResponse as InventoryProductStockStatusResponse
 } from '@api/modules/inventory.api'
 import {
+  attachVariantOptionToProductRequest,
   deleteProductImageRequest,
   deleteProductRequest,
+  detachVariantOptionFromProductRequest,
   getProductRequest,
   listCategoriesRequest,
+  listProductVariantOptionsRequest,
+  listVariantOptionsRequest,
   type ProductResponse,
   uploadProductImagesRequest,
   updateProductRequest,
@@ -87,9 +92,34 @@ const getProductImageSrc = (product: ProductResponse, index: number) =>
 const getBlockingStockStatuses = (statuses: InventoryProductStockStatusResponse[]) =>
   statuses.filter((status) => status.stock_quantity > 0 || status.business_stock_quantity > 0)
 
+const mergeImageFiles = (existingFiles: File[], incomingFiles: File[]) => {
+  const mergedFiles = [...existingFiles]
+
+  incomingFiles.forEach((incomingFile) => {
+    const alreadySelected = mergedFiles.some(
+      (currentFile) =>
+        currentFile.name === incomingFile.name &&
+        currentFile.size === incomingFile.size &&
+        currentFile.lastModified === incomingFile.lastModified
+    )
+
+    if (!alreadySelected) {
+      mergedFiles.push(incomingFile)
+    }
+  })
+
+  return mergedFiles
+}
+
+type PendingImagePreview = {
+  file: File
+  previewUrl: string
+}
+
 const ManageProductPage = () => {
   const queryClient = useQueryClient()
   const navigate = useNavigate()
+  const location = useLocation()
   const { productId: productIdParam } = useParams()
   const productId = Number(productIdParam)
 
@@ -97,8 +127,14 @@ const ManageProductPage = () => {
   const [formError, setFormError] = useState<string | null>(null)
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
   const [previewImage, setPreviewImage] = useState<string | null>(null)
-  const [activeTab, setActiveTab] = useState<'details' | 'images'>('details')
+  const initialTab =
+    location.state?.initialTab === 'images' || location.state?.initialTab === 'variants'
+      ? location.state.initialTab
+      : 'details'
+  const [activeTab, setActiveTab] = useState<'details' | 'images' | 'variants'>(initialTab)
   const [uploadProgress, setUploadProgress] = useState(0)
+  const [selectedVariantOptionId, setSelectedVariantOptionId] = useState('')
+  const [variantActionError, setVariantActionError] = useState<string | null>(null)
 
   const productQuery = useQuery({
     queryKey: ['products', 'details', productId],
@@ -109,6 +145,17 @@ const ManageProductPage = () => {
   const categoriesQuery = useQuery({
     queryKey: ['products', 'categories'],
     queryFn: listCategoriesRequest
+  })
+
+  const variantOptionsQuery = useQuery({
+    queryKey: ['products', 'variant-options'],
+    queryFn: listVariantOptionsRequest
+  })
+
+  const productVariantOptionsQuery = useQuery({
+    queryKey: ['products', 'details', productId, 'variant-options'],
+    queryFn: () => listProductVariantOptionsRequest(productId),
+    enabled: Number.isFinite(productId) && productId > 0
   })
 
   const deleteProductStockStatusQuery = useQuery({
@@ -151,9 +198,40 @@ const ManageProductPage = () => {
     [categoriesQuery.data]
   )
 
+  const pendingImagePreviews = useMemo<PendingImagePreview[]>(
+    () =>
+      form.imageFiles.map((file) => ({
+        file,
+        previewUrl: URL.createObjectURL(file)
+      })),
+    [form.imageFiles]
+  )
+
   const deleteBlockingStocks = useMemo(
     () => getBlockingStockStatuses(deleteProductStockStatusQuery.data ?? []),
     [deleteProductStockStatusQuery.data]
+  )
+
+  const variantOptions = variantOptionsQuery.data ?? []
+  const attachedVariantOptions =
+    productVariantOptionsQuery.data ?? productQuery.data?.variant_options ?? []
+  const attachedVariantOptionIds = useMemo(
+    () => new Set(attachedVariantOptions.map((option) => option.id)),
+    [attachedVariantOptions]
+  )
+  const availableVariantOptions = useMemo(
+    () => variantOptions.filter((option) => !attachedVariantOptionIds.has(option.id)),
+    [attachedVariantOptionIds, variantOptions]
+  )
+  const variantCount = productQuery.data?.variants?.length ?? 0
+  const activeVariantCount =
+    productQuery.data?.variants?.filter((variant) => variant.is_active).length ?? 0
+
+  useEffect(
+    () => () => {
+      pendingImagePreviews.forEach(({ previewUrl }) => URL.revokeObjectURL(previewUrl))
+    },
+    [pendingImagePreviews]
   )
 
   const updateProductMutation = useMutation({
@@ -192,26 +270,7 @@ const ManageProductPage = () => {
       }
 
       await updateProductRequest(productId, updatePayload)
-      
-      // Simulate upload progress
-      if (payload.imageFiles.length > 0) {
-        setUploadProgress(0)
-        const interval = setInterval(() => {
-          setUploadProgress(prev => {
-            if (prev >= 100) {
-              clearInterval(interval)
-              return 100
-            }
-            return prev + 10
-          })
-        }, 200)
-        
-        await uploadProductImagesRequest(productId, payload.imageFiles)
-        clearInterval(interval)
-        setUploadProgress(100)
-        setTimeout(() => setUploadProgress(0), 1000)
-      }
-      
+
       return getProductRequest(productId)
     },
     onSuccess: () => {
@@ -222,6 +281,87 @@ const ManageProductPage = () => {
     },
     onError: (error: Error) => {
       setFormError(error.message || 'Could not update product.')
+    }
+  })
+
+  const uploadProductImagesMutation = useMutation({
+    mutationFn: async (imageFiles: File[]) => {
+      if (!Number.isFinite(productId) || productId <= 0) {
+        throw new Error('Invalid product ID.')
+      }
+      if (imageFiles.length === 0) {
+        throw new Error('Select one or more images to upload.')
+      }
+
+      setUploadProgress(0)
+      const interval = setInterval(() => {
+        setUploadProgress((previous) => {
+          if (previous >= 90) {
+            return previous
+          }
+
+          return previous + 10
+        })
+      }, 200)
+
+      try {
+        await uploadProductImagesRequest(productId, imageFiles)
+      } finally {
+        clearInterval(interval)
+      }
+
+      setUploadProgress(100)
+      return getProductRequest(productId)
+    },
+    onSuccess: (updatedProduct) => {
+      setFormError(null)
+      setForm((previous) => ({ ...previous, imageFiles: [] }))
+      queryClient.setQueryData(['products', 'details', productId], updatedProduct)
+      queryClient.invalidateQueries({ queryKey: ['products', 'list'] })
+      setTimeout(() => setUploadProgress(0), 1000)
+    },
+    onError: (error: Error) => {
+      setUploadProgress(0)
+      setFormError(error.message || 'Could not upload product images.')
+    }
+  })
+
+  const attachVariantOptionMutation = useMutation({
+    mutationFn: async (optionId: number) => {
+      if (!Number.isFinite(productId) || productId <= 0) {
+        throw new Error('Invalid product ID.')
+      }
+
+      return attachVariantOptionToProductRequest(productId, optionId)
+    },
+    onSuccess: () => {
+      setVariantActionError(null)
+      setSelectedVariantOptionId('')
+      queryClient.invalidateQueries({ queryKey: ['products', 'details', productId, 'variant-options'] })
+      queryClient.invalidateQueries({ queryKey: ['products', 'details', productId] })
+      queryClient.invalidateQueries({ queryKey: ['products', 'list'] })
+    },
+    onError: (error: Error) => {
+      setVariantActionError(error.message || 'Could not attach variant option to product.')
+    }
+  })
+
+  const detachVariantOptionMutation = useMutation({
+    mutationFn: async (optionId: number) => {
+      if (!Number.isFinite(productId) || productId <= 0) {
+        throw new Error('Invalid product ID.')
+      }
+
+      return detachVariantOptionFromProductRequest(productId, optionId)
+    },
+    onSuccess: () => {
+      setVariantActionError(null)
+      queryClient.invalidateQueries({ queryKey: ['products', 'details', productId, 'variant-options'] })
+      queryClient.invalidateQueries({ queryKey: ['products', 'details', productId] })
+      queryClient.invalidateQueries({ queryKey: ['products', 'list'] })
+    },
+    onError: (error: Error) => {
+      setVariantActionError(error.message || 'Could not detach variant option from product.')
     }
   })
 
@@ -285,6 +425,19 @@ const ManageProductPage = () => {
     event.preventDefault()
     setFormError(null)
     updateProductMutation.mutate(form)
+  }
+
+  const onAttachVariantOption = (event: FormEvent) => {
+    event.preventDefault()
+    setVariantActionError(null)
+
+    const optionId = Number(selectedVariantOptionId)
+    if (!Number.isFinite(optionId) || optionId <= 0) {
+      setVariantActionError('Select a variant option to attach to this product.')
+      return
+    }
+
+    attachVariantOptionMutation.mutate(optionId)
   }
 
   if (!Number.isFinite(productId) || productId <= 0) {
@@ -401,6 +554,17 @@ const ManageProductPage = () => {
                   >
                     <PhotoIcon className="h-4 w-4" />
                     Images ({productQuery.data.image_urls?.length || 0})
+                  </button>
+                  <button
+                    onClick={() => setActiveTab('variants')}
+                    className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all ${
+                      activeTab === 'variants'
+                        ? 'bg-primary text-white'
+                        : 'text-text-secondary hover:bg-primary/5 hover:text-primary'
+                    }`}
+                  >
+                    <TagIcon className="h-4 w-4" />
+                    Variants ({variantCount})
                   </button>
                 </nav>
               </div>
@@ -612,20 +776,30 @@ const ManageProductPage = () => {
 
                       {/* Upload New Images */}
                       <div>
-                        <h3 className="text-sm font-semibold text-text mb-3">Upload New Images</h3>
+                        <h3 className="text-sm font-semibold text-text mb-3">
+                          {productQuery.data.image_urls?.length ? 'Add More Images' : 'Upload Images'}
+                        </h3>
                         <div className="bg-background rounded-lg p-6 border border-dashed border-primary/30">
                           <div className="text-center">
                             <CloudArrowUpIcon className="h-12 w-12 mx-auto text-primary/50 mb-3" />
                             <p className="text-sm text-text-secondary mb-2">
                               Select one or more images to upload
                             </p>
+                            <p className="text-xs text-text-tertiary mb-4">
+                              Each upload is added to the existing product gallery.
+                            </p>
                             <input
                               type="file"
                               accept="image/*"
                               multiple
-                              onChange={(e) =>
-                                setForm({ ...form, imageFiles: Array.from(e.target.files ?? []) })
-                              }
+                              onChange={(e) => {
+                                const files = Array.from(e.target.files ?? [])
+                                setForm((previous) => ({
+                                  ...previous,
+                                  imageFiles: mergeImageFiles(previous.imageFiles, files)
+                                }))
+                                e.target.value = ''
+                              }}
                               className="mx-auto block w-full max-w-sm rounded-lg border border-border bg-white px-3 py-2 text-sm text-text file:mr-3 file:rounded-md file:border-0 file:bg-primary file:px-3 file:py-2 file:text-sm file:font-medium file:text-white hover:file:bg-primary-dark"
                             />
                           </div>
@@ -639,6 +813,49 @@ const ManageProductPage = () => {
                               <p className="text-sm font-medium text-text">
                                 {form.imageFiles.length} file(s) selected
                               </p>
+                              <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+                                {pendingImagePreviews.map(({ file, previewUrl }, index) => (
+                                  <button
+                                    key={`${file.name}-${file.lastModified}-${index}`}
+                                    type="button"
+                                    className="group relative overflow-hidden rounded-xl border border-border bg-white text-left"
+                                    onClick={() => setPreviewImage(previewUrl)}
+                                    title="Preview selected image"
+                                  >
+                                    <img
+                                      src={previewUrl}
+                                      alt={file.name}
+                                      className="h-28 w-full object-cover transition-transform duration-300 group-hover:scale-105"
+                                    />
+                                    <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/70 via-black/20 to-transparent p-2">
+                                      <p className="truncate text-xs font-medium text-white">{file.name}</p>
+                                    </div>
+                                  </button>
+                                ))}
+                              </div>
+                              <div className="flex flex-wrap gap-2">
+                                {form.imageFiles.map((file, index) => (
+                                  <span
+                                    key={`${file.name}-${file.lastModified}-${index}`}
+                                    className="inline-flex items-center gap-2 rounded-full bg-primary/10 px-3 py-1 text-xs text-primary"
+                                  >
+                                    <span className="max-w-[180px] truncate">{file.name}</span>
+                                    <button
+                                      type="button"
+                                      className="rounded-full p-0.5 text-primary transition hover:bg-primary/10"
+                                      onClick={() =>
+                                        setForm((previous) => ({
+                                          ...previous,
+                                          imageFiles: previous.imageFiles.filter((_, fileIndex) => fileIndex !== index)
+                                        }))
+                                      }
+                                      title="Remove image"
+                                    >
+                                      <XMarkIcon className="h-3.5 w-3.5" />
+                                    </button>
+                                  </span>
+                                ))}
+                              </div>
                               
                               {uploadProgress > 0 && (
                                 <div className="space-y-1">
@@ -659,10 +876,10 @@ const ManageProductPage = () => {
                                 <Button
                                   size="sm"
                                   onClick={() => {
-                                    // Trigger form submission to upload images
-                                    updateProductMutation.mutate(form)
+                                    setFormError(null)
+                                    uploadProductImagesMutation.mutate(form.imageFiles)
                                   }}
-                                  loading={updateProductMutation.isPending}
+                                  loading={uploadProductImagesMutation.isPending}
                                 >
                                   Upload Images
                                 </Button>
@@ -677,6 +894,204 @@ const ManageProductPage = () => {
                             </motion.div>
                           )}
                         </div>
+                      </div>
+                    </motion.div>
+                  )}
+
+                  {activeTab === 'variants' && (
+                    <motion.div
+                      key="variants"
+                      initial={{ opacity: 0, y: 10 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      exit={{ opacity: 0, y: -10 }}
+                      className="space-y-6"
+                    >
+                      {variantActionError && (
+                        <div className="flex items-center gap-2 rounded-lg border border-error/20 bg-error/5 px-3 py-2 text-sm text-error">
+                          <XCircleIcon className="h-4 w-4 shrink-0" />
+                          <span>{variantActionError}</span>
+                        </div>
+                      )}
+                      <div className="rounded-xl border border-primary/15 bg-primary/5 p-5">
+                        <div className="flex items-start gap-3">
+                          <SparklesIcon className="mt-0.5 h-5 w-5 shrink-0 text-primary" />
+                          <div>
+                            <h3 className="text-sm font-semibold text-text">Backend Variant Flow</h3>
+                            <p className="mt-1 text-sm text-text-secondary">
+                              Attach reusable option groups like Size or Color to this product. The
+                              backend will generate the valid variant combinations automatically.
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="rounded-xl border border-border bg-white p-5">
+                        <div className="flex items-center justify-between gap-3">
+                          <div>
+                            <h3 className="text-sm font-semibold text-text">Attached Options</h3>
+                            <p className="mt-1 text-xs text-text-secondary">
+                              These option groups are currently linked to this product.
+                            </p>
+                          </div>
+                          <span className="rounded-full bg-background px-3 py-1 text-xs font-medium text-text-secondary">
+                            {attachedVariantOptions.length} attached
+                          </span>
+                        </div>
+
+                        <div className="mt-4">
+                          {productVariantOptionsQuery.isLoading ? (
+                            <div className="rounded-xl border border-border bg-background px-4 py-8 text-center">
+                              <ArrowPathIcon className="mx-auto h-10 w-10 animate-spin text-primary/40" />
+                              <p className="mt-3 text-sm text-text-secondary">
+                                Loading attached variant options...
+                              </p>
+                            </div>
+                          ) : attachedVariantOptions.length > 0 ? (
+                            <div className="grid gap-4 md:grid-cols-2">
+                              {attachedVariantOptions.map((option) => (
+                                <div
+                                  key={option.id}
+                                  className="rounded-xl border border-border bg-background p-4"
+                                >
+                                  <div className="flex items-start justify-between gap-3">
+                                    <div>
+                                      <p className="font-semibold text-text">{option.option_name}</p>
+                                      <p className="mt-1 text-xs uppercase tracking-[0.18em] text-text-tertiary">
+                                        {option.option_type}
+                                      </p>
+                                    </div>
+                                    <Button
+                                      type="button"
+                                      size="sm"
+                                      variant="ghost"
+                                      className="text-error hover:bg-error/5"
+                                      loading={
+                                        detachVariantOptionMutation.isPending &&
+                                        detachVariantOptionMutation.variables === option.id
+                                      }
+                                      onClick={() => {
+                                        setVariantActionError(null)
+                                        detachVariantOptionMutation.mutate(option.id)
+                                      }}
+                                    >
+                                      <TrashIcon className="h-4 w-4" />
+                                    </Button>
+                                  </div>
+
+                                  <div className="mt-3 flex flex-wrap gap-2">
+                                    {option.values.slice(0, 6).map((value) => (
+                                      <span
+                                        key={value.id}
+                                        className="rounded-full bg-white px-3 py-1 text-xs font-medium text-text-secondary ring-1 ring-border"
+                                      >
+                                        {value.display_value || value.value}
+                                      </span>
+                                    ))}
+                                    {option.values.length > 6 && (
+                                      <span className="rounded-full bg-white px-3 py-1 text-xs font-medium text-text-tertiary ring-1 ring-border">
+                                        +{option.values.length - 6} more
+                                      </span>
+                                    )}
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          ) : (
+                            <div className="rounded-xl border border-dashed border-border bg-background px-4 py-8 text-center">
+                              <TagIcon className="mx-auto h-10 w-10 text-text-tertiary/40" />
+                              <p className="mt-3 text-sm text-text-secondary">
+                                No variant options are attached yet. Attach an option like Size or
+                                Color to let the backend generate variants.
+                              </p>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+
+                      <div className="rounded-xl border border-border bg-white p-5">
+                        <div className="flex items-center justify-between gap-3">
+                          <div>
+                            <h3 className="text-sm font-semibold text-text">Attach Existing Option</h3>
+                            <p className="mt-1 text-xs text-text-secondary">
+                              Pick a global option and link it to this product.
+                            </p>
+                          </div>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            onClick={() => navigate('/dashboard/admin/products/settings')}
+                          >
+                            Manage Options
+                          </Button>
+                        </div>
+
+                        <form onSubmit={onAttachVariantOption} className="mt-4 space-y-4">
+                          {variantOptionsQuery.isLoading ? (
+                            <div className="rounded-xl border border-border bg-background px-4 py-8 text-center">
+                              <ArrowPathIcon className="mx-auto h-10 w-10 animate-spin text-primary/40" />
+                              <p className="mt-3 text-sm text-text-secondary">
+                                Loading global variant options...
+                              </p>
+                            </div>
+                          ) : variantOptions.length === 0 ? (
+                            <div className="rounded-xl border border-dashed border-border bg-background px-4 py-8 text-center">
+                              <TagIcon className="mx-auto h-10 w-10 text-text-tertiary/40" />
+                              <p className="mt-3 text-sm text-text-secondary">
+                                Create reusable variant options in Product Settings before attaching
+                                them to this product.
+                              </p>
+                              <div className="mt-4">
+                                <Button
+                                  type="button"
+                                  variant="outline"
+                                  onClick={() => navigate('/dashboard/admin/products/settings')}
+                                >
+                                  Open Product Settings
+                                </Button>
+                              </div>
+                            </div>
+                          ) : availableVariantOptions.length === 0 ? (
+                            <div className="rounded-xl border border-border bg-background px-4 py-8 text-center">
+                              <CheckCircleIcon className="mx-auto h-10 w-10 text-success/70" />
+                              <p className="mt-3 text-sm text-text-secondary">
+                                All available variant options are already attached to this product.
+                              </p>
+                            </div>
+                          ) : (
+                            <>
+                              <Select
+                                label="Variant Option"
+                                value={selectedVariantOptionId}
+                                onChange={(event) => setSelectedVariantOptionId(String(event.target.value))}
+                                options={[
+                                  { label: 'Select a variant option', value: '' },
+                                  ...availableVariantOptions.map((option) => ({
+                                    label: `${option.option_name} (${option.values.length} value${option.values.length === 1 ? '' : 's'})`,
+                                    value: String(option.id)
+                                  }))
+                                ]}
+                                icon={<TagIcon className="h-4 w-4 text-text-tertiary" />}
+                              />
+
+                              <div className="flex items-center gap-3">
+                                <Button
+                                  type="submit"
+                                  loading={attachVariantOptionMutation.isPending}
+                                  disabled={!selectedVariantOptionId}
+                                >
+                                  Attach To Product
+                                </Button>
+                                <Button
+                                  type="button"
+                                  variant="ghost"
+                                  onClick={() => setSelectedVariantOptionId('')}
+                                >
+                                  Clear
+                                </Button>
+                              </div>
+                            </>
+                          )}
+                        </form>
                       </div>
                     </motion.div>
                   )}
@@ -708,6 +1123,13 @@ const ManageProductPage = () => {
                   <span className="text-xs text-text-tertiary">Price</span>
                   <span className="text-lg font-bold text-primary">
                     {formatCurrency(productQuery.data.selling_price || productQuery.data.price)}
+                  </span>
+                </div>
+
+                <div className="flex justify-between items-center">
+                  <span className="text-xs text-text-tertiary">Variants</span>
+                  <span className="text-sm font-medium text-text">
+                    {variantCount} total • {activeVariantCount} active
                   </span>
                 </div>
 

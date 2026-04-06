@@ -29,13 +29,14 @@ import {
   ArrowsRightLeftIcon,
 } from '@heroicons/react/24/outline'
 import { Button, DataTable, Select, TextArea, TextInput, type Column } from '@components/common'
-import { listProductsRequest } from '@api/modules/products.api'
+import { getProductRequest, listProductsRequest } from '@api/modules/products.api'
 import { listBranchesRequest, type BranchResponse } from '@api/modules/branches.api'
 import {
   createRestockRequest,
   createStockCountRequest,
   createStockTransferRequest,
   getInventoryDashboardRequest,
+  getStockBalancesRequest,
   getStockStatusRequest,
   getStockCountAdjustmentReasonsRequest,
   getSupportedValuationMethodsRequest,
@@ -58,6 +59,7 @@ type RestockFormState = {
 type RestockRowState = {
   id: string
   productId: string
+  productVariantId: string
   quantity: string
   buyingPrice: string
   sellingPrice: string
@@ -120,6 +122,7 @@ const toSafeNumber = (value: string): number => {
 const createRestockRow = (): RestockRowState => ({
   id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
   productId: '',
+  productVariantId: '',
   quantity: '1',
   buyingPrice: '0',
   sellingPrice: '0',
@@ -204,6 +207,27 @@ const formatCurrency = (amount: number): string =>
     minimumFractionDigits: 0,
     maximumFractionDigits: 0
   }).format(amount)
+
+const formatVariantLabel = (variant: {
+  sku: string
+  options: Record<string, string>
+}) => {
+  const optionSummary = Object.entries(variant.options)
+    .map(([optionName, value]) => `${optionName}: ${value}`)
+    .join(' / ')
+
+  return optionSummary ? `${optionSummary} (${variant.sku})` : variant.sku
+}
+
+const formatVariantOptionsSummary = (variantOptions?: Record<string, string> | null) => {
+  if (!variantOptions) {
+    return ''
+  }
+
+  return Object.entries(variantOptions)
+    .map(([optionName, value]) => `${optionName}: ${value}`)
+    .join(' / ')
+}
 
 const extractApiErrorMessage = (error: unknown, fallback: string): string => {
   if (!isAxiosError(error)) {
@@ -321,13 +345,14 @@ const InventoryManagementPage = () => {
   const stockStatusQuery = useQuery({
     queryKey: [
       'inventory',
-      'stock-status',
+      'stock-balances',
       'table',
       selectedStockStatusBranchId ?? 'all',
       selectedStockStatusProductId ?? 'all'
     ],
     queryFn: () =>
-      getStockStatusRequest({
+      getStockBalancesRequest({
+        scope: selectedStockStatusBranchId ? 'branch' : 'all',
         branch_id: selectedStockStatusBranchId,
         product_id: selectedStockStatusProductId,
         skip: 0,
@@ -510,7 +535,7 @@ const InventoryManagementPage = () => {
     )
   }, [branchesQuery.data, selectedStockTransferToBranchId])
 
-  const restockRowStockQueries = useQueries({
+  const restockRowProductQueries = useQueries({
     queries: restockForm.rows.map((row) => {
       const productId = Number(row.productId)
       const isEnabled =
@@ -521,21 +546,15 @@ const InventoryManagementPage = () => {
 
       return {
         queryKey: [
-          'inventory',
-          'stock-status',
-          'restock-row',
+          'products',
+          'details',
           selectedRestockBranchId ?? 'none',
           productId || 'none'
         ],
-        queryFn: async () => {
-          const response = await getStockStatusRequest({
-            branch_id: selectedRestockBranchId,
-            product_id: productId,
-            limit: 1
-          })
-
-          return response.find((item) => item.product_id === productId) ?? response[0] ?? null
-        },
+        queryFn: () =>
+          getProductRequest(productId, {
+            branch_id: selectedRestockBranchId
+          }),
         enabled: isEnabled,
         staleTime: 30_000
       }
@@ -683,11 +702,14 @@ const InventoryManagementPage = () => {
 
   const updateRestockRowField = (
     rowId: string,
-    field: 'productId' | 'quantity' | 'buyingPrice' | 'sellingPrice' | 'notes',
+    field: 'productId' | 'productVariantId' | 'quantity' | 'buyingPrice' | 'sellingPrice' | 'notes',
     value: string
   ) => {
     updateRestockRow(rowId, (row) => {
       const next = { ...row, [field]: value } as RestockRowState
+      if (field === 'productId') {
+        next.productVariantId = ''
+      }
       if (field === 'quantity' || field === 'sellingPrice') {
         return syncMaxOffer(next)
       }
@@ -819,20 +841,10 @@ const InventoryManagementPage = () => {
   const stockTransferProjectedDestination =
     stockTransferDestinationAvailable + stockTransferQuantity
 
-  const getProductOptionsForRow = (rowId: string, currentProductId: string) => {
-    const selectedInOtherRows = new Set(
-      restockForm.rows
-        .filter((row) => row.id !== rowId && row.productId)
-        .map((row) => row.productId)
-    )
-
+  const getProductOptionsForRow = () => {
     return [
       { label: 'Select product', value: '' },
       ...((productsQuery.data ?? [])
-        .filter((product) => {
-          const productId = String(product.id)
-          return productId === currentProductId || !selectedInOtherRows.has(productId)
-        })
         .map((product) => ({
           label: `${product.name} (${product.sku})`,
           value: String(product.id)
@@ -874,13 +886,28 @@ const InventoryManagementPage = () => {
 
       const items = payload.rows.map((row, index) => {
         const productId = Number(row.productId)
+        const productVariantId = row.productVariantId ? Number(row.productVariantId) : undefined
         const quantity = Number(row.quantity)
         const buyingPrice = Number(row.buyingPrice)
         const sellingPrice = Number(row.sellingPrice)
         const maxOfferAmount = Number(row.maxOfferAmount)
+        const rowProduct = restockRowProductQueries[index]?.data
+        const hasVariants = (rowProduct?.variants?.length ?? 0) > 0
 
         if (!productId) {
           throw new Error(`Row ${index + 1}: select a product.`)
+        }
+        if (!rowProduct) {
+          throw new Error(`Row ${index + 1}: product details are still loading. Try again.`)
+        }
+        if (hasVariants && !productVariantId) {
+          throw new Error(`Row ${index + 1}: select the exact variant to restock.`)
+        }
+        if (
+          hasVariants &&
+          !rowProduct.variants?.some((variant) => variant.id === productVariantId)
+        ) {
+          throw new Error(`Row ${index + 1}: selected variant is not valid for this product.`)
         }
         if (Number.isNaN(quantity) || quantity < 1) {
           throw new Error(`Row ${index + 1}: quantity must be 1 or more.`)
@@ -897,6 +924,7 @@ const InventoryManagementPage = () => {
 
         return {
           product_id: productId,
+          product_variant_id: hasVariants ? productVariantId : undefined,
           quantity,
           buying_price: buyingPrice,
           selling_price: sellingPrice,
@@ -1077,17 +1105,25 @@ const InventoryManagementPage = () => {
     {
       key: 'product_name',
       header: 'Product',
-      render: (row) => (
-        <div className="flex items-center gap-3">
-          <div className="h-8 w-8 rounded-lg bg-gradient-to-br from-primary/10 to-secondary/10 flex items-center justify-center">
-            <CubeIcon className="h-4 w-4 text-primary/50" />
+      render: (row) => {
+        const variantSummary = formatVariantOptionsSummary(row.variant_options)
+        const displaySku = row.variant_sku ?? row.sku
+
+        return (
+          <div className="flex items-center gap-3">
+            <div className="h-8 w-8 rounded-lg bg-gradient-to-br from-primary/10 to-secondary/10 flex items-center justify-center">
+              <CubeIcon className="h-4 w-4 text-primary/50" />
+            </div>
+            <div>
+              <p className="font-medium text-text">{row.product_name}</p>
+              <p className="text-xs text-text-tertiary">SKU: {displaySku}</p>
+              {variantSummary ? (
+                <p className="mt-1 text-xs text-text-secondary">{variantSummary}</p>
+              ) : null}
+            </div>
           </div>
-          <div>
-            <p className="font-medium text-text">{row.product_name}</p>
-            <p className="text-xs text-text-tertiary">SKU: {row.sku}</p>
-          </div>
-        </div>
-      )
+        )
+      }
     },
     {
       key: 'branch_name',
@@ -1505,8 +1541,20 @@ const InventoryManagementPage = () => {
                     const totalBuyingAmount = quantity * buyingPrice
                     const totalSellingAmount = quantity * sellingPrice
                     const expectedProfit = totalSellingAmount - totalBuyingAmount
-                    const rowStockQuery = restockRowStockQueries[index]
-                    const currentStock = rowStockQuery?.data ?? null
+                    const rowProductQuery = restockRowProductQueries[index]
+                    const selectedProduct = rowProductQuery?.data ?? null
+                    const variants = selectedProduct?.variants ?? []
+                    const hasVariants = variants.length > 0
+                    const selectedVariant = variants.find(
+                      (variant) => String(variant.id) === row.productVariantId
+                    )
+                    const variantSelectPlaceholder = row.productId
+                      ? rowProductQuery?.isLoading
+                        ? 'Loading variants...'
+                        : hasVariants
+                        ? 'Select variant'
+                        : 'No variants for this product'
+                      : 'Select a product first'
 
                     return (
                       <motion.div
@@ -1537,12 +1585,35 @@ const InventoryManagementPage = () => {
                         <div className="grid gap-4 md:grid-cols-4">
                           <Select
                             label="Product"
-                            options={getProductOptionsForRow(row.id, row.productId)}
+                            options={getProductOptionsForRow()}
                             value={row.productId}
                             onChange={(event) =>
                               updateRestockRowField(row.id, 'productId', String(event.target.value))
                             }
                             required
+                          />
+                          <Select
+                            label="Variant"
+                            options={[
+                              {
+                                label: variantSelectPlaceholder,
+                                value: ''
+                              },
+                              ...variants.map((variant) => ({
+                                label: formatVariantLabel(variant),
+                                value: String(variant.id)
+                              }))
+                            ]}
+                            value={row.productVariantId}
+                            onChange={(event) =>
+                              updateRestockRowField(
+                                row.id,
+                                'productVariantId',
+                                String(event.target.value)
+                              )
+                            }
+                            disabled={!hasVariants}
+                            required={hasVariants}
                           />
                           <TextInput
                             label="Quantity"
@@ -1565,6 +1636,9 @@ const InventoryManagementPage = () => {
                             }
                             required
                           />
+                        </div>
+
+                        <div className="grid gap-4 md:grid-cols-2">
                           <TextInput
                             label="Selling Price (per unit)"
                             type="number"
@@ -1575,6 +1649,20 @@ const InventoryManagementPage = () => {
                               updateRestockRowField(row.id, 'sellingPrice', event.target.value)
                             }
                             required
+                          />
+                          <TextInput
+                            label="Restock Target"
+                            value={
+                              hasVariants
+                                ? selectedVariant
+                                  ? formatVariantLabel(selectedVariant)
+                                  : 'Select a variant to choose the exact SKU'
+                                : row.productId
+                                ? 'Base product stock'
+                                : 'Select a product first'
+                            }
+                            readOnly
+                            className="bg-white"
                           />
                         </div>
 
@@ -1587,35 +1675,50 @@ const InventoryManagementPage = () => {
                             <p className="text-xs text-text-tertiary">
                               Select a product to see current stock in {selectedRestockBranchName}.
                             </p>
-                          ) : rowStockQuery?.isLoading ? (
+                          ) : rowProductQuery?.isLoading ? (
                             <div className="flex items-center gap-2 text-xs text-text-secondary">
                               <ArrowPathIcon className="h-3.5 w-3.5 animate-spin" />
-                              Loading current stock for {selectedRestockBranchName}...
+                              Loading product details for {selectedRestockBranchName}...
                             </div>
-                          ) : rowStockQuery?.isError ? (
+                          ) : rowProductQuery?.isError ? (
                             <p className="text-xs text-error">
-                              Could not load current stock for this branch.
+                              Could not load product details for this branch.
                             </p>
-                          ) : currentStock ? (
+                          ) : hasVariants && !row.productVariantId ? (
+                            <p className="text-xs text-text-tertiary">
+                              This product has variants. Select the exact variant before recording
+                              new stock.
+                            </p>
+                          ) : hasVariants && selectedVariant ? (
                             <div className="flex flex-col gap-1 text-xs text-text-secondary sm:flex-row sm:flex-wrap sm:items-center sm:gap-4">
                               <span>
-                                Current stock in {currentStock.branch_name ?? selectedRestockBranchName}:{' '}
-                                <strong className="text-text">{currentStock.stock_quantity}</strong>
+                                Variant SKU: <strong className="text-text">{selectedVariant.sku}</strong>
                               </span>
                               <span>
-                                Business stock:{' '}
-                                <strong className="text-text">
-                                  {currentStock.business_stock_quantity}
-                                </strong>
+                                Current stock in {selectedRestockBranchName}:{' '}
+                                <strong className="text-text">{selectedVariant.stock_quantity}</strong>
+                              </span>
+                              <span>
+                                Target: <strong className="text-text">{formatVariantLabel(selectedVariant)}</strong>
+                              </span>
+                            </div>
+                          ) : selectedProduct ? (
+                            <div className="flex flex-col gap-1 text-xs text-text-secondary sm:flex-row sm:flex-wrap sm:items-center sm:gap-4">
+                              <span>
+                                Current stock in {selectedRestockBranchName}:{' '}
+                                <strong className="text-text">{selectedProduct.stock_quantity}</strong>
                               </span>
                               <span>
                                 Reorder level:{' '}
-                                <strong className="text-text">{currentStock.reorder_level}</strong>
+                                <strong className="text-text">{selectedProduct.reorder_level}</strong>
+                              </span>
+                              <span>
+                                Restocking: <strong className="text-text">Base product stock</strong>
                               </span>
                             </div>
                           ) : (
                             <p className="text-xs text-text-tertiary">
-                              No stock record found for this product in {selectedRestockBranchName}.
+                              No product details found for this selection in {selectedRestockBranchName}.
                             </p>
                           )}
                         </div>
@@ -2366,7 +2469,7 @@ const InventoryManagementPage = () => {
               <div className="mt-3">
                 <span className="text-xs text-text-tertiary flex items-center gap-1">
                   <ArrowPathIcon className="h-3 w-3 animate-spin" />
-                  Refreshing stock status...
+                  Refreshing stock balances...
                 </span>
               </div>
             )}
@@ -2374,17 +2477,19 @@ const InventoryManagementPage = () => {
           <DataTable
             columns={stockStatusColumns}
             data={stockStatusQuery.data ?? []}
-            getRowKey={(row) => `${row.branch_id ?? 'all'}-${row.product_id}`}
+            getRowKey={(row) =>
+              `${row.branch_id ?? 'all'}-${row.product_id}-${row.product_variant_id ?? 'base'}`
+            }
             emptyState={
               stockStatusQuery.isLoading ? (
                 <div className="p-8 text-center">
                   <ArrowPathIcon className="h-8 w-8 mx-auto text-primary/30 animate-spin mb-3" />
-                  <p className="text-sm text-text-secondary">Loading stock status...</p>
+                  <p className="text-sm text-text-secondary">Loading stock balances...</p>
                 </div>
               ) : stockStatusQuery.isError ? (
                 <div className="p-8 text-center">
                   <XCircleIcon className="h-10 w-10 mx-auto text-error/40 mb-3" />
-                  <p className="text-sm text-error">Could not load stock status.</p>
+                  <p className="text-sm text-error">Could not load stock balances.</p>
                 </div>
               ) : (
                 <div className="p-8 text-center">

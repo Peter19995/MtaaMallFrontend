@@ -1,7 +1,7 @@
-import { FormEvent, useMemo, useState } from 'react'
+import { FormEvent, useEffect, useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { motion, AnimatePresence } from 'framer-motion'
-import { useNavigate } from 'react-router-dom'
+import { useLocation, useNavigate } from 'react-router-dom'
 import {
   PlusIcon,
   MagnifyingGlassIcon,
@@ -33,9 +33,11 @@ import {
   createCategoryRequest,
   createProductRequest,
   deleteProductRequest,
+  generateProductSkuRequest,
   getProductRequest,
   listCategoriesRequest,
   listProductsRequest,
+  type GeneratedProductSkuResponse,
   type ProductCreate,
   type ProductResponse,
   type ProductUpdate,
@@ -90,6 +92,30 @@ const getOfferPrice = (price: number, isOnOffer?: boolean, maxOffer?: number): n
 const getBlockingStockStatuses = (statuses: InventoryProductStockStatusResponse[]) =>
   statuses.filter((status) => status.stock_quantity > 0 || status.business_stock_quantity > 0)
 
+const mergeImageFiles = (existingFiles: File[], incomingFiles: File[]) => {
+  const mergedFiles = [...existingFiles]
+
+  incomingFiles.forEach((incomingFile) => {
+    const alreadySelected = mergedFiles.some(
+      (currentFile) =>
+        currentFile.name === incomingFile.name &&
+        currentFile.size === incomingFile.size &&
+        currentFile.lastModified === incomingFile.lastModified
+    )
+
+    if (!alreadySelected) {
+      mergedFiles.push(incomingFile)
+    }
+  })
+
+  return mergedFiles
+}
+
+type PendingImagePreview = {
+  file: File
+  previewUrl: string
+}
+
 // Animation variants
 const fadeInUp = {
   initial: { opacity: 0, y: 20 },
@@ -107,6 +133,7 @@ const staggerContainer = {
 
 const ProductManagementPage = () => {
   const navigate = useNavigate()
+  const location = useLocation()
   const queryClient = useQueryClient()
   const [search, setSearch] = useState('')
   const [categoryFilter, setCategoryFilter] = useState(ALL_CATEGORIES)
@@ -129,6 +156,25 @@ const ProductManagementPage = () => {
   const categoriesQuery = useQuery({
     queryKey: ['products', 'categories'],
     queryFn: listCategoriesRequest
+  })
+
+  const selectedCreateCategoryId = useMemo(() => {
+    if (editingProductId) {
+      return undefined
+    }
+
+    if (!form.categoryId) {
+      return undefined
+    }
+
+    const parsedCategoryId = Number(form.categoryId)
+    return Number.isFinite(parsedCategoryId) ? parsedCategoryId : undefined
+  }, [editingProductId, form.categoryId])
+
+  const generatedSkuQuery = useQuery({
+    queryKey: ['products', 'sku-generate', selectedCreateCategoryId],
+    queryFn: () => generateProductSkuRequest(selectedCreateCategoryId as number),
+    enabled: selectedCreateCategoryId !== undefined
   })
 
   const productsQuery = useQuery({
@@ -157,11 +203,18 @@ const ProductManagementPage = () => {
 
   const saveProductMutation = useMutation({
     mutationFn: async (payload: ProductFormState) => {
+      const isEditing = Boolean(editingProductId)
       const stockQuantity = Number(payload.stockQuantity)
       const reorderLevel = Number(payload.reorderLevel)
       const maxOffer = Number(payload.maxOffer)
       const categoryId = payload.categoryId ? Number(payload.categoryId) : undefined
 
+      if (!editingProductId && !categoryId) {
+        throw new Error('Select a category first so the SKU can be generated.')
+      }
+      if (!editingProductId && !payload.sku.trim()) {
+        throw new Error('Wait for the SKU to be generated after selecting a category.')
+      }
       if (Number.isNaN(stockQuantity) || stockQuantity < 0) {
         throw new Error('Stock quantity must be a number greater than or equal to 0.')
       }
@@ -185,7 +238,8 @@ const ProductManagementPage = () => {
         }
         await updateProductRequest(editingProductId, updatePayload)
         await uploadProductImagesRequest(editingProductId, payload.imageFiles)
-        return getProductRequest(editingProductId)
+        const product = await getProductRequest(editingProductId)
+        return { product, isEditing }
       }
 
       const createPayload: ProductCreate = {
@@ -202,14 +256,21 @@ const ProductManagementPage = () => {
 
       const createdProduct = await createProductRequest(createPayload)
       await uploadProductImagesRequest(createdProduct.id, payload.imageFiles)
-      return getProductRequest(createdProduct.id)
+      const product = await getProductRequest(createdProduct.id)
+      return { product, isEditing }
     },
-    onSuccess: () => {
+    onSuccess: ({ product, isEditing }) => {
       queryClient.invalidateQueries({ queryKey: ['products', 'list'] })
       setForm(EMPTY_FORM)
       setEditingProductId(null)
       setShowProductForm(false)
       setFormError(null)
+
+      if (!isEditing) {
+        navigate(`/dashboard/admin/products/${product.id}`, {
+          state: { initialTab: 'variants' }
+        })
+      }
     },
     onError: (error: Error) => {
       setFormError(error.message || 'Could not save product.')
@@ -268,19 +329,69 @@ const ProductManagementPage = () => {
 
   const productFormCategoryOptions = useMemo(
     () => [
-      { label: 'No category', value: '' },
+      { label: editingProductId ? 'No category' : 'Select category', value: '' },
       ...(categoriesQuery.data ?? []).map((category) => ({
         label: category.name,
         value: String(category.id)
       }))
     ],
-    [categoriesQuery.data]
+    [categoriesQuery.data, editingProductId]
   )
 
   const editingProduct = useMemo(
     () => (productsQuery.data ?? []).find((product) => product.id === editingProductId),
     [editingProductId, productsQuery.data]
   )
+
+  const pendingImagePreviews = useMemo<PendingImagePreview[]>(
+    () =>
+      form.imageFiles.map((file) => ({
+        file,
+        previewUrl: URL.createObjectURL(file)
+      })),
+    [form.imageFiles]
+  )
+
+  const generatedSkuMeta = useMemo<GeneratedProductSkuResponse | null>(
+    () => generatedSkuQuery.data ?? null,
+    [generatedSkuQuery.data]
+  )
+
+  useEffect(
+    () => () => {
+      pendingImagePreviews.forEach(({ previewUrl }) => URL.revokeObjectURL(previewUrl))
+    },
+    [pendingImagePreviews]
+  )
+
+  useEffect(() => {
+    if (location.state?.openProductForm !== true) {
+      return
+    }
+
+    setEditingProductId(null)
+    setForm(EMPTY_FORM)
+    setFormError(null)
+    setShowProductForm(true)
+    navigate(location.pathname, { replace: true })
+  }, [location.pathname, location.state, navigate])
+
+  useEffect(() => {
+    if (editingProductId || !generatedSkuMeta?.suggested_sku) {
+      return
+    }
+
+    setForm((previous) => {
+      if (previous.sku === generatedSkuMeta.suggested_sku) {
+        return previous
+      }
+
+      return {
+        ...previous,
+        sku: generatedSkuMeta.suggested_sku
+      }
+    })
+  }, [editingProductId, generatedSkuMeta])
 
   const openPriceModal = (product: ProductResponse) => {
     setPricingProduct(product)
@@ -313,6 +424,9 @@ const ProductManagementPage = () => {
           <div>
             <p className="font-medium text-text">{row.name}</p>
             <p className="text-xs text-text-tertiary">SKU: {row.sku}</p>
+            <p className="text-xs text-text-tertiary">
+              Variants: {row.variants?.length ?? 0}
+            </p>
           </div>
         </div>
       )
@@ -728,27 +842,50 @@ const ProductManagementPage = () => {
               </h2>
               <form onSubmit={onSubmitProduct} className="space-y-4">
                 <div className="grid gap-4 md:grid-cols-3">
-                  {!editingProductId && (
+                  <Select
+                    label="Category"
+                    options={productFormCategoryOptions}
+                    value={form.categoryId}
+                    onChange={(e) => {
+                      const nextCategoryId = String(e.target.value)
+                      setForm((previous) => ({
+                        ...previous,
+                        categoryId: nextCategoryId,
+                        sku: editingProductId ? previous.sku : ''
+                      }))
+                    }}
+                    required={!editingProductId}
+                  />
+                  {!editingProductId ? (
                     <TextInput
                       label="SKU"
                       value={form.sku}
-                      onChange={(e) => setForm({ ...form, sku: e.target.value })}
+                      readOnly
                       required
-                      placeholder="e.g., PRD-001"
+                      placeholder={
+                        form.categoryId
+                          ? generatedSkuQuery.isLoading
+                            ? 'Generating SKU...'
+                            : 'SKU will be generated'
+                          : 'Select category first'
+                      }
+                      helperText={
+                        form.categoryId
+                          ? generatedSkuQuery.isError
+                            ? 'Could not generate SKU for the selected category.'
+                            : generatedSkuMeta
+                              ? `${generatedSkuMeta.category_name}: ${generatedSkuMeta.sku_prefix} • next #${generatedSkuMeta.next_sequence}`
+                              : 'SKU is generated from the selected category.'
+                          : 'Choose a category to generate the next SKU.'
+                      }
                     />
-                  )}
+                  ) : null}
                   <TextInput
                     label="Product Name"
                     value={form.name}
                     onChange={(e) => setForm({ ...form, name: e.target.value })}
                     required
                     placeholder="e.g., Premium Cotton Curtains"
-                  />
-                  <Select
-                    label="Category"
-                    options={productFormCategoryOptions}
-                    value={form.categoryId}
-                    onChange={(e) => setForm({ ...form, categoryId: String(e.target.value) })}
                   />
                   <TextInput
                     label="Stock Quantity"
@@ -798,14 +935,73 @@ const ProductManagementPage = () => {
                       multiple
                       onChange={(e) => {
                         const files = Array.from(e.target.files ?? [])
-                        setForm({ ...form, imageFiles: files })
+                        setForm((previous) => ({
+                          ...previous,
+                          imageFiles: mergeImageFiles(previous.imageFiles, files)
+                        }))
+                        e.target.value = ''
                       }}
                       className="w-full px-3 py-2 bg-background border border-border rounded-lg text-sm"
                     />
-                    {form.imageFiles.length > 0 && (
-                      <p className="text-xs text-text-tertiary">
-                        {form.imageFiles.length} file(s) selected
+                    <p className="text-xs text-text-tertiary">
+                      {editingProductId
+                        ? 'Select images any number of times. New uploads are added to the product.'
+                        : 'Select images any number of times. All selected files will be uploaded when you create the product.'}
+                    </p>
+                    {!editingProductId && (
+                      <p className="text-xs text-primary">
+                        After saving the base product, you will be taken straight to variant setup.
                       </p>
+                    )}
+                    {form.imageFiles.length > 0 && (
+                      <div className="space-y-2">
+                        <p className="text-xs text-text-tertiary">
+                          {form.imageFiles.length} file(s) selected
+                        </p>
+                        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+                          {pendingImagePreviews.map(({ file, previewUrl }, index) => (
+                            <button
+                              key={`${file.name}-${file.lastModified}-${index}`}
+                              type="button"
+                              className="group relative overflow-hidden rounded-xl border border-border bg-background text-left"
+                              onClick={() => setPreviewImage(previewUrl)}
+                              title="Preview selected image"
+                            >
+                              <img
+                                src={previewUrl}
+                                alt={file.name}
+                                className="h-28 w-full object-cover transition-transform duration-300 group-hover:scale-105"
+                              />
+                              <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/70 via-black/20 to-transparent p-2">
+                                <p className="truncate text-xs font-medium text-white">{file.name}</p>
+                              </div>
+                            </button>
+                          ))}
+                        </div>
+                        <div className="flex flex-wrap gap-2">
+                          {form.imageFiles.map((file, index) => (
+                            <span
+                              key={`${file.name}-${file.lastModified}-${index}`}
+                              className="inline-flex items-center gap-2 rounded-full bg-primary/10 px-3 py-1 text-xs text-primary"
+                            >
+                              <span className="max-w-[160px] truncate">{file.name}</span>
+                              <button
+                                type="button"
+                                className="rounded-full p-0.5 text-primary transition hover:bg-primary/10"
+                                onClick={() =>
+                                  setForm((previous) => ({
+                                    ...previous,
+                                    imageFiles: previous.imageFiles.filter((_, fileIndex) => fileIndex !== index)
+                                  }))
+                                }
+                                title="Remove image"
+                              >
+                                <XMarkIcon className="h-3.5 w-3.5" />
+                              </button>
+                            </span>
+                          ))}
+                        </div>
+                      </div>
                     )}
                   </div>
 
@@ -1028,6 +1224,12 @@ const ProductManagementPage = () => {
                           Base: {formatCurrency(getBasePrice(selectedProduct))} • Offer: {formatCurrency(selectedProduct.max_offer ?? 0)} off
                         </p>
                       ) : null}
+                    </div>
+                    <div className="rounded-xl border border-border bg-background p-4">
+                      <p className="text-xs text-text-tertiary">Variants</p>
+                      <p className="mt-1 font-semibold text-text">
+                        {selectedProduct.variants?.length ?? 0}
+                      </p>
                     </div>
                   </div>
                 </div>

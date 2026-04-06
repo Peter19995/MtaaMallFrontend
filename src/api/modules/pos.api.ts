@@ -2,6 +2,7 @@ import api from '@api/config/axios.config'
 
 export type PosSaleItemCreate = {
   product_id: number
+  product_variant_id?: number
   quantity: number
 }
 

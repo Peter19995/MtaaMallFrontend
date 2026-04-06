@@ -19,17 +19,40 @@ import {
   ChartBarIcon,
   UsersIcon,
   ShoppingBagIcon,
-  DocumentTextIcon,
   ChevronDownIcon,
   SparklesIcon,
 } from '@heroicons/react/24/outline'
 import { useAuth } from '@hooks/useAuth'
 import brandLogo from '@/assets/business-logo.svg'
 
+type NavChildItem = {
+  path?: string
+  label: string
+  state?: Record<string, unknown>
+  end?: boolean
+  action?: 'openProductForm'
+}
+
+type NavItem = {
+  path?: string
+  label: string
+  icon: typeof HomeIcon
+  end?: boolean
+  children?: NavChildItem[]
+}
+
 // Navigation items configuration
-const navItems = [
+const navItems: NavItem[] = [
   { path: '/dashboard/admin', label: 'Overview', icon: HomeIcon, end: true },
-  { path: '/dashboard/admin/products', label: 'Products', icon: CubeIcon },
+  {
+    label: 'Products',
+    icon: CubeIcon,
+    children: [
+      { path: '/dashboard/admin/products', label: 'Catalog', end: true },
+      { label: 'New Product', action: 'openProductForm' },
+      { path: '/dashboard/admin/products/settings', label: 'Product Settings' }
+    ]
+  },
   { path: '/dashboard/admin/branches', label: 'Branches', icon: BuildingStorefrontIcon },
   { path: '/dashboard/admin/customers', label: 'Customers', icon: UserIcon },
   { path: '/dashboard/admin/inventory', label: 'Inventory', icon: ServerStackIcon },
@@ -50,11 +73,20 @@ export const DashboardLayout = () => {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false)
   const [isProfileMenuOpen, setIsProfileMenuOpen] = useState(false)
   const [isScrolled, setIsScrolled] = useState(false)
+  const [openMenus, setOpenMenus] = useState<Record<string, boolean>>(() => ({
+    Products: location.pathname.startsWith('/dashboard/admin/products')
+  }))
 
   // Close mobile menu on route change
   useEffect(() => {
     setIsMobileMenuOpen(false)
   }, [location])
+
+  useEffect(() => {
+    if (location.pathname.startsWith('/dashboard/admin/products')) {
+      setOpenMenus((previous) => ({ ...previous, Products: true }))
+    }
+  }, [location.pathname])
 
   // Handle scroll effect for header
   useEffect(() => {
@@ -76,6 +108,178 @@ export const DashboardLayout = () => {
         ? 'bg-primary/10 text-primary border-l-4 border-primary' 
         : 'text-text-secondary hover:bg-primary/5 hover:text-primary hover:translate-x-1'
     }`
+  }
+
+  const childNavClass = (isActive: boolean) =>
+    `ml-11 flex items-center rounded-lg px-3 py-2 text-sm transition-all duration-200 ${
+      isActive
+        ? 'bg-primary/10 text-primary'
+        : 'text-text-tertiary hover:bg-primary/5 hover:text-primary'
+    }`
+
+  const isChildActive = (child: NavChildItem) => {
+    if (!child.path) {
+      return false
+    }
+
+    if (child.end) {
+      return location.pathname === child.path
+    }
+
+    return location.pathname.startsWith(child.path)
+  }
+
+  const isItemActive = (item: NavItem) => {
+    if (item.children?.length) {
+      return item.children.some((child) => {
+        if (isChildActive(child)) {
+          return true
+        }
+
+        return Boolean(child.path && location.pathname.startsWith(`${child.path}/`))
+      })
+    }
+
+    if (!item.path) {
+      return false
+    }
+
+    return item.end ? location.pathname === item.path : location.pathname.startsWith(item.path)
+  }
+
+  const getCurrentPageLabel = () => {
+    for (const item of navItems) {
+      if (item.children?.length) {
+        const activeChild = item.children.find((child) => isChildActive(child))
+        if (activeChild) {
+          return activeChild.label
+        }
+
+        const activeNestedChild = item.children.find(
+          (child) => child.path && location.pathname.startsWith(`${child.path}/`)
+        )
+        if (activeNestedChild) {
+          return item.label
+        }
+      }
+
+      if (item.path && (item.end ? location.pathname === item.path : location.pathname.startsWith(item.path))) {
+        return item.label
+      }
+    }
+
+    return 'Dashboard'
+  }
+
+  const handleChildAction = (child: NavChildItem) => {
+    if (child.action === 'openProductForm') {
+      navigate('/dashboard/admin/products', { state: { openProductForm: true } })
+      return
+    }
+
+    if (child.path) {
+      navigate(child.path, child.state ? { state: child.state } : undefined)
+    }
+  }
+
+  const renderNavItem = (item: NavItem, isMobile = false) => {
+    const Icon = item.icon
+
+    if (item.children?.length) {
+      const isOpen = openMenus[item.label] ?? false
+      const isActive = isItemActive(item)
+
+      return (
+        <div key={item.label} className="space-y-1">
+          <button
+            type="button"
+            onClick={() =>
+              setOpenMenus((previous) => ({
+                ...previous,
+                [item.label]: !isOpen
+              }))
+            }
+            className={`flex w-full items-center gap-3 rounded-lg px-4 py-3 text-sm font-medium transition-all duration-200 ${
+              isActive
+                ? 'bg-primary/10 text-primary border-l-4 border-primary'
+                : 'text-text-secondary hover:bg-primary/5 hover:text-primary'
+            }`}
+          >
+            <Icon className="h-5 w-5" />
+            <span className="flex-1 text-left">{item.label}</span>
+            <ChevronDownIcon
+              className={`h-4 w-4 transition-transform duration-200 ${isOpen ? 'rotate-180' : ''}`}
+            />
+          </button>
+
+          <AnimatePresence initial={false}>
+            {isOpen && (
+              <motion.div
+                initial={{ height: 0, opacity: 0 }}
+                animate={{ height: 'auto', opacity: 1 }}
+                exit={{ height: 0, opacity: 0 }}
+                className="overflow-hidden"
+              >
+                <div className="space-y-1 py-1">
+                  {item.children.map((child) => {
+                    if (child.action) {
+                      return (
+                        <button
+                          key={`${item.label}-${child.label}`}
+                          type="button"
+                          onClick={() => {
+                            handleChildAction(child)
+                            if (isMobile) {
+                              setIsMobileMenuOpen(false)
+                            }
+                          }}
+                          className={childNavClass(false)}
+                        >
+                          {child.label}
+                        </button>
+                      )
+                    }
+
+                    return (
+                      <NavLink
+                        key={`${item.label}-${child.label}`}
+                        to={child.path ?? '/dashboard/admin'}
+                        end={child.end}
+                        className={() => childNavClass(isChildActive(child))}
+                        onClick={() => {
+                          if (isMobile) {
+                            setIsMobileMenuOpen(false)
+                          }
+                        }}
+                      >
+                        {child.label}
+                      </NavLink>
+                    )
+                  })}
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </div>
+      )
+    }
+
+    return (
+      <NavLink
+        key={item.path}
+        to={item.path ?? '/dashboard/admin'}
+        end={item.end}
+        className={navClass}
+        onClick={() => {
+          if (isMobile) {
+            setIsMobileMenuOpen(false)
+          }
+        }}
+      >
+        <Icon className="h-5 w-5" />
+        <span>{item.label}</span>
+      </NavLink>
+    )
   }
 
   return (
@@ -130,20 +334,7 @@ export const DashboardLayout = () => {
               Main Menu
             </p>
             <div className="space-y-1">
-              {navItems.map((item) => {
-                const Icon = item.icon
-                return (
-                  <NavLink
-                    key={item.path}
-                    to={item.path}
-                    end={item.end}
-                    className={navClass}
-                  >
-                    <Icon className="h-5 w-5" />
-                    <span>{item.label}</span>
-                  </NavLink>
-                )
-              })}
+              {navItems.map((item) => renderNavItem(item))}
             </div>
           </nav>
 
@@ -225,21 +416,7 @@ export const DashboardLayout = () => {
               Main Menu
             </p>
             <div className="space-y-1">
-              {navItems.map((item) => {
-                const Icon = item.icon
-                return (
-                  <NavLink
-                    key={item.path}
-                    to={item.path}
-                    end={item.end}
-                    className={navClass}
-                    onClick={() => setIsMobileMenuOpen(false)}
-                  >
-                    <Icon className="h-5 w-5" />
-                    <span>{item.label}</span>
-                  </NavLink>
-                )
-              })}
+              {navItems.map((item) => renderNavItem(item, true))}
             </div>
           </nav>
 
@@ -293,10 +470,7 @@ export const DashboardLayout = () => {
                 <Bars3Icon className="h-5 w-5 text-text-secondary" />
               </button>
               <span className="text-sm font-medium text-text-secondary hidden sm:inline">
-                {navItems.find(item => 
-                  item.path === location.pathname || 
-                  (item.end && location.pathname === item.path)
-                )?.label || 'Dashboard'}
+                {getCurrentPageLabel()}
               </span>
             </div>
 

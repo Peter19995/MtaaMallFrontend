@@ -27,6 +27,9 @@ const ProductManagementPage = lazy(
 const ManageProductPage = lazy(
   () => import('@pages/dashboard/admin/Products/ManageProductPage')
 )
+const ProductSettingsPage = lazy(
+  () => import('@pages/dashboard/admin/Products/ProductSettingsPage')
+)
 const ServiceManagementPage = lazy(
   () => import('@pages/dashboard/admin/Services/ServiceManagementPage')
 )
@@ -92,6 +95,7 @@ export const AppRoutes = () => {
           <Route element={<DashboardLayout />}>
             <Route path="/dashboard/admin" element={<AdminOverview />} />
             <Route path="/dashboard/admin/products" element={<ProductManagementPage />} />
+            <Route path="/dashboard/admin/products/settings" element={<ProductSettingsPage />} />
             <Route path="/dashboard/admin/products/:productId" element={<ManageProductPage />} />
             <Route path="/dashboard/admin/services" element={<ServiceManagementPage />} />
             <Route path="/dashboard/admin/branches" element={<BranchesManagementPage />} />

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { motion, AnimatePresence } from 'framer-motion'
@@ -44,7 +44,6 @@ import {
   getPosSaleRequest,
   listPosSalesRequest,
   refundPosSaleRequest,
-  updatePosSaleStatusRequest,
   type PosSaleResponse
 } from '@api/modules/pos.api'
 import { AppTheme, withOpacity } from '@constants/theme'
@@ -112,7 +111,6 @@ const SalesOperationsPage = () => {
 
   const [feedback, setFeedback] = useState<FeedbackState | null>(null)
   const [selectedSaleId, setSelectedSaleId] = useState<number | null>(null)
-  const [statusBySaleId, setStatusBySaleId] = useState<Record<number, string>>({})
 
   const branchIdNumber = useMemo(
     () => (branchId ? Number(branchId) : undefined),
@@ -185,23 +183,6 @@ const SalesOperationsPage = () => {
     enabled: selectedSaleId !== null
   })
 
-  useEffect(() => {
-    const sales = posSalesQuery.data ?? []
-    if (sales.length === 0) {
-      return
-    }
-
-    setStatusBySaleId((previous) => {
-      const next: Record<number, string> = {}
-
-      sales.forEach((sale) => {
-        next[sale.id] = previous[sale.id] ?? sale.status
-      })
-
-      return next
-    })
-  }, [posSalesQuery.data])
-
   const branchOptions = useMemo(
     () => [
       { label: 'All branches', value: '' },
@@ -226,33 +207,6 @@ const SalesOperationsPage = () => {
       sale.status.toLowerCase().includes(term)
     )
   }, [posSalesQuery.data, searchTerm])
-
-  const updateStatusMutation = useMutation({
-    mutationFn: (input: { saleId: number; status: string; branchId?: number }) =>
-      updatePosSaleStatusRequest(
-        input.saleId,
-        { status: input.status },
-        {
-          branch_id: input.branchId
-        }
-      ),
-    onSuccess: (sale) => {
-      setFeedback({
-        type: 'success',
-        message: `Sale #${sale.id} status updated to ${toDisplayLabel(sale.status)}.`
-      })
-      queryClient.invalidateQueries({ queryKey: ['pos', 'sales'] })
-      queryClient.invalidateQueries({ queryKey: ['pos', 'sales', 'detail', sale.id] })
-      queryClient.invalidateQueries({ queryKey: ['pos', 'daily-summary'] })
-      setTimeout(() => setFeedback(null), 3000)
-    },
-    onError: (error: Error) => {
-      setFeedback({
-        type: 'error',
-        message: error.message || 'Failed to update sale status.'
-      })
-    }
-  })
 
   const cancelSaleMutation = useMutation({
     mutationFn: (input: { saleId: number; reason?: string; branchId?: number; restockItems: boolean }) =>
@@ -315,23 +269,6 @@ const SalesOperationsPage = () => {
       })
     }
   })
-
-  const onUpdateStatus = (sale: PosSaleResponse) => {
-    const status = (statusBySaleId[sale.id] ?? sale.status).trim()
-    if (!status) {
-      setFeedback({
-        type: 'error',
-        message: 'Status cannot be empty.'
-      })
-      return
-    }
-
-    updateStatusMutation.mutate({
-      saleId: sale.id,
-      status,
-      branchId: sale.branch_id ?? branchIdNumber
-    })
-  }
 
   const onCancelSale = (sale: PosSaleResponse) => {
     const reasonInput = window.prompt(`Cancel sale #${sale.id}. Reason (optional):`)
@@ -426,11 +363,6 @@ const SalesOperationsPage = () => {
       key: 'status',
       header: 'Status',
       render: (sale) => {
-        const currentStatus = statusBySaleId[sale.id] ?? sale.status
-        const statusOptions = Array.from(new Set([currentStatus, ...COMMON_POS_STATUSES]))
-        const isUpdatingCurrentSale =
-          updateStatusMutation.isPending && updateStatusMutation.variables?.saleId === sale.id
-
         const getStatusColor = (status: string) => {
           switch(status) {
             case 'completed': return 'bg-success/10 text-success'
@@ -442,34 +374,13 @@ const SalesOperationsPage = () => {
         }
 
         return (
-          <div className="flex min-w-[240px] items-center gap-2">
-            <select
-              className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-text focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
-              value={currentStatus}
-              onChange={(event) => {
-                const nextStatus = event.target.value
-                setStatusBySaleId((previous) => ({
-                  ...previous,
-                  [sale.id]: nextStatus
-                }))
-              }}
-            >
-              {statusOptions.map((status) => (
-                <option key={status} value={status}>
-                  {toDisplayLabel(status)}
-                </option>
-              ))}
-            </select>
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={() => onUpdateStatus(sale)}
-              loading={isUpdatingCurrentSale}
-              className="whitespace-nowrap"
-            >
-              Update
-            </Button>
-          </div>
+          <span
+            className={`inline-flex min-w-[120px] items-center justify-center rounded-full px-3 py-1 text-xs font-medium ${getStatusColor(
+              sale.status
+            )}`}
+          >
+            {toDisplayLabel(sale.status)}
+          </span>
         )
       }
     },

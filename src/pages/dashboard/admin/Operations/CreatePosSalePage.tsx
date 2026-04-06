@@ -1,6 +1,6 @@
 import { FormEvent, useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useMutation, useQueries, useQuery, useQueryClient } from '@tanstack/react-query'
 import { isAxiosError } from 'axios'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
@@ -27,7 +27,7 @@ import {
   getDefaultCashCustomerRequest,
   listCustomersRequest
 } from '@api/modules/customers.api'
-import { listInStockProductsRequest } from '@api/modules/products.api'
+import { getProductRequest, listInStockProductsRequest } from '@api/modules/products.api'
 import {
   createPosSaleRequest,
   listPaymentModesRequest,
@@ -38,6 +38,8 @@ import { AppTheme, withOpacity } from '@constants/theme'
 type SaleItemRowState = {
   id: string
   productId: string
+  productVariantId: string
+  selectedVariantOptions: Record<string, string>
   quantity: string
 }
 
@@ -82,6 +84,8 @@ const parseOptionalNumber = (value: string): number | undefined => {
 const createSaleItemRow = (): SaleItemRowState => ({
   id: `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
   productId: '',
+  productVariantId: '',
+  selectedVariantOptions: {},
   quantity: '1'
 })
 
@@ -133,6 +137,153 @@ const extractApiErrorMessage = (error: unknown): string => {
   }
 
   return error.message || 'Failed to create POS sale.'
+}
+
+const formatVariantLabel = (variant: { sku: string; options: Record<string, string> }) => {
+  const optionSummary = Object.entries(variant.options)
+    .map(([optionName, value]) => `${optionName}: ${value}`)
+    .join(' / ')
+
+  return optionSummary ? `${optionSummary} (${variant.sku})` : variant.sku
+}
+
+const getInStockVariants = (
+  variants: Array<{
+    id: number
+    sku: string
+    stock_quantity: number
+    options: Record<string, string>
+    price: number
+  }>
+) => variants.filter((variant) => Number(variant.stock_quantity ?? 0) > 0)
+
+const getOrderedVariantOptionNames = (
+  productVariantOptions:
+    | Array<{
+        option_name: string
+      }>
+    | undefined,
+  variants: Array<{
+    options: Record<string, string>
+  }>
+) => {
+  const names = new Set<string>()
+  const ordered: string[] = []
+
+  ;(productVariantOptions ?? []).forEach((option) => {
+    if (!names.has(option.option_name)) {
+      names.add(option.option_name)
+      ordered.push(option.option_name)
+    }
+  })
+
+  variants.forEach((variant) => {
+    Object.keys(variant.options ?? {}).forEach((optionName) => {
+      if (!names.has(optionName)) {
+        names.add(optionName)
+        ordered.push(optionName)
+      }
+    })
+  })
+
+  return ordered
+}
+
+const getVariantOptionSortMap = (
+  productVariantOptions:
+    | Array<{
+        option_name: string
+        values: Array<{
+          value: string
+          display_value?: string | null
+          sort_order: number
+        }>
+      }>
+    | undefined
+) => {
+  const sortMap: Record<string, Record<string, number>> = {}
+
+  ;(productVariantOptions ?? []).forEach((option) => {
+    const optionSortMap: Record<string, number> = {}
+
+    option.values.forEach((value) => {
+      optionSortMap[value.value] = value.sort_order
+      if (value.display_value) {
+        optionSortMap[value.display_value] = value.sort_order
+      }
+    })
+
+    sortMap[option.option_name] = optionSortMap
+  })
+
+  return sortMap
+}
+
+const getMatchingVariants = (
+  variants: Array<{
+    id: number
+    sku: string
+    stock_quantity: number
+    options: Record<string, string>
+    price: number
+  }>,
+  selectedOptions: Record<string, string>,
+  ignoredOptionName?: string
+) =>
+  variants.filter((variant) =>
+    Object.entries(selectedOptions).every(([optionName, optionValue]) => {
+      if (!optionValue || optionName === ignoredOptionName) {
+        return true
+      }
+
+      return variant.options?.[optionName] === optionValue
+    })
+  )
+
+const sanitizeSelectedVariantOptions = (
+  selectedOptions: Record<string, string>,
+  optionNames: string[],
+  variants: Array<{
+    id: number
+    sku: string
+    stock_quantity: number
+    options: Record<string, string>
+    price: number
+  }>
+) => {
+  if (!optionNames.length || !Object.keys(selectedOptions).length) {
+    return {}
+  }
+
+  const nextSelections: Record<string, string> = {}
+
+  optionNames.forEach((optionName) => {
+    const nextValue = selectedOptions[optionName]
+    if (!nextValue) {
+      return
+    }
+
+    const matches = getMatchingVariants(variants, { ...nextSelections, [optionName]: nextValue })
+    if (matches.length > 0) {
+      nextSelections[optionName] = nextValue
+    }
+  })
+
+  return nextSelections
+}
+
+const areSelectedVariantOptionsEqual = (
+  left: Record<string, string>,
+  right: Record<string, string>
+) => {
+  const leftKeys = Object.keys(left)
+  const rightKeys = Object.keys(right)
+
+  if (leftKeys.length !== rightKeys.length) {
+    return false
+  }
+
+  return leftKeys.every((key) => left[key] === right[key])
 }
 
 // Animation variants
@@ -193,6 +344,27 @@ const CreatePosSalePage = () => {
         limit: 200
       }),
     enabled: selectedBranchId !== undefined
+  })
+
+  const saleItemProductQueries = useQueries({
+    queries: createSaleForm.items.map((item) => {
+      const productId = Number(item.productId)
+      const isEnabled =
+        Number.isFinite(productId) &&
+        productId > 0 &&
+        typeof selectedBranchId === 'number' &&
+        selectedBranchId > 0
+
+      return {
+        queryKey: ['products', 'details', 'pos-create', selectedBranchId ?? 'none', productId || 'none'],
+        queryFn: () =>
+          getProductRequest(productId, {
+            branch_id: selectedBranchId
+          }),
+        enabled: isEnabled,
+        staleTime: 30_000
+      }
+    })
   })
 
   const paymentModesQuery = useQuery({
@@ -402,7 +574,7 @@ const CreatePosSalePage = () => {
     setCreateSaleForm((previous) => {
       let hasChanges = false
 
-      const nextItems = previous.items.map((row) => {
+      const nextItems = previous.items.map((row, index) => {
         if (!row.productId) {
           return row
         }
@@ -412,11 +584,62 @@ const CreatePosSalePage = () => {
           return {
             ...row,
             productId: '',
+            productVariantId: '',
+            selectedVariantOptions: {},
             quantity: '1'
           }
         }
 
-        const availableStock = productStockById[row.productId]
+        const rowProduct = saleItemProductQueries[index]?.data
+        const variants = getInStockVariants(rowProduct?.variants ?? [])
+        const hasVariants = (rowProduct?.variants?.length ?? 0) > 0
+        const selectedVariant = variants.find(
+          (variant) => String(variant.id) === row.productVariantId
+        )
+        const optionNames = getOrderedVariantOptionNames(rowProduct?.variant_options, variants)
+        const availableStock = hasVariants
+          ? selectedVariant?.stock_quantity
+          : productStockById[row.productId]
+
+        const sanitizedOptions = sanitizeSelectedVariantOptions(
+          row.selectedVariantOptions,
+          optionNames,
+          variants
+        )
+        const hasOptionChanges = !areSelectedVariantOptionsEqual(
+          sanitizedOptions,
+          row.selectedVariantOptions
+        )
+
+        if (hasVariants && !selectedVariant && row.productVariantId) {
+          hasChanges = true
+          return {
+            ...row,
+            productVariantId: '',
+            selectedVariantOptions: sanitizedOptions,
+            quantity: '1'
+          }
+        }
+
+        if (selectedVariant) {
+          const nextSelectedOptions = selectedVariant.options ?? {}
+          if (!areSelectedVariantOptionsEqual(nextSelectedOptions, row.selectedVariantOptions)) {
+            hasChanges = true
+            return {
+              ...row,
+              selectedVariantOptions: nextSelectedOptions
+            }
+          }
+        }
+
+        if (!selectedVariant && hasOptionChanges) {
+          hasChanges = true
+          return {
+            ...row,
+            selectedVariantOptions: sanitizedOptions
+          }
+        }
+
         const quantity = Number(row.quantity)
         if (
           Number.isFinite(quantity) &&
@@ -441,13 +664,18 @@ const CreatePosSalePage = () => {
           }
         : previous
     })
-  }, [productsQuery.data, productStockById])
+  }, [productsQuery.data, productStockById, saleItemProductQueries])
 
   const saleEstimate = useMemo(() => {
     const subtotal = createSaleForm.items.reduce((sum, item) => {
       const quantity = Number(item.quantity)
       const safeQuantity = Number.isFinite(quantity) && quantity > 0 ? quantity : 0
-      const unitPrice = productPriceById[item.productId] ?? 0
+      const itemIndex = createSaleForm.items.findIndex((row) => row.id === item.id)
+      const rowProduct = saleItemProductQueries[itemIndex]?.data
+      const selectedVariant = getInStockVariants(rowProduct?.variants ?? []).find(
+        (variant) => String(variant.id) === item.productVariantId
+      )
+      const unitPrice = selectedVariant?.price ?? productPriceById[item.productId] ?? 0
       return sum + safeQuantity * unitPrice
     }, 0)
 
@@ -459,7 +687,17 @@ const CreatePosSalePage = () => {
       discount,
       total: Math.max(0, subtotal - discount)
     }
-  }, [createSaleForm.items, createSaleForm.discountAmount, productPriceById])
+  }, [createSaleForm.items, createSaleForm.discountAmount, productPriceById, saleItemProductQueries])
+
+  const hasMissingVariantSelections = useMemo(
+    () =>
+      createSaleForm.items.some((item, index) => {
+        const rowProduct = saleItemProductQueries[index]?.data
+        const hasVariants = (rowProduct?.variants?.length ?? 0) > 0
+        return Boolean(item.productId) && hasVariants && !item.productVariantId
+      }),
+    [createSaleForm.items, saleItemProductQueries]
+  )
 
   const createPosSaleMutation = useMutation({
     mutationFn: async (payload: CreatePosSaleFormState) => {
@@ -470,10 +708,25 @@ const CreatePosSalePage = () => {
 
       const items = payload.items.map((item, index) => {
         const productId = Number(item.productId)
+        const productVariantId = item.productVariantId ? Number(item.productVariantId) : undefined
         const quantity = Number(item.quantity)
+        const rowProduct = saleItemProductQueries[index]?.data
+        const hasVariants = (rowProduct?.variants?.length ?? 0) > 0
+        const selectedVariant = getInStockVariants(rowProduct?.variants ?? []).find(
+          (variant) => variant.id === productVariantId
+        )
 
         if (!productId || Number.isNaN(productId)) {
           throw new Error(`Item ${index + 1}: choose a product.`)
+        }
+        if (!rowProduct) {
+          throw new Error(`Item ${index + 1}: product details are still loading. Try again.`)
+        }
+        if (hasVariants && !productVariantId) {
+          throw new Error(`Item ${index + 1}: choose the exact variant.`)
+        }
+        if (hasVariants && !selectedVariant) {
+          throw new Error(`Item ${index + 1}: selected variant is not valid for this product.`)
         }
 
         if (!quantity || Number.isNaN(quantity) || quantity < 1) {
@@ -483,9 +736,13 @@ const CreatePosSalePage = () => {
           throw new Error(`Item ${index + 1}: quantity must be a whole number.`)
         }
 
-        const availableStock = productStockById[String(productId)]
+        const availableStock = hasVariants
+          ? selectedVariant?.stock_quantity
+          : productStockById[String(productId)]
         if (availableStock === undefined || availableStock < 1) {
-          throw new Error(`Item ${index + 1}: selected product is out of stock for this branch.`)
+          throw new Error(
+            `Item ${index + 1}: selected ${hasVariants ? 'variant' : 'product'} is out of stock for this branch.`
+          )
         }
         if (quantity > availableStock) {
           throw new Error(
@@ -495,6 +752,7 @@ const CreatePosSalePage = () => {
 
         return {
           product_id: productId,
+          product_variant_id: hasVariants ? productVariantId : undefined,
           quantity
         }
       })
@@ -841,13 +1099,39 @@ const CreatePosSalePage = () => {
 
               <AnimatePresence>
                 {createSaleForm.items.map((item, index) => {
-                  const unitPrice = productPriceById[item.productId] ?? 0
+                  const rowProduct = saleItemProductQueries[index]?.data
+                  const variants = rowProduct?.variants ?? []
+                  const inStockVariants = getInStockVariants(variants)
+                  const hasVariants = variants.length > 0
+                  const selectedVariant = inStockVariants.find(
+                    (variant) => String(variant.id) === item.productVariantId
+                  )
+                  const orderedOptionNames = getOrderedVariantOptionNames(
+                    rowProduct?.variant_options,
+                    inStockVariants
+                  )
+                  const optionSortMap = getVariantOptionSortMap(rowProduct?.variant_options)
+                  const unitPrice = selectedVariant?.price ?? productPriceById[item.productId] ?? 0
                   const quantity = Number(item.quantity)
                   const safeQuantity = Number.isFinite(quantity) && quantity > 0 ? quantity : 0
                   const lineTotal = unitPrice * safeQuantity
-                  const availableStock = productStockById[item.productId]
-                  const quantityHelper =
-                    availableStock !== undefined ? `${availableStock} in stock` : 'Choose a product'
+                  const availableStock = hasVariants
+                    ? selectedVariant?.stock_quantity
+                    : productStockById[item.productId]
+                  const quantityHelper = hasVariants
+                    ? item.productVariantId
+                      ? `${availableStock ?? 0} in stock`
+                      : inStockVariants.length > 0
+                      ? 'Choose the exact in-stock options first'
+                      : 'No in-stock variants available'
+                    : availableStock !== undefined
+                    ? `${availableStock} in stock`
+                    : 'Choose a product'
+                  const variantSummary = selectedVariant
+                    ? formatVariantLabel(selectedVariant)
+                    : hasVariants
+                    ? 'Choose the exact option combination'
+                    : 'Base product'
 
                   return (
                     <motion.div
@@ -862,7 +1146,7 @@ const CreatePosSalePage = () => {
                       </div>
                       
                       <div className="grid gap-3 md:grid-cols-12 mt-4">
-                        <div className="md:col-span-5">
+                        <div className="md:col-span-4">
                           <Select
                             label="Product"
                             options={productOptions}
@@ -870,15 +1154,123 @@ const CreatePosSalePage = () => {
                             onChange={(event) =>
                               updateSaleRow(item.id, (current) => ({
                                 ...current,
-                                productId: String(event.target.value)
+                                productId: String(event.target.value),
+                                productVariantId: '',
+                                selectedVariantOptions: {},
+                                quantity: '1'
                               }))
                             }
                             disabled={!selectedBranchId || productsQuery.isLoading || !hasSelectableProducts}
                             required
                           />
                         </div>
-                        
-                        <div className="md:col-span-2">
+
+                        {hasVariants
+                          ? orderedOptionNames.map((optionName) => {
+                              const matchingVariantsForOption = getMatchingVariants(
+                                inStockVariants,
+                                item.selectedVariantOptions,
+                                optionName
+                              )
+                              const valueOptions = Array.from(
+                                new Set(
+                                  matchingVariantsForOption
+                                    .map((variant) => variant.options?.[optionName])
+                                    .filter((value): value is string => Boolean(value))
+                                )
+                              ).sort((left, right) => {
+                                const leftSortOrder = optionSortMap[optionName]?.[left] ?? Number.MAX_SAFE_INTEGER
+                                const rightSortOrder =
+                                  optionSortMap[optionName]?.[right] ?? Number.MAX_SAFE_INTEGER
+
+                                if (leftSortOrder !== rightSortOrder) {
+                                  return leftSortOrder - rightSortOrder
+                                }
+
+                                return left.localeCompare(right)
+                              })
+
+                              return (
+                                <div
+                                  key={`${item.id}-${optionName}`}
+                                  className="md:col-span-2"
+                                >
+                                  <Select
+                                    label={optionName}
+                                    options={[
+                                      {
+                                        label:
+                                          valueOptions.length > 0
+                                            ? `Select ${optionName}`
+                                            : `No in-stock ${optionName} values`,
+                                        value: ''
+                                      },
+                                      ...valueOptions.map((value) => ({
+                                        label: value,
+                                        value
+                                      }))
+                                    ]}
+                                    value={item.selectedVariantOptions[optionName] ?? ''}
+                                    onChange={(event) =>
+                                      updateSaleRow(item.id, (current) => {
+                                        const nextOptionValue = String(event.target.value)
+                                        const nextSelectedOptions = nextOptionValue
+                                          ? {
+                                              ...current.selectedVariantOptions,
+                                              [optionName]: nextOptionValue
+                                            }
+                                          : (() => {
+                                              const nextOptions: Record<string, string> = {}
+                                              Object.entries(current.selectedVariantOptions).forEach(
+                                                ([name, value]) => {
+                                                  if (name !== optionName) {
+                                                    nextOptions[name] = value
+                                                  }
+                                                }
+                                              )
+                                              return nextOptions
+                                            })()
+                                        const matches = getMatchingVariants(
+                                          inStockVariants,
+                                          nextSelectedOptions
+                                        )
+                                        const hasFullSelection = orderedOptionNames.every(
+                                          (name) => Boolean(nextSelectedOptions[name])
+                                        )
+                                        const resolvedVariant =
+                                          hasFullSelection && matches.length === 1 ? matches[0] : null
+
+                                        return {
+                                          ...current,
+                                          productVariantId: resolvedVariant
+                                            ? String(resolvedVariant.id)
+                                            : '',
+                                          selectedVariantOptions: resolvedVariant?.options ?? nextSelectedOptions,
+                                          quantity: '1'
+                                        }
+                                      })
+                                    }
+                                    disabled={
+                                      !item.productId ||
+                                      saleItemProductQueries[index]?.isLoading ||
+                                      inStockVariants.length === 0
+                                    }
+                                    helperText={
+                                      valueOptions.length > 0
+                                        ? `${valueOptions.length} in-stock option${
+                                            valueOptions.length === 1 ? '' : 's'
+                                          }`
+                                        : 'No available values for the current selection'
+                                    }
+                                  />
+                                </div>
+                              )
+                            })
+                          : null}
+                      </div>
+
+                      <div className="grid gap-3 md:grid-cols-12 mt-3">
+                        <div className="md:col-span-3">
                           <TextInput
                             label="Quantity"
                             type="number"
@@ -895,8 +1287,8 @@ const CreatePosSalePage = () => {
                             required
                           />
                         </div>
-                        
-                        <div className="md:col-span-2">
+
+                        <div className="md:col-span-3">
                           <TextInput
                             label="Unit Price"
                             value={formatCurrency(unitPrice)}
@@ -905,8 +1297,8 @@ const CreatePosSalePage = () => {
                             className="bg-white"
                           />
                         </div>
-                        
-                        <div className="md:col-span-2">
+
+                        <div className="md:col-span-3">
                           <TextInput
                             label="Line Total"
                             value={formatCurrency(lineTotal)}
@@ -915,20 +1307,57 @@ const CreatePosSalePage = () => {
                             className="bg-white font-bold text-primary"
                           />
                         </div>
-                        
-                        <div className="md:col-span-1 flex items-end">
-                          <Button
-                            type="button"
-                            size="sm"
-                            variant="ghost"
-                            onClick={() => removeSaleRow(item.id)}
-                            disabled={createSaleForm.items.length === 1}
-                            className="w-full text-error hover:bg-error/5"
-                          >
-                            <XMarkIcon className="h-4 w-4" />
-                          </Button>
+
+                        <div className="md:col-span-3">
+                          <div className="flex h-full items-end">
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="ghost"
+                              onClick={() => removeSaleRow(item.id)}
+                              disabled={createSaleForm.items.length === 1}
+                              className="w-full text-error hover:bg-error/5"
+                            >
+                              <XMarkIcon className="h-4 w-4 mr-1" />
+                              Remove Item
+                            </Button>
+                          </div>
                         </div>
                       </div>
+
+                      {item.productId ? (
+                        <div className="mt-3 rounded-lg border border-border bg-white px-3 py-2 text-xs text-text-secondary">
+                          {saleItemProductQueries[index]?.isLoading ? (
+                            <div className="flex items-center gap-2">
+                              <XCircleIcon className="h-3.5 w-3.5 text-text-tertiary" />
+                              Loading product details...
+                            </div>
+                          ) : (saleItemProductQueries[index]?.data?.variants?.length ?? 0) > 0 &&
+                            inStockVariants.length === 0 ? (
+                            <p>No in-stock variants are available for this product in the selected branch.</p>
+                          ) : (saleItemProductQueries[index]?.data?.variants?.length ?? 0) > 0 &&
+                            !item.productVariantId ? (
+                            <p>Select the exact in-stock option combination before processing this sale item.</p>
+                          ) : (
+                            <div className="flex flex-col gap-1 sm:flex-row sm:flex-wrap sm:items-center sm:gap-4">
+                              <span>
+                                Selling:
+                                <strong className="ml-1 text-text">{variantSummary}</strong>
+                              </span>
+                              {selectedVariant ? (
+                                <span>
+                                  SKU:
+                                  <strong className="ml-1 text-text">{selectedVariant.sku}</strong>
+                                </span>
+                              ) : null}
+                              <span>
+                                Available stock:
+                                <strong className="ml-1 text-text">{availableStock ?? 0}</strong>
+                              </span>
+                            </div>
+                          )}
+                        </div>
+                      ) : null}
                     </motion.div>
                   )
                 })}
@@ -979,6 +1408,7 @@ const CreatePosSalePage = () => {
                   !hasSelectablePaymentModes ||
                   !hasSelectableProducts ||
                   (requiresPhoneForPayment && createSaleForm.paymentPhoneNumber.trim().length < 9) ||
+                  hasMissingVariantSelections ||
                   createSaleForm.items.every((item) => !item.productId)
                 }
                 className="bg-gradient-to-r from-primary to-secondary text-white min-w-[160px]"
