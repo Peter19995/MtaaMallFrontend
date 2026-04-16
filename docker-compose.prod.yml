@@ -1,6 +1,6 @@
 services:
-  frontend:
-    container_name: frontend
+  julian_frontend:
+    container_name: julian-frontend
     build:
       context: .
       dockerfile: Dockerfile
