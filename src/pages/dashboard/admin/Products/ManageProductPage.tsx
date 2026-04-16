@@ -45,6 +45,7 @@ import { resolveMediaUrl } from '@utils/media'
 type ManageProductFormState = {
   name: string
   description: string
+  tags: string
   categoryId: string
   stockQuantity: string
   reorderLevel: string
@@ -57,6 +58,7 @@ type ManageProductFormState = {
 const EMPTY_FORM: ManageProductFormState = {
   name: '',
   description: '',
+  tags: '',
   categoryId: '',
   stockQuantity: '0',
   reorderLevel: '5',
@@ -73,6 +75,12 @@ const formatCurrency = (amount: number): string =>
     minimumFractionDigits: 0,
     maximumFractionDigits: 0
   }).format(amount)
+
+const getProductTags = (tags?: string | null): string[] =>
+  (tags ?? '')
+    .split(',')
+    .map((tag) => tag.trim())
+    .filter(Boolean)
 
 // Animation variants
 const fadeInUp = {
@@ -177,6 +185,7 @@ const ManageProductPage = () => {
     setForm({
       name: product.name,
       description: product.description ?? '',
+      tags: product.tags ?? '',
       categoryId: product.category_id ? String(product.category_id) : '',
       stockQuantity: String(product.stock_quantity),
       reorderLevel: String(product.reorder_level),
@@ -244,6 +253,7 @@ const ManageProductPage = () => {
       const reorderLevel = Number(payload.reorderLevel)
       const maxOffer = Number(payload.maxOffer)
       const categoryId = payload.categoryId ? Number(payload.categoryId) : undefined
+      const tags = payload.tags.trim()
 
       if (!payload.name.trim()) {
         throw new Error('Product name is required.')
@@ -261,6 +271,7 @@ const ManageProductPage = () => {
       const updatePayload: ProductUpdate = {
         name: payload.name.trim(),
         description: payload.description.trim() || undefined,
+        tags: tags || undefined,
         category_id: categoryId,
         stock_quantity: stockQuantity,
         reorder_level: reorderLevel,
@@ -627,6 +638,15 @@ const ManageProductPage = () => {
                           onChange={(e) => setForm({ ...form, description: e.target.value })}
                           rows={4}
                           placeholder="Product description..."
+                        />
+
+                        <TextArea
+                          label="Tags"
+                          value={form.tags}
+                          onChange={(e) => setForm({ ...form, tags: e.target.value })}
+                          rows={3}
+                          placeholder="pillows, bedding, bedroom"
+                          helperText="Comma-separated tags stored as a single backend value."
                         />
 
                         {/* Offer Section */}
@@ -1118,6 +1138,22 @@ const ManageProductPage = () => {
                   <span className="text-xs text-text-tertiary">SKU</span>
                   <span className="text-sm font-mono font-medium">{productQuery.data.sku}</span>
                 </div>
+
+                {getProductTags(productQuery.data.tags).length > 0 ? (
+                  <div className="space-y-2">
+                    <span className="text-xs text-text-tertiary">Tags</span>
+                    <div className="flex flex-wrap gap-2">
+                      {getProductTags(productQuery.data.tags).map((tag) => (
+                        <span
+                          key={`${productQuery.data.id}-${tag}`}
+                          className="inline-flex rounded-full bg-secondary/10 px-2.5 py-1 text-[11px] font-medium text-secondary"
+                        >
+                          {tag}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                ) : null}
 
                 <div className="flex justify-between items-center">
                   <span className="text-xs text-text-tertiary">Price</span>

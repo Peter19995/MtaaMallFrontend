@@ -52,6 +52,7 @@ type ProductFormState = {
   sku: string
   name: string
   description: string
+  tags: string
   categoryId: string
   stockQuantity: string
   reorderLevel: string
@@ -65,6 +66,7 @@ const EMPTY_FORM: ProductFormState = {
   sku: '',
   name: '',
   description: '',
+  tags: '',
   categoryId: '',
   stockQuantity: '0',
   reorderLevel: '5',
@@ -88,6 +90,12 @@ const getBasePrice = (product: ProductResponse): number => product.selling_price
 
 const getOfferPrice = (price: number, isOnOffer?: boolean, maxOffer?: number): number =>
   isOnOffer ? Math.max(price - (maxOffer ?? 0), 0) : price
+
+const getProductTags = (tags?: string | null): string[] =>
+  (tags ?? '')
+    .split(',')
+    .map((tag) => tag.trim())
+    .filter(Boolean)
 
 const getBlockingStockStatuses = (statuses: InventoryProductStockStatusResponse[]) =>
   statuses.filter((status) => status.stock_quantity > 0 || status.business_stock_quantity > 0)
@@ -208,6 +216,7 @@ const ProductManagementPage = () => {
       const reorderLevel = Number(payload.reorderLevel)
       const maxOffer = Number(payload.maxOffer)
       const categoryId = payload.categoryId ? Number(payload.categoryId) : undefined
+      const tags = payload.tags.trim()
 
       if (!editingProductId && !categoryId) {
         throw new Error('Select a category first so the SKU can be generated.')
@@ -229,6 +238,7 @@ const ProductManagementPage = () => {
         const updatePayload: ProductUpdate = {
           name: payload.name.trim(),
           description: payload.description.trim() || undefined,
+          tags: tags || undefined,
           category_id: categoryId,
           stock_quantity: stockQuantity,
           reorder_level: reorderLevel,
@@ -246,6 +256,7 @@ const ProductManagementPage = () => {
         sku: payload.sku.trim(),
         name: payload.name.trim(),
         description: payload.description.trim() || undefined,
+        tags: tags || undefined,
         category_id: categoryId,
         stock_quantity: stockQuantity,
         reorder_level: reorderLevel,
@@ -427,6 +438,18 @@ const ProductManagementPage = () => {
             <p className="text-xs text-text-tertiary">
               Variants: {row.variants?.length ?? 0}
             </p>
+            {getProductTags(row.tags).length > 0 ? (
+              <div className="mt-2 flex flex-wrap gap-1.5">
+                {getProductTags(row.tags).slice(0, 3).map((tag) => (
+                  <span
+                    key={`${row.id}-${tag}`}
+                    className="inline-flex rounded-full bg-secondary/10 px-2 py-0.5 text-[11px] font-medium text-secondary"
+                  >
+                    {tag}
+                  </span>
+                ))}
+              </div>
+            ) : null}
           </div>
         </div>
       )
@@ -674,7 +697,7 @@ const ProductManagementPage = () => {
                 type="text"
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                placeholder="Search by name or SKU..."
+                placeholder="Search by name, SKU, or tags..."
                 className="w-full h-10 pl-10 pr-4 bg-background border border-border rounded-lg 
                          focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20 
                          transition-all text-sm"
@@ -920,6 +943,14 @@ const ProductManagementPage = () => {
                     value={form.description}
                     onChange={(e) => setForm({ ...form, description: e.target.value })}
                     placeholder="Product description..."
+                    rows={4}
+                  />
+                  <TextArea
+                    label="Tags"
+                    value={form.tags}
+                    onChange={(e) => setForm({ ...form, tags: e.target.value })}
+                    placeholder="pillows, bedding, bedroom"
+                    helperText="Comma-separated tags stored as one backend string."
                     rows={4}
                   />
                 </div>
@@ -1191,6 +1222,22 @@ const ProductManagementPage = () => {
                       {selectedProduct.description?.trim() || 'No description provided for this product yet.'}
                     </p>
                   </div>
+
+                  {getProductTags(selectedProduct.tags).length > 0 ? (
+                    <div>
+                      <h3 className="text-sm font-semibold text-text">Tags</h3>
+                      <div className="mt-3 flex flex-wrap gap-2">
+                        {getProductTags(selectedProduct.tags).map((tag) => (
+                          <span
+                            key={`${selectedProduct.id}-${tag}`}
+                            className="inline-flex rounded-full bg-secondary/10 px-3 py-1 text-xs font-medium text-secondary"
+                          >
+                            {tag}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  ) : null}
 
                   <div className="grid gap-4 sm:grid-cols-2">
                     <div className="rounded-xl border border-border bg-background p-4">

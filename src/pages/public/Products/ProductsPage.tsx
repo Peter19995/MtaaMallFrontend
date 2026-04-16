@@ -39,6 +39,12 @@ const getOfferPrice = (product: ProductResponse): number =>
 const getImageUrls = (product: ProductResponse): string[] =>
   resolveMediaUrls(product.image_urls ?? [])
 
+const getProductTags = (tags?: string | null): string[] =>
+  (tags ?? '')
+    .split(',')
+    .map((tag) => tag.trim())
+    .filter(Boolean)
+
 // Animation variants
 const fadeInUp = {
   initial: { opacity: 0, y: 20 },
@@ -106,7 +112,8 @@ const ProductsPage = () => {
       filtered = filtered.filter((product) =>
         product.name.toLowerCase().includes(term) || 
         product.sku.toLowerCase().includes(term) ||
-        product.description?.toLowerCase().includes(term)
+        product.description?.toLowerCase().includes(term) ||
+        product.tags?.toLowerCase().includes(term)
       )
     }
 
@@ -321,7 +328,7 @@ const ProductsPage = () => {
               type="text"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              placeholder="Search products by name, SKU, or description..."
+              placeholder="Search products by name, SKU, description, or tags..."
               className="w-full h-12 pl-12 pr-4 bg-white border-2 border-border rounded-xl 
                        focus:border-primary focus:outline-none focus:ring-4 
                        focus:ring-primary/20 transition-all text-text"
@@ -525,6 +532,7 @@ const ProductsPage = () => {
                   const basePrice = getBasePrice(product)
                   const imageUrls = getImageUrls(product)
                   const primaryImage = imageUrls[0]
+                  const tags = getProductTags(product.tags)
                   const discount = product.is_on_offer 
                     ? Math.round(((basePrice - finalPrice) / Math.max(basePrice, 1)) * 100)
                     : 0
@@ -578,6 +586,19 @@ const ProductsPage = () => {
                           <p className="text-text-secondary text-sm mb-4 line-clamp-2">
                             {product.description || 'Premium quality interior product for your space.'}
                           </p>
+
+                          {tags.length > 0 ? (
+                            <div className="mb-4 flex flex-wrap gap-2">
+                              {tags.slice(0, 3).map((tag) => (
+                                <span
+                                  key={`${product.id}-${tag}`}
+                                  className="inline-flex rounded-full bg-primary/10 px-2.5 py-1 text-[11px] font-medium text-primary"
+                                >
+                                  {tag}
+                                </span>
+                              ))}
+                            </div>
+                          ) : null}
 
                           <div className="flex items-center justify-between">
                             <div>
@@ -700,6 +721,18 @@ const ProductsPage = () => {
 
                         {/* SKU */}
                         <p className="text-xs text-text-tertiary mb-3">SKU: {product.sku}</p>
+                        {tags.length > 0 ? (
+                          <div className="mb-3 flex flex-wrap gap-2">
+                            {tags.slice(0, 2).map((tag) => (
+                              <span
+                                key={`${product.id}-${tag}`}
+                                className="inline-flex rounded-full bg-primary/10 px-2 py-0.5 text-[11px] font-medium text-primary"
+                              >
+                                {tag}
+                              </span>
+                            ))}
+                          </div>
+                        ) : null}
                         {imageUrls.length > 1 ? (
                           <p className="mb-3 text-[11px] text-text-tertiary">{imageUrls.length} images</p>
                         ) : null}

@@ -96,6 +96,7 @@ export type ProductResponse = {
   sku: string
   name: string
   description?: string | null
+  tags?: string | null
   category_id?: number | null
   category_name?: string | null
   stock_quantity: number
@@ -118,6 +119,7 @@ export type ProductCreate = {
   sku: string
   name: string
   description?: string
+  tags?: string | null
   category_id?: number
   stock_quantity?: number
   reorder_level?: number
@@ -130,6 +132,7 @@ export type ProductCreate = {
 export type ProductUpdate = {
   name?: string
   description?: string
+  tags?: string | null
   category_id?: number
   stock_quantity?: number
   reorder_level?: number
