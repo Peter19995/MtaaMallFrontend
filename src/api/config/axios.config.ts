@@ -35,6 +35,45 @@ const getExistingAuthorizationHeader = (config: InternalAxiosRequestConfig) => {
   return headers?.get?.('Authorization') ?? headers?.Authorization ?? headers?.authorization
 }
 
+const getAuthErrorMessage = (payload: unknown): string => {
+  if (!isPlainObject(payload)) {
+    return ''
+  }
+
+  const detail = payload.detail
+  if (typeof detail === 'string') {
+    return detail
+  }
+
+  const message = payload.message
+  if (typeof message === 'string') {
+    return message
+  }
+
+  return ''
+}
+
+const isRetriableAuthError = (error: unknown): boolean => {
+  if (!axios.isAxiosError(error)) {
+    return false
+  }
+
+  if (error.response?.status === 401) {
+    return true
+  }
+
+  if (error.response?.status !== 400) {
+    return false
+  }
+
+  const authMessage = getAuthErrorMessage(error.response?.data).toLowerCase()
+  return (
+    authMessage.includes('authorization header is required') ||
+    authMessage.includes('not authenticated') ||
+    authMessage.includes('missing authorization')
+  )
+}
+
 const isPlainObject = (value: unknown): value is Record<string, unknown> =>
   Object.prototype.toString.call(value) === '[object Object]'
 
@@ -147,7 +186,7 @@ api.interceptors.response.use(
     const originalRequest = error.config as RetryableRequest | undefined
 
     if (
-      error.response?.status === 401 &&
+      isRetriableAuthError(error) &&
       originalRequest &&
       !originalRequest._retry &&
       !originalRequest.url?.includes('/auth/login') &&

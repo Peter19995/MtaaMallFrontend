@@ -41,4 +41,4 @@ jobs:
       - name: Deploy on server
         run: |
           ssh -i ~/.ssh/deploy_key "$DEPLOY_USER@$DEPLOY_HOST" \
-            "cd '$DEPLOY_PATH' && chmod +x scripts/deploy.sh && DEPLOY_PATH='$DEPLOY_PATH' ./scripts/deploy.sh"
+            "if [ -x /usr/local/bin/deploy-julian-frontend.sh ]; then /usr/local/bin/deploy-julian-frontend.sh; else cd '$DEPLOY_PATH' && chmod +x scripts/deploy.sh && DEPLOY_PATH='$DEPLOY_PATH' ./scripts/deploy.sh; fi"
