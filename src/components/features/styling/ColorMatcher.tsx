@@ -538,7 +538,7 @@ export const ColorMatcher = () => {
       >
         <h3 className="mb-4 flex items-center gap-2 text-lg font-semibold text-text">
           <SparklesIcon className="h-5 w-5 text-primary" />
-          Julian&apos;s Expert Picks
+          MtaaMall&apos;s Expert Picks
         </h3>
 
         {expertPicksLoading ? (

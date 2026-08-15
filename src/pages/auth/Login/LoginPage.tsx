@@ -1,6 +1,6 @@
 import { FormEvent, useState, useEffect } from 'react'
 import axios from 'axios'
-import { useLocation, useNavigate, Link } from 'react-router-dom'
+import { useNavigate, Link } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   EnvelopeIcon,
@@ -18,13 +18,6 @@ import {
 import { useAuth } from '@hooks/useAuth'
 import { getMeRequest, loginRequest } from '@api/modules/auth.api'
 import { AppTheme } from '@constants/theme'
-import brandLogo from '@/assets/business-logo.svg'
-
-type LoginLocationState = {
-  from?: {
-    pathname?: string
-  }
-}
 
 const getErrorMessage = (error: unknown): string => {
   if (axios.isAxiosError(error)) {
@@ -96,9 +89,8 @@ const staggerContainer = {
 
 const LoginPage = () => {
   const navigate = useNavigate()
-  const location = useLocation()
   const { login } = useAuth()
-  const [email, setEmail] = useState('admin@julianinteriors.com')
+  const [email, setEmail] = useState('admin@mtaamall.com')
   const [password, setPassword] = useState('ChangeMe@123')
   const [showPassword, setShowPassword] = useState(false)
   const [isSubmitting, setIsSubmitting] = useState(false)
@@ -155,9 +147,7 @@ const LoginPage = () => {
         tokens.refresh_token
       )
 
-      const locationState = location.state as LoginLocationState | null
-      const redirectTo = locationState?.from?.pathname ?? '/dashboard/admin'
-      navigate(redirectTo, { replace: true })
+      navigate('/dashboard/admin', { replace: true })
     } catch (error) {
       setErrorMessage(getErrorMessage(error))
     } finally {
@@ -229,7 +219,7 @@ const LoginPage = () => {
               <h1 className="text-4xl font-bold text-text mb-4">
                 Welcome back to{' '}
                 <span className="bg-gradient-to-r from-primary to-secondary bg-clip-text text-transparent">
-                  Julian Interiors
+                  MtaaMall
                 </span>
               </h1>
 
@@ -309,9 +299,9 @@ const LoginPage = () => {
                   className="text-center mb-8"
                 >
                   <img
-                    src={brandLogo}
-                    alt="Julian Interiors logo"
-                    className="mx-auto mb-4 h-20 w-auto rounded-full border border-primary/10 bg-white p-1 shadow-lg"
+                    src="/mtaamall-logo.png"
+                    alt="MtaaMall logo"
+                    className="mx-auto mb-4 h-24 w-auto object-contain"
                   />
                   <h2 className="text-2xl font-bold text-text">
                     Sign in to your account
@@ -484,6 +474,13 @@ const LoginPage = () => {
                   </AnimatePresence>
                 </form>
 
+                <div className="mt-5 text-center text-sm text-text-secondary">
+                  Want to sell on MtaaMall?{' '}
+                  <Link to="/register-business" className="font-semibold text-primary hover:underline">
+                    Register your business
+                  </Link>
+                </div>
+
                 {/* Demo Credentials */}
                 <div className="mt-6 p-4 rounded-xl bg-background border border-border">
                   <p className="text-xs font-medium text-text-secondary flex items-center gap-1 mb-2">
@@ -491,7 +488,7 @@ const LoginPage = () => {
                     Demo credentials (pre-filled)
                   </p>
                   <div className="space-y-1 text-xs text-text-tertiary">
-                    <p>Email: admin@julianinteriors.com</p>
+                    <p>Email: admin@mtaamall.com</p>
                     <p>Password: ChangeMe@123</p>
                   </div>
                 </div>

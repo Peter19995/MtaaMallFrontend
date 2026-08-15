@@ -8,6 +8,7 @@ import { ThemeProvider } from '@contexts/ThemeContext'
 import { NotificationProvider } from '@contexts/NotificationContext'
 import { CartProvider } from '@contexts/CartContext'
 import { BranchProvider } from '@contexts/BranchContext'
+import { ConfirmDialogProvider } from '@contexts/ConfirmDialogContext'
 
 import { queryClient } from '@api/config/queryClient'
 import { AppTheme } from './constants/theme'
@@ -23,7 +24,9 @@ function App() {
               <BranchProvider>
                 <CartProvider>
                   <NotificationProvider>
-                    <AppRoutes />
+                    <ConfirmDialogProvider>
+                      <AppRoutes />
+                    </ConfirmDialogProvider>
                     <Toaster
                       position="top-right"
                       toastOptions={{

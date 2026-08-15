@@ -1,5 +1,6 @@
 import { FormEvent, useContext, useMemo, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
+import axios from 'axios'
 import { motion, AnimatePresence } from 'framer-motion'
 import toast from 'react-hot-toast'
 import {
@@ -22,6 +23,7 @@ import { CheckCircleIcon as CheckCircleSolid } from '@heroicons/react/24/solid'
 import { Button, TextInput } from '@components/common'
 import { CartContext } from '@contexts/CartContext'
 import { AppTheme } from '@constants/theme'
+import { checkoutRequest, replaceCartRequest } from '@api/modules/orders.api'
 
 const formatCurrency = (amount: number): string =>
   new Intl.NumberFormat('en-KE', {
@@ -48,6 +50,7 @@ const staggerContainer = {
 
 const CheckoutPage = () => {
   const cart = useContext(CartContext)
+  const navigate = useNavigate()
   const [fullName, setFullName] = useState('')
   const [phone, setPhone] = useState('')
   const [location, setLocation] = useState('')
@@ -66,9 +69,7 @@ const CheckoutPage = () => {
   )
 
   const subtotal = cart.total
-  const shipping = subtotal > 5000 ? 0 : 500
-  const tax = subtotal * 0.16 // 16% VAT
-  const total = subtotal + shipping + tax
+  const total = subtotal
 
   const validateForm = () => {
     if (!fullName.trim()) {
@@ -135,27 +136,57 @@ const CheckoutPage = () => {
 
     if (!validateForm()) return
 
+    if (!localStorage.getItem('access_token')) {
+      toast.error('Please sign in before completing your order')
+      navigate('/login', { state: { from: '/checkout' } })
+      return
+    }
+
+    const serviceItems = cart.items.filter((item) => item.id.startsWith('service-'))
+    if (serviceItems.length > 0) {
+      toast.error('Service booking checkout is coming soon. Remove services to place a product order.')
+      return
+    }
+
+    const productItems = cart.items.map((item) => ({
+      product_id: Number(item.id),
+      quantity: item.quantity
+    }))
+
+    if (productItems.some((item) => !Number.isInteger(item.product_id))) {
+      toast.error('One or more cart items are invalid. Please remove them and try again.')
+      return
+    }
+
     setIsSubmitting(true)
 
-    // Simulate API call
-    await new Promise(resolve => setTimeout(resolve, 1500))
+    try {
+      await replaceCartRequest(productItems)
+      const order = await checkoutRequest('cash')
 
-    cart.clear()
-    setFullName('')
-    setPhone('')
-    setLocation('')
-    setNotes('')
-    setIsSubmitting(false)
-    setShowOrderSuccess(true)
-    
-    toast.success('Order placed successfully!', {
-      icon: '🎉',
-      style: {
-        borderRadius: '10px',
-        background: AppTheme.colors.successSoft,
-        color: AppTheme.colors.successDark,
-      }
-    })
+      cart.clear()
+      setFullName('')
+      setPhone('')
+      setLocation('')
+      setNotes('')
+      setShowOrderSuccess(true)
+
+      toast.success(`Order #${order.id} placed successfully!`, {
+        icon: '🎉',
+        style: {
+          borderRadius: '10px',
+          background: AppTheme.colors.successSoft,
+          color: AppTheme.colors.successDark,
+        }
+      })
+    } catch (error) {
+      const apiMessage = axios.isAxiosError(error)
+        ? error.response?.data?.detail ?? error.response?.data?.message
+        : undefined
+      toast.error(typeof apiMessage === 'string' ? apiMessage : 'Could not place your order. Please try again.')
+    } finally {
+      setIsSubmitting(false)
+    }
   }
 
   return (
@@ -378,16 +409,12 @@ const CheckoutPage = () => {
                     
                     <div className="flex justify-between text-sm">
                       <span className="text-text-secondary">Shipping</span>
-                      {shipping === 0 ? (
-                        <span className="text-success font-medium">Free</span>
-                      ) : (
-                        <span className="font-medium text-text">{formatCurrency(shipping)}</span>
-                      )}
+                      <span className="text-text-secondary font-medium">Confirmed after ordering</span>
                     </div>
                     
                     <div className="flex justify-between text-sm">
-                      <span className="text-text-secondary">Tax (16% VAT)</span>
-                      <span className="font-medium text-text">{formatCurrency(tax)}</span>
+                      <span className="text-text-secondary">Tax</span>
+                      <span className="font-medium text-text">Included where applicable</span>
                     </div>
 
                     <div className="flex justify-between items-center pt-2 border-t border-border">

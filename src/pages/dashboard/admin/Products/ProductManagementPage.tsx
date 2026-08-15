@@ -1,7 +1,7 @@
 import { FormEvent, useEffect, useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { motion, AnimatePresence } from 'framer-motion'
-import { useLocation, useNavigate } from 'react-router-dom'
+import { useNavigate } from 'react-router-dom'
 import {
   PlusIcon,
   MagnifyingGlassIcon,
@@ -30,12 +30,14 @@ import {
   type ProductStockStatusResponse as InventoryProductStockStatusResponse
 } from '@api/modules/inventory.api'
 import {
+  createBrandRequest,
   createCategoryRequest,
   createProductRequest,
   deleteProductRequest,
   generateProductSkuRequest,
   getProductRequest,
   listCategoriesRequest,
+  listBrandsRequest,
   listProductsRequest,
   type GeneratedProductSkuResponse,
   type ProductCreate,
@@ -54,8 +56,12 @@ type ProductFormState = {
   description: string
   tags: string
   categoryId: string
+  brandId: string
   stockQuantity: string
   reorderLevel: string
+  sellingPrice: string
+  costPrice: string
+  compareAtPrice: string
   isActive: boolean
   isOnOffer: boolean
   maxOffer: string
@@ -68,8 +74,12 @@ const EMPTY_FORM: ProductFormState = {
   description: '',
   tags: '',
   categoryId: '',
+  brandId: '',
   stockQuantity: '0',
   reorderLevel: '5',
+  sellingPrice: '0',
+  costPrice: '',
+  compareAtPrice: '',
   isActive: true,
   isOnOffer: false,
   maxOffer: '0',
@@ -119,6 +129,41 @@ const mergeImageFiles = (existingFiles: File[], incomingFiles: File[]) => {
   return mergedFiles
 }
 
+const editDistance = (left: string, right: string) => {
+  const previous = Array.from({ length: right.length + 1 }, (_, index) => index)
+  for (let leftIndex = 1; leftIndex <= left.length; leftIndex += 1) {
+    const current = [leftIndex]
+    for (let rightIndex = 1; rightIndex <= right.length; rightIndex += 1) {
+      current[rightIndex] = Math.min(
+        current[rightIndex - 1] + 1,
+        previous[rightIndex] + 1,
+        previous[rightIndex - 1] + (left[leftIndex - 1] === right[rightIndex - 1] ? 0 : 1)
+      )
+    }
+    previous.splice(0, previous.length, ...current)
+  }
+  return previous[right.length]
+}
+
+const findClosestName = <T,>(input: string, items: T[], getName: (item: T) => string): T | undefined => {
+  const normalizedInput = input.trim().toLocaleLowerCase()
+  if (!normalizedInput) return undefined
+  const exact = items.find((item) => getName(item).trim().toLocaleLowerCase() === normalizedInput)
+  if (exact) return exact
+
+  return items
+    .map((item) => {
+      const candidate = getName(item).trim().toLocaleLowerCase()
+      return { item, candidate, distance: editDistance(normalizedInput, candidate) }
+    })
+    .filter(({ candidate, distance }) =>
+      candidate[0] === normalizedInput[0]
+      && Math.abs(candidate.length - normalizedInput.length) <= 2
+      && distance <= Math.max(1, Math.floor(Math.max(candidate.length, normalizedInput.length) * 0.25))
+    )
+    .sort((left, right) => left.distance - right.distance)[0]?.item
+}
+
 type PendingImagePreview = {
   file: File
   previewUrl: string
@@ -141,18 +186,14 @@ const staggerContainer = {
 
 const ProductManagementPage = () => {
   const navigate = useNavigate()
-  const location = useLocation()
   const queryClient = useQueryClient()
   const [search, setSearch] = useState('')
   const [categoryFilter, setCategoryFilter] = useState(ALL_CATEGORIES)
   const [inStockOnly, setInStockOnly] = useState(false)
   const [showProductForm, setShowProductForm] = useState(false)
-  const [showCategoryForm, setShowCategoryForm] = useState(false)
   const [editingProductId, setEditingProductId] = useState<number | null>(null)
   const [form, setForm] = useState<ProductFormState>(EMPTY_FORM)
   const [formError, setFormError] = useState<string | null>(null)
-  const [categoryName, setCategoryName] = useState('')
-  const [categoryDescription, setCategoryDescription] = useState('')
   const [showFilters, setShowFilters] = useState(false)
   const [previewImage, setPreviewImage] = useState<string | null>(null)
   const [selectedProduct, setSelectedProduct] = useState<ProductResponse | null>(null)
@@ -164,6 +205,11 @@ const ProductManagementPage = () => {
   const categoriesQuery = useQuery({
     queryKey: ['products', 'categories'],
     queryFn: listCategoriesRequest
+  })
+
+  const brandsQuery = useQuery({
+    queryKey: ['products', 'brands'],
+    queryFn: listBrandsRequest
   })
 
   const selectedCreateCategoryId = useMemo(() => {
@@ -199,6 +245,12 @@ const ProductManagementPage = () => {
       })
   })
 
+  const productSuggestionsQuery = useQuery({
+    queryKey: ['products', 'name-suggestions'],
+    queryFn: () => listProductsRequest({ limit: 100 }),
+    enabled: showProductForm
+  })
+
   const deleteProductStockStatusQuery = useQuery({
     queryKey: ['inventory', 'stock-status', 'delete-product', deleteCandidate?.id ?? null],
     queryFn: () =>
@@ -215,15 +267,33 @@ const ProductManagementPage = () => {
       const stockQuantity = Number(payload.stockQuantity)
       const reorderLevel = Number(payload.reorderLevel)
       const maxOffer = Number(payload.maxOffer)
-      const categoryId = payload.categoryId ? Number(payload.categoryId) : undefined
+      const sellingPrice = Number(payload.sellingPrice)
+      const costPrice = payload.costPrice === '' ? null : Number(payload.costPrice)
+      const compareAtPrice = payload.compareAtPrice === '' ? null : Number(payload.compareAtPrice)
       const tags = payload.tags.trim()
 
-      if (!editingProductId && !categoryId) {
-        throw new Error('Select a category first so the SKU can be generated.')
-      }
-      if (!editingProductId && !payload.sku.trim()) {
-        throw new Error('Wait for the SKU to be generated after selecting a category.')
-      }
+      const categoryInput = payload.categoryId.trim()
+      const categories = categoriesQuery.data ?? []
+      const selectedCategory = categories.find((category) => String(category.id) === categoryInput)
+        ?? findClosestName(categoryInput, categories, (category) => category.name)
+      const category = selectedCategory
+        ?? (categoryInput ? await createCategoryRequest({ name: categoryInput }) : undefined)
+      const categoryId = category?.id
+
+      const brandInput = payload.brandId.trim()
+      const brands = brandsQuery.data ?? []
+      const selectedBrand = brands.find((brand) => String(brand.id) === brandInput)
+        ?? findClosestName(brandInput, brands, (brand) => brand.name)
+      const brand = selectedBrand
+        ?? (brandInput ? await createBrandRequest({ name: brandInput, country_of_origin: 'Kenya' }) : undefined)
+      const brandId = brand?.id
+      const productName = findClosestName(
+        payload.name,
+        productSuggestionsQuery.data ?? [],
+        (product) => product.name
+      )?.name ?? payload.name.trim()
+
+      if (!editingProductId && !categoryId) throw new Error('Enter or select a category.')
       if (Number.isNaN(stockQuantity) || stockQuantity < 0) {
         throw new Error('Stock quantity must be a number greater than or equal to 0.')
       }
@@ -233,15 +303,23 @@ const ProductManagementPage = () => {
       if (Number.isNaN(maxOffer) || maxOffer < 0) {
         throw new Error('Max offer must be a number greater than or equal to 0.')
       }
+      if (Number.isNaN(sellingPrice) || sellingPrice < 0) throw new Error('Selling price must be zero or greater.')
+      if (costPrice !== null && (Number.isNaN(costPrice) || costPrice < 0)) throw new Error('Cost price must be zero or greater.')
+      if (compareAtPrice !== null && compareAtPrice < sellingPrice) throw new Error('Compare-at price cannot be below the selling price.')
 
       if (editingProductId) {
         const updatePayload: ProductUpdate = {
-          name: payload.name.trim(),
+          name: productName,
           description: payload.description.trim() || undefined,
           tags: tags || undefined,
           category_id: categoryId,
+          brand_id: brandId,
           stock_quantity: stockQuantity,
           reorder_level: reorderLevel,
+          selling_price: sellingPrice,
+          cost_price: costPrice,
+          compare_at_price: compareAtPrice,
+          currency_code: 'KES',
           is_active: payload.isActive,
           is_on_offer: payload.isOnOffer,
           max_offer: payload.isOnOffer ? maxOffer : 0
@@ -253,13 +331,19 @@ const ProductManagementPage = () => {
       }
 
       const createPayload: ProductCreate = {
-        sku: payload.sku.trim(),
-        name: payload.name.trim(),
+        sku: payload.sku.trim() || (await generateProductSkuRequest(categoryId as number)).suggested_sku,
+        name: productName,
         description: payload.description.trim() || undefined,
         tags: tags || undefined,
         category_id: categoryId,
+        brand_id: brandId,
         stock_quantity: stockQuantity,
         reorder_level: reorderLevel,
+        selling_price: sellingPrice,
+        cost_price: costPrice,
+        compare_at_price: compareAtPrice,
+        currency_code: 'KES',
+        pricing_strategy: 'shared',
         is_active: payload.isActive,
         is_on_offer: payload.isOnOffer,
         max_offer: payload.isOnOffer ? maxOffer : 0
@@ -270,36 +354,15 @@ const ProductManagementPage = () => {
       const product = await getProductRequest(createdProduct.id)
       return { product, isEditing }
     },
-    onSuccess: ({ product, isEditing }) => {
-      queryClient.invalidateQueries({ queryKey: ['products', 'list'] })
+    onSuccess: async () => {
       setForm(EMPTY_FORM)
       setEditingProductId(null)
       setShowProductForm(false)
       setFormError(null)
-
-      if (!isEditing) {
-        navigate(`/dashboard/admin/products/${product.id}`, {
-          state: { initialTab: 'variants' }
-        })
-      }
+      await queryClient.invalidateQueries({ queryKey: ['products', 'list'] })
     },
     onError: (error: Error) => {
       setFormError(error.message || 'Could not save product.')
-    }
-  })
-
-  const createCategoryMutation = useMutation({
-    mutationFn: () =>
-      createCategoryRequest({
-        name: categoryName.trim(),
-        description: categoryDescription.trim() || undefined
-      }),
-    onSuccess: (category) => {
-      queryClient.invalidateQueries({ queryKey: ['products', 'categories'] })
-      setForm((prev) => ({ ...prev, categoryId: String(category.id) }))
-      setCategoryName('')
-      setCategoryDescription('')
-      setShowCategoryForm(false)
     }
   })
 
@@ -349,6 +412,14 @@ const ProductManagementPage = () => {
     [categoriesQuery.data, editingProductId]
   )
 
+  const brandOptions = useMemo(
+    () => [
+      { label: 'No brand / unbranded', value: '' },
+      ...(brandsQuery.data ?? []).map((brand) => ({ label: brand.name, value: String(brand.id) }))
+    ],
+    [brandsQuery.data]
+  )
+
   const editingProduct = useMemo(
     () => (productsQuery.data ?? []).find((product) => product.id === editingProductId),
     [editingProductId, productsQuery.data]
@@ -374,18 +445,6 @@ const ProductManagementPage = () => {
     },
     [pendingImagePreviews]
   )
-
-  useEffect(() => {
-    if (location.state?.openProductForm !== true) {
-      return
-    }
-
-    setEditingProductId(null)
-    setForm(EMPTY_FORM)
-    setFormError(null)
-    setShowProductForm(true)
-    navigate(location.pathname, { replace: true })
-  }, [location.pathname, location.state, navigate])
 
   useEffect(() => {
     if (editingProductId || !generatedSkuMeta?.suggested_sku) {
@@ -609,14 +668,6 @@ const ProductManagementPage = () => {
     saveProductMutation.mutate(form)
   }
 
-  const onSubmitCategory = (event: FormEvent) => {
-    event.preventDefault()
-    if (!categoryName.trim()) {
-      return
-    }
-    createCategoryMutation.mutate()
-  }
-
   const onSubmitPriceUpdate = (event: FormEvent) => {
     event.preventDefault()
 
@@ -659,24 +710,16 @@ const ProductManagementPage = () => {
           
           <div className="flex gap-2">
             <Button
-              variant="outline"
-              onClick={() => setShowCategoryForm(!showCategoryForm)}
-              className="flex items-center gap-2"
-            >
-              <TagIcon className="h-4 w-4" />
-              {showCategoryForm ? 'Close Category Form' : 'New Category'}
-            </Button>
-            <Button
               onClick={() => {
                 setEditingProductId(null)
                 setForm(EMPTY_FORM)
                 setFormError(null)
-                setShowProductForm(!showProductForm)
+                setShowProductForm(true)
               }}
               className="flex items-center gap-2"
             >
               <PlusIcon className="h-4 w-4" />
-              {showProductForm ? 'Close Product Form' : 'New Product'}
+              New Product
             </Button>
           </div>
         </div>
@@ -776,21 +819,13 @@ const ProductManagementPage = () => {
                     <label className="block text-xs font-medium text-text-secondary mb-1">
                       Stock Status
                     </label>
-                    <select className="w-full h-9 px-3 bg-background border border-border rounded-lg text-sm">
-                      <option>All</option>
-                      <option>Low Stock</option>
-                      <option>Out of Stock</option>
-                    </select>
+                    <Select options={['All', 'Low Stock', 'Out of Stock'].map((label) => ({ label, value: label }))} />
                   </div>
                   <div>
                     <label className="block text-xs font-medium text-text-secondary mb-1">
                       Offer Status
                     </label>
-                    <select className="w-full h-9 px-3 bg-background border border-border rounded-lg text-sm">
-                      <option>All</option>
-                      <option>On Offer</option>
-                      <option>Not on Offer</option>
-                    </select>
+                    <Select options={['All', 'On Offer', 'Not on Offer'].map((label) => ({ label, value: label }))} />
                   </div>
                 </div>
               </motion.div>
@@ -799,76 +834,61 @@ const ProductManagementPage = () => {
         </div>
       </motion.section>
 
-      {/* Category Form */}
-      <AnimatePresence>
-        {showCategoryForm && (
-          <motion.section
-            initial={{ opacity: 0, y: -20 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -20 }}
-            className="mb-6"
-          >
-            <div className="bg-white rounded-xl border border-border p-4 shadow-sm">
-              <h2 className="text-sm font-semibold text-text mb-4 flex items-center gap-2">
-                <TagIcon className="h-4 w-4 text-primary" />
-                Create New Category
-              </h2>
-              <form onSubmit={onSubmitCategory} className="grid gap-4 md:grid-cols-3">
-                <TextInput
-                  label="Category Name"
-                  value={categoryName}
-                  onChange={(e) => setCategoryName(e.target.value)}
-                  required
-                  placeholder="e.g., Curtains, Furniture"
-                />
-                <TextInput
-                  label="Description (Optional)"
-                  value={categoryDescription}
-                  onChange={(e) => setCategoryDescription(e.target.value)}
-                  placeholder="Brief description of the category"
-                />
-                <div className="flex items-end gap-2">
-                  <Button 
-                    type="submit" 
-                    loading={createCategoryMutation.isPending}
-                    className="flex-1"
-                  >
-                    Save Category
-                  </Button>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    onClick={() => setShowCategoryForm(false)}
-                  >
-                    Cancel
-                  </Button>
-                </div>
-              </form>
-            </div>
-          </motion.section>
-        )}
-      </AnimatePresence>
-
       {/* Product Form */}
       <AnimatePresence>
         {showProductForm && (
-          <motion.section
-            initial={{ opacity: 0, y: -20 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -20 }}
-            className="mb-6"
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm"
+            onMouseDown={(event) => {
+              if (event.target === event.currentTarget && !saveProductMutation.isPending) {
+                setShowProductForm(false)
+                setEditingProductId(null)
+                setForm(EMPTY_FORM)
+                setFormError(null)
+              }
+            }}
           >
-            <div className="bg-white rounded-xl border border-border p-4 shadow-sm">
-              <h2 className="text-sm font-semibold text-text mb-4 flex items-center gap-2">
-                <CubeIcon className="h-4 w-4 text-primary" />
-                {editingProductId ? 'Edit Product' : 'Create New Product'}
-              </h2>
-              <form onSubmit={onSubmitProduct} className="space-y-4">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.97, y: 16 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.97, y: 16 }}
+              className="max-h-[92vh] w-full max-w-5xl overflow-y-auto rounded-2xl border border-border bg-white shadow-2xl"
+            >
+              <div className="sticky top-0 z-20 flex items-center justify-between border-b border-border bg-white px-6 py-4">
+                <div>
+                  <h2 className="flex items-center gap-2 text-lg font-semibold text-text">
+                    <CubeIcon className="h-5 w-5 text-primary" />
+                    {editingProductId ? 'Edit Product' : 'Add Product'}
+                  </h2>
+                  <p className="mt-1 text-xs text-text-secondary">Enter the product details, stock information, and images.</p>
+                </div>
+                <button
+                  type="button"
+                  disabled={saveProductMutation.isPending}
+                  onClick={() => {
+                    setShowProductForm(false)
+                    setEditingProductId(null)
+                    setForm(EMPTY_FORM)
+                    setFormError(null)
+                  }}
+                  className="rounded-lg p-2 text-text-secondary hover:bg-background hover:text-text disabled:opacity-50"
+                  aria-label="Close product form"
+                >
+                  <XMarkIcon className="h-5 w-5" />
+                </button>
+              </div>
+              <form onSubmit={onSubmitProduct} className="space-y-5 p-6">
                 <div className="grid gap-4 md:grid-cols-3">
                   <Select
                     label="Category"
                     options={productFormCategoryOptions}
                     value={form.categoryId}
+                    allowCustomValue
+                    customValueLabel={(value) => `Create category “${value}”`}
+                    helperText="Search existing categories or type a new category name. Close typos reuse the existing category."
                     onChange={(e) => {
                       const nextCategoryId = String(e.target.value)
                       setForm((previous) => ({
@@ -879,6 +899,15 @@ const ProductManagementPage = () => {
                     }}
                     required={!editingProductId}
                   />
+                  <Select
+                    label="Brand"
+                    options={brandOptions}
+                    value={form.brandId}
+                    allowCustomValue
+                    customValueLabel={(value) => `Create brand “${value}”`}
+                    helperText="Search existing brands or type a new brand name. Close typos reuse the existing brand."
+                    onChange={(e) => setForm({ ...form, brandId: String(e.target.value) })}
+                  />
                   {!editingProductId ? (
                     <TextInput
                       label="SKU"
@@ -887,14 +916,16 @@ const ProductManagementPage = () => {
                       required
                       placeholder={
                         form.categoryId
-                          ? generatedSkuQuery.isLoading
+                          ? selectedCreateCategoryId && generatedSkuQuery.isLoading
                             ? 'Generating SKU...'
-                            : 'SKU will be generated'
+                            : selectedCreateCategoryId
+                              ? 'SKU will be generated'
+                              : 'SKU will be generated when saved'
                           : 'Select category first'
                       }
                       helperText={
                         form.categoryId
-                          ? generatedSkuQuery.isError
+                          ? selectedCreateCategoryId && generatedSkuQuery.isError
                             ? 'Could not generate SKU for the selected category.'
                             : generatedSkuMeta
                               ? `${generatedSkuMeta.category_name}: ${generatedSkuMeta.sku_prefix} • next #${generatedSkuMeta.next_sequence}`
@@ -903,12 +934,15 @@ const ProductManagementPage = () => {
                       }
                     />
                   ) : null}
-                  <TextInput
+                  <Select
                     label="Product Name"
+                    options={(productSuggestionsQuery.data ?? []).map((product) => ({ label: product.name, value: product.name }))}
                     value={form.name}
-                    onChange={(e) => setForm({ ...form, name: e.target.value })}
+                    allowCustomValue
+                    customValueLabel={(value) => `Use new product name “${value}”`}
+                    onChange={(event) => setForm({ ...form, name: String(event.target.value) })}
                     required
-                    placeholder="e.g., Premium Cotton Curtains"
+                    helperText="Search existing product names or type a new one. Close spelling mistakes use the existing name."
                   />
                   <TextInput
                     label="Stock Quantity"
@@ -925,6 +959,34 @@ const ProductManagementPage = () => {
                     value={form.reorderLevel}
                     onChange={(e) => setForm({ ...form, reorderLevel: e.target.value })}
                     required
+                  />
+                  <TextInput
+                    label="Base Selling Price (KES)"
+                    type="number"
+                    min={0}
+                    step="0.01"
+                    value={form.sellingPrice}
+                    onChange={(event) => setForm({ ...form, sellingPrice: event.target.value })}
+                    required
+                    helperText="Used by every variant unless overridden later."
+                  />
+                  <TextInput
+                    label="Cost Price (Optional)"
+                    type="number"
+                    min={0}
+                    step="0.01"
+                    value={form.costPrice}
+                    onChange={(event) => setForm({ ...form, costPrice: event.target.value })}
+                    helperText="Internal buying cost for margin reporting."
+                  />
+                  <TextInput
+                    label="Compare-at Price (Optional)"
+                    type="number"
+                    min={0}
+                    step="0.01"
+                    value={form.compareAtPrice}
+                    onChange={(event) => setForm({ ...form, compareAtPrice: event.target.value })}
+                    helperText="Original/list price displayed before a discount."
                   />
                   <TextInput
                     label="Max Offer Amount"
@@ -981,7 +1043,7 @@ const ProductManagementPage = () => {
                     </p>
                     {!editingProductId && (
                       <p className="text-xs text-primary">
-                        After saving the base product, you will be taken straight to variant setup.
+                        You can configure prices and variants after creating the product.
                       </p>
                     )}
                     {form.imageFiles.length > 0 && (
@@ -1069,13 +1131,14 @@ const ProductManagementPage = () => {
                   </div>
                 )}
 
-                <div className="flex items-center gap-2 pt-2">
-                  <Button type="submit" loading={saveProductMutation.isPending}>
-                    {editingProductId ? 'Update Product' : 'Create Product'}
-                  </Button>
+                <div className="flex flex-wrap items-center justify-end gap-2 border-t border-border pt-4">
+                  {formError && (
+                    <span className="mr-auto rounded-lg bg-error/10 px-3 py-2 text-xs text-error">{formError}</span>
+                  )}
                   <Button
                     type="button"
                     variant="outline"
+                    disabled={saveProductMutation.isPending}
                     onClick={() => {
                       setShowProductForm(false)
                       setEditingProductId(null)
@@ -1085,13 +1148,13 @@ const ProductManagementPage = () => {
                   >
                     Cancel
                   </Button>
-                  {formError && (
-                    <span className="text-xs text-error">{formError}</span>
-                  )}
+                  <Button type="submit" loading={saveProductMutation.isPending}>
+                    {editingProductId ? 'Update Product' : 'Add Product'}
+                  </Button>
                 </div>
               </form>
-            </div>
-          </motion.section>
+            </motion.div>
+          </motion.div>
         )}
       </AnimatePresence>
 
@@ -1438,9 +1501,9 @@ const ProductManagementPage = () => {
                       Checking stock across branches before deletion...
                     </div>
                   ) : deleteProductStockStatusQuery.isError ? (
-                    <p className="text-sm text-error">
-                      Could not verify stock across branches. Deletion is disabled until stock
-                      status can be checked.
+                    <p className="text-sm text-warning">
+                      Branch stock preview is unavailable. The server will still verify stock safely
+                      when you delete.
                     </p>
                   ) : deleteBlockingStocks.length > 0 ? (
                     <>
@@ -1492,7 +1555,6 @@ const ProductManagementPage = () => {
                   loading={deleteProductMutation.isPending}
                   disabled={
                     deleteProductStockStatusQuery.isLoading ||
-                    deleteProductStockStatusQuery.isError ||
                     deleteBlockingStocks.length > 0
                   }
                   onClick={() => deleteProductMutation.mutate(deleteCandidate.id)}
@@ -1500,6 +1562,13 @@ const ProductManagementPage = () => {
                   {deleteBlockingStocks.length > 0 ? 'Stock Exists in Branches' : 'Delete Permanently'}
                 </Button>
               </div>
+              {deleteProductMutation.isError && (
+                <div className="border-t border-border px-6 py-4">
+                  <p className="rounded-lg bg-error/10 p-3 text-sm text-error">
+                    {(deleteProductMutation.error as Error).message || 'Could not delete product.'}
+                  </p>
+                </div>
+              )}
             </motion.div>
           </motion.div>
         )}

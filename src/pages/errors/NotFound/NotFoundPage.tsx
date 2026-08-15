@@ -9,7 +9,7 @@ const NotFoundPage = () => {
       </h1>
       <p className="mt-2 max-w-md text-center text-sm text-text-tertiary">
         The page you’re looking for doesn’t exist. It may have been moved or renamed inside the
-        Julian Interiors suite.
+        MtaaMall suite.
       </p>
       <div className="mt-6 flex gap-3">
         <Link

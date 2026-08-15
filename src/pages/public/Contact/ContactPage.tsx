@@ -30,10 +30,10 @@ const contactCards = [
   },
   {
     title: 'Email',
-    value: 'info@julianinteriors.com',
+    value: 'info@mtaamall.com',
     note: 'We respond within 24 hours',
     icon: EnvelopeIcon,
-    action: 'mailto:info@julianinteriors.com',
+    action: 'mailto:info@mtaamall.com',
     badge: 'Quick Response',
   },
   {
@@ -131,7 +131,7 @@ const ContactPage = () => {
                 className="inline-flex items-center gap-2 rounded-full bg-gradient-to-r from-primary/10 to-secondary/10 px-4 py-2 text-xs font-semibold uppercase tracking-[0.18em] text-primary shadow-lg"
               >
                 <SparklesIcon className="h-4 w-4" />
-                Contact Julian Interiors
+                Contact MtaaMall
               </motion.div>
               
               <motion.h1

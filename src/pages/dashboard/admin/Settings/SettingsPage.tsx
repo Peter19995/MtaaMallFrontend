@@ -11,6 +11,7 @@ import {
   XCircleIcon
 } from '@heroicons/react/24/outline'
 import { Button, Select } from '@components/common'
+import { useConfirmDialog } from '@contexts/ConfirmDialogContext'
 import { listBranchesRequest } from '@api/modules/branches.api'
 import {
   getDefaultValuationMethodRequest,
@@ -36,6 +37,7 @@ const formatDateTime = (value?: string) => {
 }
 
 const SettingsPage = () => {
+  const confirm = useConfirmDialog()
   const queryClient = useQueryClient()
   const [valuationBranchId, setValuationBranchId] = useState<string>('')
   const [selectedValuationMethod, setSelectedValuationMethod] = useState<string>('')
@@ -492,8 +494,8 @@ const SettingsPage = () => {
                                   deleteSiteMediaMutation.isPending &&
                                   deleteSiteMediaMutation.variables === asset.id
                                 }
-                                onClick={() => {
-                                  if (!window.confirm('Remove this image from site media?')) {
+                                onClick={async () => {
+                                  if (!await confirm({ title: 'Delete image?', message: 'Remove this image from site media? This action cannot be undone.' })) {
                                     return
                                   }
 

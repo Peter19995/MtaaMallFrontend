@@ -4,13 +4,13 @@ import path from 'path'
 
 const resolveApiProxyTarget = (apiBaseUrl?: string) => {
   if (!apiBaseUrl) {
-    return 'https://api.julian-interiors.com'
+    return 'http://127.0.0.1:8000'
   }
 
   try {
     return new URL(apiBaseUrl).origin
   } catch {
-    return 'https://api.julian-interiors.com'
+    return 'http://127.0.0.1:8000'
   }
 }
 
@@ -45,7 +45,7 @@ export default defineConfig(({ mode }) => {
         '/api': {
           target: apiProxyTarget,
           changeOrigin: true,
-          secure: true
+          secure: false
         }
       }
     },

@@ -15,7 +15,7 @@ import {
   ArrowPathIcon
 } from '@heroicons/react/24/outline'
 import { HeartIcon as HeartIconSolid } from '@heroicons/react/24/solid'
-import { Button, TextInput } from '@components/common'
+import { Button, Select, TextInput } from '@components/common'
 import { CartContext } from '@contexts/CartContext'
 import { listProductsRequest, type ProductResponse } from '@api/modules/products.api'
 import { AppTheme, withOpacity } from '@constants/theme'
@@ -376,19 +376,14 @@ const ProductsPage = () => {
                     <label className="block text-xs font-medium text-text-secondary mb-2">
                       Category
                     </label>
-                    <select
+                    <Select
                       value={selectedCategory}
                       onChange={(e) => setSelectedCategory(e.target.value)}
-                      className="w-full px-3 py-2 bg-white border border-border rounded-lg 
-                               text-text focus:border-primary focus:outline-none focus:ring-2 
-                               focus:ring-primary/20 transition-all"
-                    >
-                      {categories.map(cat => (
-                        <option key={cat} value={cat}>
-                          {cat === 'all' ? 'All Categories' : cat}
-                        </option>
-                      ))}
-                    </select>
+                      options={categories.map((category) => ({
+                        label: category === 'all' ? 'All Categories' : category,
+                        value: category,
+                      }))}
+                    />
                   </div>
 
                   {/* Sort By */}
@@ -396,19 +391,11 @@ const ProductsPage = () => {
                     <label className="block text-xs font-medium text-text-secondary mb-2">
                       Sort By
                     </label>
-                    <select
+                    <Select
                       value={sortBy}
                       onChange={(e) => setSortBy(e.target.value)}
-                      className="w-full px-3 py-2 bg-white border border-border rounded-lg 
-                               text-text focus:border-primary focus:outline-none focus:ring-2 
-                               focus:ring-primary/20 transition-all"
-                    >
-                      {sortOptions.map(option => (
-                        <option key={option.value} value={option.value}>
-                          {option.label}
-                        </option>
-                      ))}
-                    </select>
+                      options={sortOptions}
+                    />
                   </div>
 
                   {/* Price Range */}

@@ -21,7 +21,8 @@ import {
   EyeSlashIcon,
 } from '@heroicons/react/24/outline'
 import { CheckCircleIcon as CheckCircleSolid } from '@heroicons/react/24/solid'
-import { Button, DataTable, Select, TextInput, type Column } from '@components/common'
+import { Button, DataTable, Select, TextArea, TextInput, type Column } from '@components/common'
+import { useConfirmDialog } from '@contexts/ConfirmDialogContext'
 import { listBranchesRequest } from '@api/modules/branches.api'
 import {
   createPaymentModeRequest,
@@ -88,6 +89,7 @@ const staggerContainer = {
 }
 
 const PaymentModesPage = () => {
+  const confirm = useConfirmDialog()
   const queryClient = useQueryClient()
   const [branchId, setBranchId] = useState('')
   const [search, setSearch] = useState('')
@@ -290,8 +292,8 @@ const PaymentModesPage = () => {
     setIsFormVisible(false)
   }
 
-  const onDeletePaymentMode = (mode: PaymentModeResponse) => {
-    const confirmed = window.confirm(`Delete payment mode "${mode.name}"? This action cannot be undone.`)
+  const onDeletePaymentMode = async (mode: PaymentModeResponse) => {
+    const confirmed = await confirm({ title: 'Delete payment mode?', message: `Delete payment mode "${mode.name}"? This action cannot be undone.` })
     if (!confirmed) {
       return
     }
@@ -618,32 +620,19 @@ const PaymentModesPage = () => {
                     <label className="block text-xs font-medium text-text-secondary mb-1">
                       Status
                     </label>
-                    <select className="w-full h-9 px-3 bg-background border border-border rounded-lg text-sm">
-                      <option>All Statuses</option>
-                      <option>Active Only</option>
-                      <option>Inactive Only</option>
-                    </select>
+                    <Select options={['All Statuses', 'Active Only', 'Inactive Only'].map((label) => ({ label, value: label }))} />
                   </div>
                   <div>
                     <label className="block text-xs font-medium text-text-secondary mb-1">
                       Default Status
                     </label>
-                    <select className="w-full h-9 px-3 bg-background border border-border rounded-lg text-sm">
-                      <option>All</option>
-                      <option>Default Only</option>
-                      <option>Non-default</option>
-                    </select>
+                    <Select options={['All', 'Default Only', 'Non-default'].map((label) => ({ label, value: label }))} />
                   </div>
                   <div>
                     <label className="block text-xs font-medium text-text-secondary mb-1">
                       Sort By
                     </label>
-                    <select className="w-full h-9 px-3 bg-background border border-border rounded-lg text-sm">
-                      <option>Name (A-Z)</option>
-                      <option>Name (Z-A)</option>
-                      <option>Recently Updated</option>
-                      <option>Oldest First</option>
-                    </select>
+                    <Select options={['Name (A-Z)', 'Name (Z-A)', 'Recently Updated', 'Oldest First'].map((label) => ({ label, value: label }))} />
                   </div>
                 </div>
               </motion.div>
@@ -692,8 +681,9 @@ const PaymentModesPage = () => {
                   />
                 </div>
 
-                <TextInput
+                <TextArea
                   label="Description (Optional)"
+                  rows={4}
                   value={paymentModeForm.description}
                   onChange={(e) => setPaymentModeForm({ ...paymentModeForm, description: e.target.value })}
                   placeholder="Brief description of this payment mode"

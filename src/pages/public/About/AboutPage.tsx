@@ -22,84 +22,84 @@ import { AppTheme } from '@constants/theme'
 
 const values = [
   {
-    title: 'Design That Performs',
+    title: 'Trust in Every Order',
     description:
-      'We combine visual quality with practical planning so every space looks strong and works well day to day.',
+      'We are building a marketplace where clear product information, dependable sellers, and secure checkout help customers shop confidently.',
     icon: LightBulbIcon,
     color: 'from-blue-400 to-cyan-400',
-    stats: '98% client satisfaction',
+    stats: 'Shop with confidence',
   },
   {
-    title: 'Reliable Delivery',
+    title: 'Convenience That Works',
     description:
-      'From scope to handover, we run clear workflows and timelines so clients always know what is happening.',
+      'From discovery to delivery, we keep the shopping journey simple, transparent, and suited to everyday life in Kenya.',
     icon: WrenchScrewdriverIcon,
     color: 'from-orange-400 to-red-400',
-    stats: '150+ projects delivered',
+    stats: 'Simple from cart to door',
   },
   {
-    title: 'People First',
+    title: 'Local Growth',
     description:
-      'We collaborate closely with homeowners, developers, and businesses to create spaces that reflect real needs.',
+      'We connect shoppers with local businesses and give sellers better ways to showcase products, serve customers, and grow.',
     icon: UserGroupIcon,
     color: 'from-green-400 to-emerald-400',
-    stats: '95% repeat clients',
+    stats: 'Built for shoppers and sellers',
   },
 ]
 
 const milestones = [
   { 
-    year: '2019', 
-    text: 'Julian Interiors launched to serve premium interior styling projects.',
+    year: 'Origin',
+    text: 'The idea for MtaaMall began with a simple goal: make local online shopping easier and more trustworthy.',
     icon: SparklesIcon,
-    achievement: 'Company Founded'
+    achievement: 'The Idea'
   },
   { 
-    year: '2021', 
-    text: 'Expanded into curtain installation and post-construction cleaning services.',
+    year: 'Build',
+    text: 'We developed one platform for products, sellers, orders, inventory, payments, and customer support.',
     icon: HomeModernIcon,
-    achievement: 'Service Expansion'
+    achievement: 'Marketplace Foundation'
   },
   { 
-    year: '2024', 
-    text: 'Introduced integrated project and inventory operations for better delivery.',
+    year: 'Launch',
+    text: 'MtaaMall opened its digital doors to connect Kenyan shoppers with a broader range of local products.',
     icon: BuildingOfficeIcon,
-    achievement: 'Operations Upgrade'
+    achievement: 'Online Marketplace'
   },
   { 
-    year: '2026', 
-    text: 'Scaled public portfolio and digital channels for faster client discovery.',
+    year: 'Next',
+    text: 'We are expanding seller access, product choice, payments, and fulfilment to serve more communities.',
     icon: TrophyIcon,
-    achievement: 'Digital Growth'
+    achievement: 'Growing Across Kenya'
   },
 ]
 
 const teamMembers = [
   {
     name: 'Sarah Johnson',
-    role: 'Lead Designer',
-    bio: '10+ years experience in residential and commercial interior design.',
+    role: 'Customer Experience Lead',
+    bio: 'Focused on making every step of shopping simple, clear, and helpful.',
     image: 'https://images.unsplash.com/photo-1494790108777-385d3001d8e7?auto=format&fit=crop&w=400&q=80',
   },
   {
     name: 'Michael Omondi',
-    role: 'Project Manager',
-    bio: 'Expert in construction coordination and quality assurance.',
+    role: 'Marketplace Operations Lead',
+    bio: 'Coordinates sellers, products, orders, and fulfilment standards.',
     image: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&w=400&q=80',
   },
   {
     name: 'Emily Wanjiku',
-    role: 'Senior Designer',
-    bio: 'Specializes in curtain design and soft furnishings.',
+    role: 'Seller Growth Lead',
+    bio: 'Helps local businesses reach customers and grow through digital commerce.',
     image: 'https://images.unsplash.com/photo-1438761681033-6461ffad8d80?auto=format&fit=crop&w=400&q=80',
   },
 ]
 
 const stats = [
-  { label: 'Projects Completed', value: '150+', icon: TrophyIcon },
-  { label: 'Happy Clients', value: '200+', icon: HeartIcon },
-  { label: 'Years Experience', value: '7+', icon: ClockIcon },
-  { label: 'Quality Guarantee', value: '100%', icon: ShieldCheckIcon },
+  { label: 'Product Categories', value: 'Many', icon: TrophyIcon },
+  { label: 'Community Focus', value: 'Kenya', icon: HeartIcon },
+  { label: 'Shopping Access', value: '24/7', icon: ClockIcon },
+  { label: 'Secure Experience', value: 'Always', icon: ShieldCheckIcon },
 ]
 
 // Animation variants
@@ -156,7 +156,7 @@ const AboutPage = () => {
               className="inline-flex items-center gap-2 rounded-full border border-primary/20 bg-white/80 backdrop-blur-sm px-4 py-2 text-xs font-semibold uppercase tracking-[0.18em] text-primary shadow-lg"
             >
               <SparklesIcon className="h-4 w-4" />
-              About Julian Interiors
+              About MtaaMall
             </motion.div>
             
             <motion.h1
@@ -166,9 +166,9 @@ const AboutPage = () => {
               className="mt-6 text-5xl font-bold leading-tight text-text sm:text-6xl lg:text-7xl"
               style={{ fontFamily: '"Playfair Display", Georgia, serif' }}
             >
-              We build interiors that feel{' '}
+              We bring the mall{' '}
               <span className="bg-gradient-to-r from-primary to-secondary bg-clip-text text-transparent">
-                intentional, polished, and livable.
+                closer to your mtaa.
               </span>
             </motion.h1>
             
@@ -178,10 +178,9 @@ const AboutPage = () => {
               transition={{ delay: 0.4 }}
               className="mt-6 max-w-2xl text-lg leading-relaxed text-text-secondary"
             >
-              Julian Interiors is a design and execution company focused on transforming homes,
-              offices, and commercial spaces through high-quality styling, fit-out, and finishing.
-              We deliver projects across curtain installation, interior design, wall painting,
-              furniture customization, and post-construction cleaning.
+              MtaaMall is a Kenyan online marketplace built to make everyday shopping simpler.
+              We connect customers with trusted sellers, useful products, convenient payment
+              options, and dependable delivery—all through one accessible platform.
             </motion.p>
 
             <motion.div
@@ -190,14 +189,14 @@ const AboutPage = () => {
               transition={{ delay: 0.5 }}
               className="mt-8 flex flex-wrap gap-4"
             >
-              <Link to="/projects">
+              <Link to="/products">
                 <motion.button
                   whileHover={{ scale: 1.05 }}
                   whileTap={{ scale: 0.95 }}
                   className="group relative overflow-hidden rounded-xl bg-gradient-to-r from-primary to-primary-dark px-6 py-3 text-sm font-semibold text-white shadow-lg"
                 >
                   <span className="relative z-10 flex items-center gap-2">
-                    View Our Projects
+                    Start Shopping
                     <ArrowRightIcon className="h-4 w-4 group-hover:translate-x-1 transition-transform" />
                   </span>
                   <motion.div
@@ -214,7 +213,7 @@ const AboutPage = () => {
                   whileTap={{ scale: 0.95 }}
                   className="rounded-xl border-2 border-border bg-white/80 backdrop-blur-sm px-6 py-3 text-sm font-semibold text-text-secondary hover:border-primary/30 hover:text-primary transition-all shadow-lg"
                 >
-                  Explore Services
+                  Explore MtaaMall
                 </motion.button>
               </Link>
             </motion.div>
@@ -227,9 +226,9 @@ const AboutPage = () => {
               className="mt-8 grid gap-4 sm:grid-cols-3"
             >
               {[
-                { label: 'Project Focus', value: 'Residential & Commercial', icon: BuildingOfficeIcon },
-                { label: 'Core Strength', value: 'Visual Design + Delivery', icon: StarIcon },
-                { label: 'Coverage', value: 'End-to-End Interiors', icon: HomeModernIcon },
+                { label: 'For Shoppers', value: 'Choice, Value & Convenience', icon: BuildingOfficeIcon },
+                { label: 'For Sellers', value: 'Reach, Tools & Growth', icon: StarIcon },
+                { label: 'Our Focus', value: 'Kenyan Communities', icon: HomeModernIcon },
               ].map((item, index) => {
                 const Icon = item.icon
                 return (
@@ -256,22 +255,22 @@ const AboutPage = () => {
             <div className="grid gap-4 sm:grid-cols-2">
               <motion.img
                 whileHover={{ scale: 1.02 }}
-                src="https://images.unsplash.com/photo-1616593969747-4797dc75033e?auto=format&fit=crop&w=1200&q=80"
-                alt="Interior styling consultation"
+                src="https://images.unsplash.com/photo-1472851294608-062f824d29cc?auto=format&fit=crop&w=1200&q=80"
+                alt="Shopping from local businesses through MtaaMall"
                 className="h-72 w-full rounded-3xl object-cover shadow-2xl sm:col-span-2"
                 loading="lazy"
               />
               <motion.img
                 whileHover={{ scale: 1.02 }}
-                src="https://images.unsplash.com/photo-1616137422495-1e9e46e2aa77?auto=format&fit=crop&w=800&q=80"
-                alt="Curtain installation details"
+                src="https://images.unsplash.com/photo-1556742049-0cfed4f6a45d?auto=format&fit=crop&w=800&q=80"
+                alt="Convenient and secure online payments"
                 className="h-56 w-full rounded-3xl object-cover shadow-xl"
                 loading="lazy"
               />
               <motion.img
                 whileHover={{ scale: 1.02 }}
-                src="https://images.unsplash.com/photo-1616486338812-3dadae4b4ace?auto=format&fit=crop&w=800&q=80"
-                alt="Modern office interior project"
+                src="https://images.unsplash.com/photo-1556740758-90de374c12ad?auto=format&fit=crop&w=800&q=80"
+                alt="Friendly marketplace customer support"
                 className="h-56 w-full rounded-3xl object-cover shadow-xl"
                 loading="lazy"
               />
@@ -284,8 +283,8 @@ const AboutPage = () => {
               transition={{ delay: 0.8 }}
               className="absolute -bottom-5 -left-5 rounded-2xl border border-primary/25 bg-white/95 p-4 shadow-xl backdrop-blur-sm"
             >
-              <p className="text-xs uppercase tracking-wide text-text-tertiary">Since 2019</p>
-              <p className="mt-1 text-sm font-semibold text-text">7+ Years of Excellence</p>
+              <p className="text-xs uppercase tracking-wide text-text-tertiary">Built in Kenya</p>
+              <p className="mt-1 text-sm font-semibold text-text">Shopping made local and convenient</p>
             </motion.div>
           </motion.div>
         </div>
@@ -332,7 +331,7 @@ const AboutPage = () => {
             What We Stand For
           </h2>
           <p className="text-text-secondary max-w-2xl mx-auto">
-            Principles that guide every project and client interaction
+            Principles that guide every order, partnership, and customer interaction
           </p>
         </motion.div>
 
@@ -393,8 +392,8 @@ const AboutPage = () => {
             </div>
             
             <p className="text-text-secondary mb-6">
-              We continue to evolve our design quality and operational systems to serve clients faster
-              with stronger outcomes.
+              We are building MtaaMall step by step around the real needs of Kenyan shoppers,
+              sellers, and growing communities.
             </p>
             
             <div className="space-y-4">
@@ -481,21 +480,21 @@ const AboutPage = () => {
                   className="flex items-start gap-3 p-3 bg-white/80 backdrop-blur-sm rounded-xl"
                 >
                   <HomeModernIcon className="h-5 w-5 text-primary flex-shrink-0 mt-0.5" />
-                  <p className="text-sm text-text-secondary">We start with discovery to understand your space, style, and constraints.</p>
+                  <p className="text-sm text-text-secondary">Shoppers discover products, compare choices, and buy with confidence.</p>
                 </motion.div>
                 <motion.div 
                   whileHover={{ x: 5 }}
                   className="flex items-start gap-3 p-3 bg-white/80 backdrop-blur-sm rounded-xl"
                 >
                   <LightBulbIcon className="h-5 w-5 text-primary flex-shrink-0 mt-0.5" />
-                  <p className="text-sm text-text-secondary">We propose practical concepts, materials, and a delivery schedule.</p>
+                  <p className="text-sm text-text-secondary">Sellers list products, manage stock and orders, and reach more customers.</p>
                 </motion.div>
                 <motion.div 
                   whileHover={{ x: 5 }}
                   className="flex items-start gap-3 p-3 bg-white/80 backdrop-blur-sm rounded-xl"
                 >
                   <WrenchScrewdriverIcon className="h-5 w-5 text-primary flex-shrink-0 mt-0.5" />
-                  <p className="text-sm text-text-secondary">We execute with quality checks and clear progress updates.</p>
+                  <p className="text-sm text-text-secondary">MtaaMall supports secure checkout, clear updates, and dependable fulfilment.</p>
                 </motion.div>
               </div>
             </motion.div>
@@ -512,28 +511,28 @@ const AboutPage = () => {
           className="relative overflow-hidden rounded-3xl border border-border bg-gradient-to-r from-primary to-secondary"
         >
           <img
-            src="https://images.unsplash.com/photo-1617104551722-3b2d51366499?auto=format&fit=crop&w=1600&q=80"
-            alt="Finished premium interior space"
+            src="https://images.unsplash.com/photo-1472851294608-062f824d29cc?auto=format&fit=crop&w=1600&q=80"
+            alt="Discover products from trusted sellers on MtaaMall"
             className="absolute inset-0 h-full w-full object-cover opacity-20"
             loading="lazy"
           />
           
           <div className="relative p-8 sm:p-12 text-center">
             <h2 className="text-3xl md:text-4xl font-bold text-white mb-4">
-              Ready to Transform Your Space?
+              Ready to Find Your Next Favourite?
             </h2>
             <p className="text-white/90 max-w-2xl mx-auto mb-8">
-              Let's bring your vision to life with our expert design and execution team.
+              Explore products from trusted sellers and enjoy shopping designed around your everyday needs.
             </p>
             
             <div className="flex flex-wrap gap-4 justify-center">
-              <Link to="/gallery">
+              <Link to="/products">
                 <motion.button
                   whileHover={{ scale: 1.05 }}
                   whileTap={{ scale: 0.95 }}
                   className="bg-white text-primary px-6 py-3 rounded-xl font-semibold shadow-lg hover:shadow-xl transition-all flex items-center gap-2"
                 >
-                  View Gallery
+                  Shop Products
                 </motion.button>
               </Link>
               <Link to="/blog">
@@ -542,7 +541,7 @@ const AboutPage = () => {
                   whileTap={{ scale: 0.95 }}
                   className="bg-white/20 backdrop-blur-sm text-white px-6 py-3 rounded-xl font-semibold border border-white/30 hover:bg-white/30 transition-all flex items-center gap-2"
                 >
-                  Read Design Insights
+                  Read Shopping Guides
                   <ArrowRightIcon className="h-4 w-4" />
                 </motion.button>
               </Link>
@@ -569,7 +568,7 @@ const AboutPage = () => {
           </motion.a>
           
           <motion.a
-            href="mailto:info@julianinteriors.com"
+            href="mailto:info@mtaamall.com"
             whileHover={{ y: -5 }}
             className="flex items-center gap-3 p-4 bg-white rounded-xl border border-border shadow-lg hover:shadow-xl transition-all group"
           >
@@ -578,7 +577,7 @@ const AboutPage = () => {
             </div>
             <div>
               <p className="text-xs text-text-tertiary">Email Us</p>
-              <p className="text-sm font-semibold text-text">info@julianinteriors.com</p>
+              <p className="text-sm font-semibold text-text">info@mtaamall.com</p>
             </div>
           </motion.a>
           

@@ -5,19 +5,17 @@ import {
   ShoppingBagIcon, 
   HomeIcon,
   SparklesIcon,
-  WrenchScrewdriverIcon,
   NewspaperIcon,
-  PhotoIcon,
   UserIcon,
   Bars3Icon,
   XMarkIcon,
   MagnifyingGlassIcon,
-  HeartIcon
+  HeartIcon,
+  BuildingOffice2Icon
 } from '@heroicons/react/24/outline'
 import { CartContext } from '@contexts/CartContext'
 import { useAuth } from '@hooks/useAuth'
 import { AppTheme, withOpacity } from '@constants/theme'
-import brandLogo from '@/assets/business-logo.svg'
 
 // Navigation items with icons
 const navItems = [
@@ -25,10 +23,8 @@ const navItems = [
   { path: '/about', label: 'About', icon: UserIcon, public: true },
   { path: '/products', label: 'Shop', icon: ShoppingBagIcon, public: true },
   { path: '/services', label: 'Services', icon: SparklesIcon, public: true },
-  { path: '/styling-studio', label: 'Styling Studio', icon: SparklesIcon, public: true },
-  { path: '/projects', label: 'Projects', icon: WrenchScrewdriverIcon, public: true },
+  { path: '/register-business', label: 'Sell', icon: BuildingOffice2Icon, public: true },
   { path: '/blog', label: 'Blogs', icon: NewspaperIcon, public: true },
-  { path: '/gallery', label: 'Gallery', icon: PhotoIcon, public: true },
 ]
 
 export const MainLayout = () => {
@@ -104,11 +100,10 @@ export const MainLayout = () => {
                 initial={{ scale: 1 }}
                 whileHover={{ scale: 1.05 }}
                 whileTap={{ scale: 0.95 }}
-                src={brandLogo}
-                alt="Julian Interiors logo"
-                className="h-10 w-auto rounded-full border border-primary/10 bg-white/80 p-0.5 shadow-sm"
+                src="/mtaamall-logo.png"
+                alt="MtaaMall logo"
+                className="h-12 w-auto object-contain"
               />
-              <span className="text-sm font-medium text-text-secondary hidden sm:block">Julian Interiors</span>
             </Link>
 
             {/* Desktop Navigation */}
@@ -314,7 +309,7 @@ export const MainLayout = () => {
                       type="text"
                       value={searchQuery}
                       onChange={(e) => setSearchQuery(e.target.value)}
-                      placeholder="Search products, services, or projects..."
+                      placeholder="Search products, categories, or sellers..."
                       className="w-full h-12 pl-12 pr-4 bg-white border-2 border-border rounded-xl 
                                focus:border-primary focus:outline-none focus:ring-4 
                                focus:ring-primary/20 transition-all text-text"
@@ -437,17 +432,14 @@ export const MainLayout = () => {
             <div className="col-span-1 md:col-span-2">
               <Link to="/" className="mb-4 inline-flex items-center gap-3">
                 <img
-                  src={brandLogo}
-                  alt="Julian Interiors logo"
-                  className="h-12 w-auto rounded-full border border-primary/10 bg-white p-0.5"
+                  src="/mtaamall-logo.png"
+                  alt="MtaaMall logo"
+                  className="h-16 w-auto object-contain"
                 />
-                <span className="text-2xl font-bold bg-gradient-to-r from-primary to-secondary bg-clip-text text-transparent">
-                  Julian Interiors
-                </span>
               </Link>
               <p className="text-text-secondary text-sm mb-4 max-w-md">
-                Creating beautiful spaces with intelligent operations. 
-                Your premier destination for interior design and home decor.
+                Kenya's online marketplace for quality products, trusted sellers,
+                convenient payments, and dependable delivery.
               </p>
               <div className="flex gap-4">
                 {/* Social Icons */}
@@ -492,7 +484,7 @@ export const MainLayout = () => {
               <ul className="space-y-2 text-sm text-text-secondary">
                 <li>Nairobi, Kenya</li>
                 <li>+254 700 000 000</li>
-                <li>info@julianinteriors.com</li>
+                <li>info@mtaamall.com</li>
               </ul>
             </div>
           </div>
@@ -501,7 +493,7 @@ export const MainLayout = () => {
           <div className="mt-12 pt-8 border-t border-border">
             <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
               <p className="text-xs text-text-tertiary">
-                © {new Date().getFullYear()} Julian Interiors. All rights reserved.
+                © {new Date().getFullYear()} MtaaMall. All rights reserved.
               </p>
               <div className="flex gap-6">
                 <Link to="/privacy" className="text-xs text-text-tertiary hover:text-primary transition-colors">
@@ -511,8 +503,16 @@ export const MainLayout = () => {
                   Terms of Service
                 </Link>
               </div>
-              <p className="text-xs text-text-tertiary hidden sm:block">
-                Beautiful spaces. Intelligent operations.
+              <p className="text-xs text-text-tertiary">
+                Built by{' '}
+                <a
+                  href="https://operatingsoftwareltd.com/"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="font-semibold text-primary hover:text-primary-dark transition-colors"
+                >
+                  Operating Software
+                </a>
               </p>
             </div>
           </div>

@@ -24,6 +24,7 @@ import {
   WrenchScrewdriverIcon,
 } from '@heroicons/react/24/outline'
 import { Button, DataTable, Select, TextArea, TextInput, type Column } from '@components/common'
+import { useConfirmDialog } from '@contexts/ConfirmDialogContext'
 import {
   createServiceCategoryRequest,
   createServiceRequest,
@@ -85,6 +86,7 @@ const staggerContainer = {
 }
 
 const ServiceManagementPage = () => {
+  const confirm = useConfirmDialog()
   const queryClient = useQueryClient()
   const [search, setSearch] = useState('')
   const [showForm, setShowForm] = useState(false)
@@ -339,8 +341,8 @@ const ServiceManagementPage = () => {
           <button
             type="button"
             className="p-2 text-text-secondary hover:text-error hover:bg-error/5 rounded-lg transition-all"
-            onClick={() => {
-              if (window.confirm(`Delete "${row.name}"? This action cannot be undone.`)) {
+            onClick={async () => {
+              if (await confirm({ title: 'Delete service?', message: `Delete "${row.name}"? This action cannot be undone.` })) {
                 deleteServiceMutation.mutate(row.id)
               }
             }}
@@ -503,15 +505,15 @@ const ServiceManagementPage = () => {
 
             {/* Status Filter */}
             <div className="w-full lg:w-48">
-              <select
+              <Select
                 value={statusFilter}
                 onChange={(e) => setStatusFilter(e.target.value as any)}
-                className="w-full h-10 px-3 bg-background border border-border rounded-lg text-sm focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
-              >
-                <option value="all">All Services</option>
-                <option value="active">Active Only</option>
-                <option value="inactive">Inactive Only</option>
-              </select>
+                options={[
+                  { label: 'All Services', value: 'all' },
+                  { label: 'Active Only', value: 'active' },
+                  { label: 'Inactive Only', value: 'inactive' },
+                ]}
+              />
             </div>
 
             {/* Filter Toggle */}
@@ -564,24 +566,16 @@ const ServiceManagementPage = () => {
                     <label className="block text-xs font-medium text-text-secondary mb-1">
                       Duration
                     </label>
-                    <select className="w-full h-9 px-3 bg-background border border-border rounded-lg text-sm">
-                      <option>Any Duration</option>
-                      <option>Under 30 min</option>
-                      <option>30-60 min</option>
-                      <option>60-120 min</option>
-                      <option>Over 120 min</option>
-                    </select>
+                    <Select options={['Any Duration', 'Under 30 min', '30-60 min', '60-120 min', 'Over 120 min'].map((label) => ({ label, value: label }))} />
                   </div>
                   <div>
                     <label className="block text-xs font-medium text-text-secondary mb-1">
                       Category
                     </label>
-                    <select className="w-full h-9 px-3 bg-background border border-border rounded-lg text-sm">
-                      <option>All Categories</option>
-                      {categoriesQuery.data?.map(cat => (
-                        <option key={cat.id} value={cat.id}>{cat.name}</option>
-                      ))}
-                    </select>
+                    <Select options={[
+                      { label: 'All Categories', value: '' },
+                      ...(categoriesQuery.data ?? []).map((category) => ({ label: category.name, value: category.id })),
+                    ]} />
                   </div>
                 </div>
               </motion.div>
@@ -612,8 +606,9 @@ const ServiceManagementPage = () => {
                   required
                   placeholder="e.g., Installation, Design, Cleaning"
                 />
-                <TextInput
+                <TextArea
                   label="Description (Optional)"
+                  rows={4}
                   value={categoryDescription}
                   onChange={(e) => setCategoryDescription(e.target.value)}
                   placeholder="Brief description of the category"

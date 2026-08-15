@@ -30,7 +30,6 @@ export type BranchListParams = {
 
 export type BranchCreate = {
   name: string
-  code: string
   location?: string
   is_active?: boolean
   is_online_shop_source?: boolean
@@ -39,10 +38,14 @@ export type BranchCreate = {
 
 export type BranchUpdate = {
   name?: string
-  code?: string
   location?: string
   is_active?: boolean
   is_online_shop_source?: boolean
+}
+
+export const getNextBranchCodeRequest = async (): Promise<string> => {
+  const { data } = await api.get<{ code: string }>('/branches/next-code')
+  return data.code
 }
 
 export type AssignBranchManagerRequest = {

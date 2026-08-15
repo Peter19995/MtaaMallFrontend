@@ -1,14 +1,14 @@
 export const Testimonials = () => {
   const testimonials = [
     {
-      name: 'Residential client',
+      name: 'Verified shopper',
       quote:
-        'Julian Interiors transformed our living room – the curtains and decor look like a magazine spread.',
+        'MtaaMall made it easy to compare products, pay securely, and get my order delivered on time.',
     },
     {
-      name: 'Property developer',
+      name: 'Local business owner',
       quote:
-        'Their team handled installation and post-construction cleaning across multiple units seamlessly.',
+        'I can reach more customers while managing products and orders from one convenient platform.',
     },
   ]
 
@@ -19,7 +19,7 @@ export const Testimonials = () => {
           Testimonials
         </h2>
         <p className="text-xs text-text-tertiary">
-          Build trust by pairing a polished online experience with reliable delivery on site.
+          Real experiences from shoppers and sellers growing with MtaaMall.
         </p>
       </header>
       <div className="grid gap-4 md:grid-cols-2">
@@ -38,4 +38,3 @@ export const Testimonials = () => {
 }
 
 export default Testimonials
-

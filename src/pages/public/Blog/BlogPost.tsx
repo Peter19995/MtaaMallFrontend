@@ -152,7 +152,7 @@ const BlogPost = () => {
 
   const handleShare = (platform: string) => {
     const url = window.location.href
-    const title = blog?.title || 'Julian Interiors Blog'
+    const title = blog?.title || 'MtaaMall Blog'
     
     const shareUrls = {
       twitter: `https://twitter.com/intent/tweet?text=${encodeURIComponent(title)}&url=${encodeURIComponent(url)}`,
@@ -258,7 +258,7 @@ const BlogPost = () => {
                 <div className="flex flex-wrap items-center gap-4 text-white/80">
                   <span className="flex items-center gap-1">
                     <UserIcon className="w-4 h-4" />
-                    {blog.author_name || 'Julian Interiors'}
+                    {blog.author_name || 'MtaaMall'}
                   </span>
                   <span className="flex items-center gap-1">
                     <CalendarIcon className="w-4 h-4" />
@@ -392,7 +392,7 @@ const BlogPost = () => {
             </div>
             <div>
               <h3 className="text-lg font-bold text-text">
-                {blog.author_name || 'Julian Interiors'}
+                {blog.author_name || 'MtaaMall'}
               </h3>
               <p className="text-sm text-text-secondary mt-1">
                 {blog.author_bio || 'Interior design experts dedicated to creating beautiful and functional spaces.'}

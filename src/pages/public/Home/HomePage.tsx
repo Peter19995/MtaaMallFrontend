@@ -73,26 +73,26 @@ const toSortedMediaUrls = (items?: SiteMediaItem[]): string[] =>
 
 const processSteps = [
   {
-    title: 'Discovery & Concept',
-    description: 'Site visit, measurements, mood boards, and a practical style direction.',
+    title: 'Discover',
+    description: 'Browse products from trusted sellers across the categories you use every day.',
     icon: PaintBrushIcon,
     color: 'from-blue-400 to-cyan-400'
   },
   {
-    title: 'Design & Planning',
-    description: 'Detailed materials list, budget alignment, and timeline confirmation.',
+    title: 'Choose',
+    description: 'Compare options, check product details, and add your favourites to cart.',
     icon: SwatchIcon,
     color: 'from-purple-400 to-pink-400'
   },
   {
-    title: 'Execution',
-    description: 'Professional installation, wall finishes, and fit-out quality checks.',
+    title: 'Pay Securely',
+    description: 'Complete checkout using convenient payment options, including M-Pesa.',
     icon: WrenchScrewdriverIcon,
     color: 'from-orange-400 to-red-400'
   },
   {
-    title: 'Handover',
-    description: 'Final styling, snag fixes, and post-project support for confidence.',
+    title: 'Get It Delivered',
+    description: 'Follow your order from confirmation to reliable delivery at your doorstep.',
     icon: CheckBadgeIcon,
     color: 'from-green-400 to-emerald-400'
   },
@@ -100,23 +100,23 @@ const processSteps = [
 
 const testimonials = [
   {
-    name: 'Sarah Johnson',
-    role: 'Homeowner',
-    content: 'Julian Interiors transformed our living space beyond our expectations. The attention to detail and professional service was outstanding.',
+    name: 'Sarah Wanjiku',
+    role: 'Verified shopper',
+    content: 'I found everything I needed in one place, paid with M-Pesa, and received my order without any stress.',
     rating: 5,
     image: 'https://images.unsplash.com/photo-1494790108777-385d3001d8e7?auto=format&fit=crop&w=200&q=80'
   },
   {
     name: 'Michael Omondi',
-    role: 'Office Manager',
-    content: 'The team delivered our office renovation on time and within budget. Our staff loves the new workspace design.',
+    role: 'Small business owner',
+    content: 'MtaaMall makes it easy to compare products and restock my business without spending the whole day moving around town.',
     rating: 5,
     image: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&w=200&q=80'
   },
   {
-    name: 'Emily Wanjiku',
-    role: 'Property Developer',
-    content: 'Working with Julian Interiors on multiple projects has been a pleasure. Consistent quality and reliable execution.',
+    name: 'Emily Achieng',
+    role: 'Online shopper',
+    content: 'The prices are clear, the selection is great, and order updates keep me informed from checkout to delivery.',
     rating: 5,
     image: 'https://images.unsplash.com/photo-1438761681033-6461ffad8d80?auto=format&fit=crop&w=200&q=80'
   }
@@ -303,10 +303,10 @@ const HomePage = () => {
 
   const highlights = useMemo(
     () => [
-      { label: 'Active Services', value: `${services.length || 6}+`, icon: SparklesIcon },
-      { label: 'Completed Projects', value: `${projects.filter(p => p.status === 'completed').length || 30}+`, icon: HomeModernIcon },
-      { label: 'Quality Products', value: `${products.length || 120}+`, icon: ShoppingBagIcon },
-      { label: 'Happy Clients', value: '500+', icon: UserGroupIcon },
+      { label: 'Trusted Sellers', value: `${services.length || 25}+`, icon: CheckBadgeIcon },
+      { label: 'Orders Delivered', value: `${projects.filter(p => p.status === 'completed').length || 1000}+`, icon: HomeModernIcon },
+      { label: 'Products Online', value: `${products.length || 500}+`, icon: ShoppingBagIcon },
+      { label: 'Happy Shoppers', value: '500+', icon: UserGroupIcon },
     ],
     [projects, products.length, services.length]
   )
@@ -340,7 +340,7 @@ const HomePage = () => {
               className="inline-flex items-center gap-2 rounded-full border border-primary/20 bg-white/80 backdrop-blur-sm px-4 py-2 text-xs font-semibold uppercase tracking-[0.2em] text-primary shadow-lg"
             >
               <SparklesIcon className="h-4 w-4" />
-              Julian Interiors
+              MtaaMall
             </motion.div>
             
             <motion.h1
@@ -350,9 +350,9 @@ const HomePage = () => {
               className="mt-6 max-w-3xl text-5xl font-bold leading-tight sm:text-6xl lg:text-7xl"
               style={{ fontFamily: '"Playfair Display", Georgia, serif' }}
             >
-              Transform Your Space into{' '}
+              Everything You Need,{' '}
               <span className="bg-gradient-to-r from-primary to-secondary bg-clip-text text-transparent">
-                Timeless Art
+                All in One Mtaa
               </span>
             </motion.h1>
             
@@ -362,9 +362,8 @@ const HomePage = () => {
               transition={{ delay: 0.4 }}
               className="mt-6 max-w-2xl text-lg leading-relaxed text-text-secondary"
             >
-              We design and deliver curated interiors for homes, offices, and developments,
-              including curtain installation, furniture customization, wall painting, and
-              post-construction cleaning, all managed end-to-end by one team.
+              Shop quality products from trusted local sellers across Kenya. Compare choices,
+              pay securely with convenient options, and get your order delivered wherever you are.
             </motion.p>
 
             <motion.div
@@ -373,13 +372,13 @@ const HomePage = () => {
               transition={{ delay: 0.5 }}
               className="mt-8 flex flex-wrap gap-4"
             >
-              <Link to="/projects">
+              <Link to="/products">
                 <Button 
                   size="lg" 
                   rightIcon={<ArrowRightIcon className="h-4 w-4" />}
                   className="group relative overflow-hidden"
                 >
-                  <span className="relative z-10">View Our Work</span>
+                  <span className="relative z-10">Start Shopping</span>
                   <motion.div
                     className="absolute inset-0 bg-gradient-to-r from-primary to-primaryDark"
                     initial={{ x: '100%' }}
@@ -388,14 +387,14 @@ const HomePage = () => {
                   />
                 </Button>
               </Link>
-              <Link to="/services">
+              <Link to="/products">
                 <Button variant="outline" size="lg">
-                  Explore Services
+                  Browse Products
                 </Button>
               </Link>
-              <Link to="/gallery">
+              <Link to="/about">
                 <Button variant="ghost" size="lg" leftIcon={<PhotoIcon className="h-4 w-4" />}>
-                  Gallery
+                  Why MtaaMall
                 </Button>
               </Link>
             </motion.div>
@@ -442,21 +441,21 @@ const HomePage = () => {
                   <motion.img
                     whileHover={{ scale: 1.02 }}
                     src={heroImages[currentHeroIndex]}
-                    alt="Elegant interior living room"
+                    alt="Popular products available on MtaaMall"
                     className="h-72 w-full rounded-3xl object-cover sm:col-span-2 shadow-2xl"
                     loading="lazy"
                   />
                   <motion.img
                     whileHover={{ scale: 1.02 }}
                     src={heroImages[(currentHeroIndex + 1) % heroImages.length]}
-                    alt="Premium curtain and upholstery styling"
+                    alt="Quality products from trusted local sellers"
                     className="h-52 w-full rounded-3xl object-cover shadow-xl"
                     loading="lazy"
                   />
                   <motion.img
                     whileHover={{ scale: 1.02 }}
                     src={heroImages[(currentHeroIndex + 2) % heroImages.length]}
-                    alt="Modern workspace interior setup"
+                    alt="Convenient online shopping and delivery"
                     className="h-52 w-full rounded-3xl object-cover shadow-xl"
                     loading="lazy"
                   />
@@ -471,7 +470,7 @@ const HomePage = () => {
               className="absolute -bottom-5 left-6 rounded-2xl border border-primary/25 bg-white/95 p-4 shadow-xl backdrop-blur-sm"
             >
               <p className="text-xs uppercase tracking-wide text-text-tertiary">Our Promise</p>
-              <p className="mt-1 text-sm font-semibold text-text">Clear timelines, quality finishes, and visual impact.</p>
+              <p className="mt-1 text-sm font-semibold text-text">Trusted sellers, secure checkout, and dependable delivery.</p>
             </motion.div>
           </motion.div>
         </div>
@@ -486,26 +485,26 @@ const HomePage = () => {
       >
         <div className="rounded-3xl border border-border bg-white/50 backdrop-blur-sm p-6 shadow-lg">
           <p className="text-center text-xs uppercase tracking-[0.22em] text-text-tertiary">
-            Trusted by leading residential, hospitality, and commercial clients
+            A simpler way to shop from businesses across Kenya
           </p>
           <div className="mt-4 grid gap-4 text-center text-sm text-text-secondary md:grid-cols-3">
             <motion.p 
               whileHover={{ scale: 1.05, backgroundColor: AppTheme.colors.primarySoft }}
               className="rounded-xl bg-background px-4 py-3 transition-all cursor-default"
             >
-              Custom interior styling and fit-out
+              Quality products from verified sellers
             </motion.p>
             <motion.p 
               whileHover={{ scale: 1.05, backgroundColor: AppTheme.colors.primarySoft }}
               className="rounded-xl bg-background px-4 py-3 transition-all cursor-default"
             >
-              Reliable site coordination and project updates
+              Secure and convenient payment options
             </motion.p>
             <motion.p 
               whileHover={{ scale: 1.05, backgroundColor: AppTheme.colors.primarySoft }}
               className="rounded-xl bg-background px-4 py-3 transition-all cursor-default"
             >
-              A single team from concept to handover
+              Clear order updates and reliable delivery
             </motion.p>
           </div>
         </div>
@@ -525,7 +524,7 @@ const HomePage = () => {
               What We Offer
             </motion.p>
             <motion.h2 variants={fadeInUp} className="mt-2 text-4xl font-bold text-text">
-              Design and execution services built for real spaces
+              More ways to shop, save, and get things done
             </motion.h2>
           </div>
           <motion.div variants={fadeInUp}>
@@ -586,7 +585,7 @@ const HomePage = () => {
                     </h3>
                     <p className="mt-2 text-text-secondary line-clamp-2">
                       {service.description ??
-                        'Professional planning, quality materials, and sharp finishing delivered by our team.'}
+                        'Convenient support and value-added services designed for a better shopping experience.'}
                     </p>
                     <div className="mt-4 flex items-center justify-between">
                       <span className="text-lg font-bold text-primary">
@@ -627,15 +626,15 @@ const HomePage = () => {
           <div className="mb-12 flex items-end justify-between gap-4">
             <div>
               <motion.p variants={fadeInUp} className="text-xs font-semibold uppercase tracking-[0.18em] text-primary">
-                Project Showcase
+                Seller Spotlight
               </motion.p>
               <motion.h2 variants={fadeInUp} className="mt-2 text-4xl font-bold text-text">
-                Recent work and ongoing transformations
+                Discover businesses serving customers across Kenya
               </motion.h2>
             </div>
             <motion.div variants={fadeInUp}>
               <Link to="/projects" className="group flex items-center gap-2 text-sm font-semibold text-primary hover:text-primary-dark">
-                View all projects
+                Meet our sellers
                 <ChevronRightIcon className="h-4 w-4 group-hover:translate-x-1 transition-transform" />
               </Link>
             </motion.div>
@@ -655,7 +654,7 @@ const HomePage = () => {
                   <div className="relative overflow-hidden h-64">
                     <img 
                       src={image} 
-                      alt={project?.project_title ?? 'Project space'} 
+                      alt={project?.project_title ?? 'Featured MtaaMall seller'}
                       className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110" 
                       loading="lazy" 
                     />
@@ -668,7 +667,7 @@ const HomePage = () => {
                   <div className="p-6">
                     <div className="flex items-center justify-between mb-3">
                       <span className="text-xs font-semibold uppercase tracking-wide text-text-tertiary">
-                        {toDisplayLabel(project?.project_type ?? 'interior_design')}
+                        {toDisplayLabel(project?.project_type ?? 'trusted_seller')}
                       </span>
                       <div className="flex items-center gap-1 text-yellow-400">
                         {[...Array(5)].map((_, i) => (
@@ -677,10 +676,10 @@ const HomePage = () => {
                       </div>
                     </div>
                     <h3 className="text-xl font-bold text-text group-hover:text-primary transition-colors">
-                      {project?.project_title ?? 'Signature Interior Upgrade'}
+                      {project?.project_title ?? 'Featured Local Seller'}
                     </h3>
                     <p className="mt-2 text-text-secondary line-clamp-2">
-                      {project?.description ?? 'Detailed planning, execution, and finishing for a premium client experience.'}
+                      {project?.description ?? 'Quality products, responsive service, and dependable fulfilment for every order.'}
                     </p>
                     <div className="mt-4 flex items-center gap-2 text-sm text-text-tertiary">
                       <CalendarDaysIcon className="h-4 w-4 text-primary" />
@@ -723,13 +722,13 @@ const HomePage = () => {
                 >
                   <img 
                     src={image} 
-                    alt={product?.name ?? 'Interior product'} 
+                    alt={product?.name ?? 'Featured MtaaMall product'}
                     className="h-20 w-20 rounded-xl object-cover" 
                     loading="lazy" 
                   />
                   <div className="min-w-0 flex-1">
-                    <p className="truncate text-base font-semibold text-text">{product?.name ?? 'Premium Home Accessory'}</p>
-                    <p className="text-sm text-text-tertiary">{product?.category_name ?? 'Interior collection'}</p>
+                    <p className="truncate text-base font-semibold text-text">{product?.name ?? 'Popular Marketplace Pick'}</p>
+                    <p className="text-sm text-text-tertiary">{product?.category_name ?? 'Everyday essentials'}</p>
                   </div>
                   <p className="text-lg font-bold text-primary">
                     {product ? formatCurrency(amount) : 'Request quote'}
@@ -760,12 +759,12 @@ const HomePage = () => {
                 >
                   <img 
                     src={image} 
-                    alt={blog?.title ?? 'Interior blog article'} 
+                    alt={blog?.title ?? 'MtaaMall shopping guide'}
                     className="h-20 w-20 rounded-xl object-cover" 
                     loading="lazy" 
                   />
                   <div className="min-w-0 flex-1">
-                    <p className="truncate text-base font-semibold text-text">{blog?.title ?? 'Interior styling insights for modern spaces'}</p>
+                    <p className="truncate text-base font-semibold text-text">{blog?.title ?? 'Smart shopping tips for everyday life'}</p>
                     <p className="text-sm text-text-tertiary">{formatDate(blog?.publish_date ?? blog?.created_at)}</p>
                   </div>
                   <Link
@@ -791,10 +790,10 @@ const HomePage = () => {
         className="mx-auto max-w-7xl px-4 py-20 sm:px-6 lg:px-8"
       >
         <motion.div variants={fadeInUp} className="mb-12 text-center">
-          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-primary">Our Process</p>
-          <h2 className="mt-2 text-4xl font-bold text-text">How we deliver polished interiors</h2>
+          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-primary">How It Works</p>
+          <h2 className="mt-2 text-4xl font-bold text-text">From discovery to your doorstep</h2>
           <p className="mt-4 text-lg text-text-secondary max-w-2xl mx-auto">
-            A proven methodology that ensures quality, consistency, and client satisfaction at every step.
+            A straightforward shopping experience built for convenience, confidence, and value.
           </p>
         </motion.div>
 
@@ -839,7 +838,7 @@ const HomePage = () => {
         <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
           <motion.div variants={fadeInUp} className="mb-12 text-center">
             <p className="text-xs font-semibold uppercase tracking-[0.18em] text-primary">Testimonials</p>
-            <h2 className="mt-2 text-4xl font-bold text-text">What our clients say</h2>
+            <h2 className="mt-2 text-4xl font-bold text-text">What our shoppers say</h2>
           </motion.div>
 
           <div className="grid gap-6 md:grid-cols-3">
@@ -884,7 +883,7 @@ const HomePage = () => {
           <div className="relative">
             <img
               src="https://images.unsplash.com/photo-1617104551722-3b2d51366499?auto=format&fit=crop&w=1800&q=80"
-              alt="Elegant fully styled interior space"
+              alt="Shop quality products online with MtaaMall"
               className="h-96 w-full object-cover opacity-20"
               loading="lazy"
             />
@@ -898,7 +897,7 @@ const HomePage = () => {
                   className="inline-flex items-center gap-2 rounded-full bg-white/20 backdrop-blur-sm px-4 py-2 text-xs font-semibold uppercase tracking-[0.2em] text-white"
                 >
                   <HomeModernIcon className="h-4 w-4" />
-                  Ready To Start
+                  Ready To Shop
                 </motion.div>
                 <motion.h2
                   initial={{ opacity: 0, x: -30 }}
@@ -907,7 +906,7 @@ const HomePage = () => {
                   className="mt-4 text-4xl font-bold leading-tight text-white sm:text-5xl"
                   style={{ fontFamily: '"Playfair Display", Georgia, serif' }}
                 >
-                  Turn your idea into a space that sells your brand and lifestyle.
+                  Your next great find is only a few clicks away.
                 </motion.h2>
                 <motion.p
                   initial={{ opacity: 0, x: -30 }}
@@ -915,8 +914,8 @@ const HomePage = () => {
                   transition={{ delay: 0.4 }}
                   className="mt-3 text-lg text-white/90"
                 >
-                  Browse our services, explore finished projects, and pick the design direction
-                  that fits your property goals.
+                  Explore products from sellers across Kenya, find the right price, and enjoy
+                  a checkout and delivery experience built around you.
                 </motion.p>
                 <motion.div
                   initial={{ opacity: 0, x: -30 }}
@@ -924,14 +923,14 @@ const HomePage = () => {
                   transition={{ delay: 0.5 }}
                   className="mt-8 flex flex-wrap gap-4"
                 >
-                  <Link to="/services">
+                  <Link to="/products">
                     <Button 
                       variant="secondary" 
                       size="lg" 
                       rightIcon={<ArrowRightIcon className="h-4 w-4" />}
                       className="bg-white text-primary hover:bg-white/90"
                     >
-                      Start with Services
+                      Shop Now
                     </Button>
                   </Link>
                   <Link to="/blog">
@@ -941,7 +940,7 @@ const HomePage = () => {
                       className="border-white/40 bg-transparent text-white hover:bg-white/20"
                       leftIcon={<NewspaperIcon className="h-4 w-4" />}
                     >
-                      Read Design Tips
+                      Read Shopping Tips
                     </Button>
                   </Link>
                 </motion.div>

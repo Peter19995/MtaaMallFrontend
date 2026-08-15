@@ -1,16 +1,16 @@
 export const ServicesSection = () => {
   const services = [
     {
-      title: 'Curtain installation',
-      description: 'Precise measurements, professional fitting and finishing for every window.'
+      title: 'Reliable delivery',
+      description: 'Convenient fulfilment and clear order updates from checkout to your doorstep.'
     },
     {
-      title: 'Interior styling',
-      description: 'Room-by-room curation of fabrics, decor and layout to match your brand.'
+      title: 'Secure payments',
+      description: 'Pay confidently using familiar and convenient payment options, including M-Pesa.'
     },
     {
-      title: 'Post-construction cleaning',
-      description: 'Deep cleaning and detailing to make new spaces move-in ready.'
+      title: 'Seller support',
+      description: 'Tools that help local businesses showcase products, manage orders, and grow.'
     }
   ]
 
@@ -21,7 +21,7 @@ export const ServicesSection = () => {
           Services
         </h2>
         <p className="text-xs text-text-tertiary">
-          Track every service request from inquiry to completion in a single system.
+          Everything shoppers and sellers need for a smooth marketplace experience.
         </p>
       </header>
       <div className="grid gap-4 md:grid-cols-3">
@@ -40,4 +40,3 @@ export const ServicesSection = () => {
 }
 
 export default ServicesSection
-

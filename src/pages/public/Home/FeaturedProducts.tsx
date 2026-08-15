@@ -1,10 +1,10 @@
 export const FeaturedProducts = () => {
   // Placeholder content – later wire to real products
   const items = [
-    'Luxury curtain sets',
-    'Custom rods & rails',
-    'Decorative cushions',
-    'Sheer day curtains'
+    'Smartphones & accessories',
+    'Fashion essentials',
+    'Home & kitchen picks',
+    'Beauty & personal care'
   ]
 
   return (
@@ -34,7 +34,7 @@ export const FeaturedProducts = () => {
             <div className="mb-2 h-24 rounded-lg bg-secondary-light" />
             <h3 className="text-sm font-semibold text-text">{name}</h3>
             <p className="mt-1 text-[11px] text-text-tertiary">
-              High-quality finishes, ready for installation.
+              Great value from trusted MtaaMall sellers.
             </p>
           </article>
         ))}
@@ -44,4 +44,3 @@ export const FeaturedProducts = () => {
 }
 
 export default FeaturedProducts
-

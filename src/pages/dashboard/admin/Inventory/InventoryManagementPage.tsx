@@ -3,6 +3,18 @@ import { useMutation, useQueries, useQuery, useQueryClient } from '@tanstack/rea
 import { isAxiosError } from 'axios'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
+  Bar,
+  BarChart,
+  CartesianGrid,
+  Cell,
+  Pie,
+  PieChart,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis
+} from 'recharts'
+import {
   PlusIcon,
   MagnifyingGlassIcon,
   FunnelIcon,
@@ -36,6 +48,8 @@ import {
   createStockCountRequest,
   createStockTransferRequest,
   getInventoryDashboardRequest,
+  getRestocksRequest,
+  getStockCountsRequest,
   getStockBalancesRequest,
   getStockStatusRequest,
   getStockCountAdjustmentReasonsRequest,
@@ -294,7 +308,26 @@ const staggerContainer = {
   }
 }
 
-const InventoryManagementPage = () => {
+export type InventoryPageView =
+  | 'overview'
+  | 'stock-status'
+  | 'restocks'
+  | 'stock-counts'
+  | 'stock-adjustments'
+  | 'stock-transfers'
+  | 'alerts'
+
+const inventoryPageTitles: Record<InventoryPageView, { title: string; description: string }> = {
+  overview: { title: 'Inventory Overview', description: 'Monitor the value and health of stock across your branches' },
+  'stock-status': { title: 'Stock Status', description: 'View live product and variant balances for every branch' },
+  restocks: { title: 'Restock Transactions', description: 'Receive stock and review recent restocking activity' },
+  'stock-counts': { title: 'Stock Counts', description: 'Perform physical counts and review count history' },
+  'stock-adjustments': { title: 'Stock Adjustments', description: 'Reconcile differences found during physical stock counts' },
+  'stock-transfers': { title: 'Stock Transfers', description: 'Move available stock safely between business branches' },
+  alerts: { title: 'Inventory Alerts', description: 'Review low-stock, out-of-stock, and inventory health warnings' }
+}
+
+const InventoryManagementPage = ({ view = 'overview' }: { view?: InventoryPageView }) => {
   const queryClient = useQueryClient()
   const statusLimit = 50
   const recentLimit = 10
@@ -312,6 +345,11 @@ const InventoryManagementPage = () => {
   const [stockTransferSuccess, setStockTransferSuccess] = useState<string | null>(null)
   const [stockStatusBranchFilter, setStockStatusBranchFilter] = useState('all')
   const [stockStatusProductFilter, setStockStatusProductFilter] = useState('all')
+  const [stockCountSearch, setStockCountSearch] = useState('')
+  const [stockCountBranchFilter, setStockCountBranchFilter] = useState('all')
+  const [stockCountResultFilter, setStockCountResultFilter] = useState('all')
+
+  const pageCopy = inventoryPageTitles[view]
 
   const productsQuery = useQuery({
     queryKey: ['products', 'inventory-select'],
@@ -330,6 +368,18 @@ const InventoryManagementPage = () => {
         status_limit: statusLimit,
         recent_limit: recentLimit
       })
+  })
+
+  const restocksHistoryQuery = useQuery({
+    queryKey: ['inventory', 'restocks', 'history'],
+    queryFn: () => getRestocksRequest({ limit: 200 }),
+    enabled: view === 'restocks'
+  })
+
+  const stockCountsHistoryQuery = useQuery({
+    queryKey: ['inventory', 'stock-counts', 'history'],
+    queryFn: () => getStockCountsRequest({ limit: 200 }),
+    enabled: view === 'stock-counts' || view === 'stock-adjustments'
   })
 
   const selectedStockStatusBranchId = useMemo(() => {
@@ -1096,6 +1146,58 @@ const InventoryManagementPage = () => {
     }
   }, [inventoryDashboardQuery.data?.summary])
 
+  const categoryChartData = useMemo(
+    () => (inventoryDashboardQuery.data?.category_stock_values ?? [])
+      .map((row) => ({ name: row.category_name, value: row.in_stock_value, quantity: row.in_stock_quantity }))
+      .sort((left, right) => right.value - left.value)
+      .slice(0, 8),
+    [inventoryDashboardQuery.data?.category_stock_values]
+  )
+
+  const stockHealthData = useMemo(() => {
+    const healthy = Math.max(summary.totalProducts - summary.lowStock - summary.outOfStock, 0)
+    return [
+      { name: 'Healthy', value: healthy, color: '#16a34a' },
+      { name: 'Low stock', value: summary.lowStock, color: '#f59e0b' },
+      { name: 'Out of stock', value: summary.outOfStock, color: '#dc2626' }
+    ].filter((item) => item.value > 0)
+  }, [summary])
+
+  const highestValueProducts = useMemo(
+    () => (inventoryDashboardQuery.data?.stock_status ?? [])
+      .map((row) => ({ name: row.product_name, value: row.in_stock_value }))
+      .sort((left, right) => right.value - left.value)
+      .slice(0, 7),
+    [inventoryDashboardQuery.data?.stock_status]
+  )
+
+  const filteredStockCounts = useMemo(() => {
+    const query = stockCountSearch.trim().toLowerCase()
+    return (stockCountsHistoryQuery.data ?? []).filter((row) => {
+      if (view === 'stock-adjustments' && !row.apply_adjustment) return false
+      if (stockCountBranchFilter !== 'all' && String(row.branch_id ?? '') !== stockCountBranchFilter) return false
+      if (stockCountResultFilter === 'matched' && row.variance !== 0) return false
+      if (stockCountResultFilter === 'surplus' && row.variance <= 0) return false
+      if (stockCountResultFilter === 'shortage' && row.variance >= 0) return false
+      if (!query) return true
+      return row.product_name.toLowerCase().includes(query) ||
+        (row.branch_name ?? '').toLowerCase().includes(query) ||
+        (row.adjustment_reference ?? '').toLowerCase().includes(query)
+    })
+  }, [stockCountsHistoryQuery.data, stockCountSearch, stockCountBranchFilter, stockCountResultFilter, view])
+
+  const stockCountMetrics = useMemo(() => {
+    const rows = stockCountsHistoryQuery.data ?? []
+    return {
+      total: rows.length,
+      matched: rows.filter((row) => row.variance === 0).length,
+      shortages: rows.filter((row) => row.variance < 0).length,
+      surpluses: rows.filter((row) => row.variance > 0).length,
+      adjusted: rows.filter((row) => row.apply_adjustment).length,
+      netVariance: rows.reduce((total, row) => total + row.variance, 0)
+    }
+  }, [stockCountsHistoryQuery.data])
+
   const stockStatusTotalValue = useMemo(
     () => (stockStatusQuery.data ?? []).reduce((total, row) => total + row.in_stock_value, 0),
     [stockStatusQuery.data]
@@ -1271,6 +1373,16 @@ const InventoryManagementPage = () => {
       )
     },
     {
+      key: 'branch_name',
+      header: 'Branch',
+      render: (row) => (
+        <span className="inline-flex items-center gap-1 rounded-full bg-primary/10 px-3 py-1 text-xs font-medium text-primary">
+          <BuildingStorefrontIcon className="h-3 w-3" />
+          {row.branch_name ?? 'Unassigned'}
+        </span>
+      )
+    },
+    {
       key: 'physical_stock',
       header: 'Physical',
       align: 'right',
@@ -1297,6 +1409,28 @@ const InventoryManagementPage = () => {
         }`}>
           {row.variance > 0 ? '+' : ''}{row.variance}
         </span>
+      )
+    },
+    {
+      key: 'apply_adjustment',
+      header: 'Result',
+      render: (row) => (
+        <div>
+          <span className={`inline-flex rounded-full px-2.5 py-1 text-xs font-medium ${
+            row.variance === 0
+              ? 'bg-success/10 text-success'
+              : row.apply_adjustment
+                ? 'bg-primary/10 text-primary'
+                : 'bg-warning/10 text-warning'
+          }`}>
+            {row.variance === 0 ? 'Matched' : row.apply_adjustment ? 'Adjusted' : 'Needs review'}
+          </span>
+          {row.adjustment_reason ? (
+            <p className="mt-1 text-xs capitalize text-text-tertiary">
+              {row.adjustment_reason.replaceAll('_', ' ')}
+            </p>
+          ) : null}
+        </div>
       )
     }
   ]
@@ -1357,7 +1491,7 @@ const InventoryManagementPage = () => {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-background via-white to-background p-6">
+    <div id="inventory-overview" className="min-h-screen scroll-mt-20 bg-gradient-to-br from-background via-white to-background p-6">
       {/* Header */}
       <motion.div
         initial={{ opacity: 0, y: -20 }}
@@ -1368,22 +1502,27 @@ const InventoryManagementPage = () => {
           <div>
             <h1 className="text-2xl font-bold text-text flex items-center gap-2">
               <ServerStackIcon className="h-6 w-6 text-primary" />
-              Inventory Operations
+              {pageCopy.title}
             </h1>
             <p className="text-sm text-text-secondary mt-1">
-              Manage restocks, stock transfers, stock counts, and monitor live inventory status
+              {pageCopy.description}
             </p>
           </div>
           
-          <div className="flex gap-2">
+          <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row">
+            {(view === 'stock-counts' || view === 'stock-adjustments') && (
             <Button
-              variant="outline"
-              onClick={() => setShowStockCountForm(!showStockCountForm)}
-              className="flex items-center gap-2"
+              onClick={() => {
+                setStockCountError(null)
+                setShowStockCountForm(true)
+              }}
+              className="flex w-full items-center justify-center gap-2 bg-gradient-to-r from-primary to-secondary text-white sm:w-auto"
             >
               <ScaleIcon className="h-4 w-4" />
-              {showStockCountForm ? 'Close Stock Count' : 'New Stock Count'}
+              {view === 'stock-adjustments' ? 'Create Stock Adjustment' : 'Start New Stock Count'}
             </Button>
+            )}
+            {view === 'stock-transfers' && (
             <Button
               variant="outline"
               onClick={() => {
@@ -1396,18 +1535,26 @@ const InventoryManagementPage = () => {
               <ArrowsRightLeftIcon className="h-4 w-4" />
               {showStockTransferForm ? 'Close Transfer' : 'New Transfer'}
             </Button>
+            )}
+            {view === 'restocks' && (
             <Button
-              onClick={() => setShowRestockForm(!showRestockForm)}
-              className="flex items-center gap-2 bg-gradient-to-r from-primary to-secondary text-white"
+              onClick={() => {
+                setRestockError(null)
+                setShowRestockForm(true)
+              }}
+              className="flex w-full items-center justify-center gap-2 bg-gradient-to-r from-primary to-secondary text-white sm:w-auto"
             >
               <PlusIcon className="h-4 w-4" />
-              {showRestockForm ? 'Close Restock' : 'New Restock'}
+              Take In New Stock
             </Button>
+            )}
           </div>
         </div>
       </motion.div>
 
       {/* Summary Cards */}
+      {view === 'overview' && (
+      <>
       <motion.section
         variants={staggerContainer}
         initial="initial"
@@ -1490,11 +1637,37 @@ const InventoryManagementPage = () => {
           </div>
         </motion.div>
       </motion.section>
+      <div className="mb-6 grid gap-6 xl:grid-cols-3">
+        <section className="rounded-2xl border border-border bg-white p-5 shadow-sm xl:col-span-2">
+          <div className="mb-5"><h2 className="font-semibold text-text">Stock value by category</h2><p className="mt-1 text-xs text-text-tertiary">Where the business has invested most of its inventory value.</p></div>
+          {categoryChartData.length ? (
+            <div className="h-80"><ResponsiveContainer width="100%" height="100%"><BarChart data={categoryChartData} margin={{ left: 8, right: 12 }}><CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e5e7eb" /><XAxis dataKey="name" tick={{ fontSize: 11 }} interval={0} angle={-18} textAnchor="end" height={70} /><YAxis tick={{ fontSize: 11 }} tickFormatter={(value) => `${Math.round(Number(value) / 1000)}k`} /><Tooltip formatter={(value) => formatCurrency(Number(value))} /><Bar dataKey="value" name="Stock value" fill="#0f766e" radius={[6, 6, 0, 0]} /></BarChart></ResponsiveContainer></div>
+          ) : <div className="flex h-80 items-center justify-center rounded-xl bg-background text-sm text-text-tertiary">Stock value will appear after products are received into inventory.</div>}
+        </section>
+
+        <section className="rounded-2xl border border-border bg-white p-5 shadow-sm">
+          <div><h2 className="font-semibold text-text">Stock health</h2><p className="mt-1 text-xs text-text-tertiary">Products grouped by their reorder position.</p></div>
+          {stockHealthData.length ? (
+            <><div className="h-56"><ResponsiveContainer width="100%" height="100%"><PieChart><Pie data={stockHealthData} dataKey="value" nameKey="name" innerRadius={55} outerRadius={85} paddingAngle={3}>{stockHealthData.map((item) => <Cell key={item.name} fill={item.color} />)}</Pie><Tooltip /></PieChart></ResponsiveContainer></div><div className="space-y-2">{stockHealthData.map((item) => <div key={item.name} className="flex items-center justify-between text-sm"><span className="flex items-center gap-2 text-text-secondary"><span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: item.color }} />{item.name}</span><strong className="text-text">{item.value}</strong></div>)}</div></>
+          ) : <div className="flex h-64 items-center justify-center text-sm text-text-tertiary">No stock health data yet.</div>}
+        </section>
+      </div>
+
+      <div className="mb-6 grid gap-6 xl:grid-cols-3">
+        <section className="rounded-2xl border border-border bg-white p-5 shadow-sm xl:col-span-2">
+          <div className="mb-4"><h2 className="font-semibold text-text">Highest-value products</h2><p className="mt-1 text-xs text-text-tertiary">Products tying up the most working capital.</p></div>
+          {highestValueProducts.length ? <div className="h-72"><ResponsiveContainer width="100%" height="100%"><BarChart data={highestValueProducts} layout="vertical" margin={{ left: 16, right: 18 }}><CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#e5e7eb" /><XAxis type="number" tick={{ fontSize: 11 }} tickFormatter={(value) => `${Math.round(Number(value) / 1000)}k`} /><YAxis type="category" dataKey="name" width={120} tick={{ fontSize: 11 }} /><Tooltip formatter={(value) => formatCurrency(Number(value))} /><Bar dataKey="value" name="Stock value" fill="#f59e0b" radius={[0, 6, 6, 0]} /></BarChart></ResponsiveContainer></div> : <div className="flex h-72 items-center justify-center rounded-xl bg-background text-sm text-text-tertiary">No valued stock products yet.</div>}
+        </section>
+        <section className="rounded-2xl border border-border bg-white p-5 shadow-sm"><h2 className="font-semibold text-text">Action centre</h2><p className="mt-1 text-xs text-text-tertiary">Issues requiring inventory attention.</p><div className="mt-5 space-y-3"><div className="rounded-xl bg-error/5 p-4"><p className="text-xs text-error">Out of stock</p><p className="mt-1 text-2xl font-bold text-error">{summary.outOfStock}</p></div><div className="rounded-xl bg-warning/5 p-4"><p className="text-xs text-warning">Below reorder level</p><p className="mt-1 text-2xl font-bold text-warning">{summary.lowStock}</p></div><div className="rounded-xl bg-primary/5 p-4"><p className="text-xs text-primary">Active alerts</p><p className="mt-1 text-2xl font-bold text-primary">{inventoryDashboardQuery.data?.alerts.length ?? 0}</p></div></div></section>
+      </div>
+      </>
+      )}
 
       {/* Restock Form */}
       <AnimatePresence>
-        {showRestockForm && (
+        {view === 'restocks' && showRestockForm && (
           <motion.section
+            id="inventory-restock-form"
             initial={{ opacity: 0, y: -20 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -20 }}
@@ -1852,8 +2025,9 @@ const InventoryManagementPage = () => {
 
       {/* Stock Transfer Form */}
       <AnimatePresence>
-        {showStockTransferForm && (
+        {view === 'stock-transfers' && showStockTransferForm && (
           <motion.section
+            id="inventory-stock-transfer-form"
             initial={{ opacity: 0, y: -20 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -20 }}
@@ -2104,22 +2278,26 @@ const InventoryManagementPage = () => {
 
       {/* Stock Count Form */}
       <AnimatePresence>
-        {showStockCountForm && (
+        {(view === 'stock-counts' || view === 'stock-adjustments') && showStockCountForm && (
           <motion.section
-            initial={{ opacity: 0, y: -20 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -20 }}
-            className="mb-6"
+            id="inventory-stock-count-form"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm"
+            onClick={() => !createStockCountMutation.isPending && setShowStockCountForm(false)}
           >
-            <div className="bg-white rounded-xl border border-border p-4 shadow-sm">
-              <div className="flex items-center gap-2 mb-4">
-                <ScaleIcon className="h-5 w-5 text-primary" />
-                <div>
-                  <h2 className="text-sm font-semibold text-text">Create Stock Count</h2>
+            <motion.div initial={{ scale: 0.97, y: 16 }} animate={{ scale: 1, y: 0 }} exit={{ scale: 0.97, y: 16 }} className="max-h-[92vh] w-full max-w-6xl overflow-y-auto rounded-3xl border border-border bg-white p-6 shadow-2xl" onClick={(event) => event.stopPropagation()}>
+              <div className="mb-5 flex items-start justify-between gap-4">
+                <div className="flex items-center gap-3"><div className="rounded-xl bg-primary/10 p-2"><ScaleIcon className="h-5 w-5 text-primary" /></div><div>
+                  <h2 className="text-sm font-semibold text-text">
+                    {view === 'stock-adjustments' ? 'Create Stock Adjustment' : 'Create Stock Count'}
+                  </h2>
                   <p className="mt-1 text-xs text-text-tertiary">
                     Choose the branch you are counting for. Main branch is selected by default.
                   </p>
-                </div>
+                </div></div>
+                <button type="button" className="rounded-lg p-2 text-text-tertiary hover:bg-background hover:text-text" onClick={() => setShowStockCountForm(false)}><XMarkIcon className="h-5 w-5" /></button>
               </div>
 
               <form onSubmit={onSubmitStockCount} className="space-y-4">
@@ -2408,13 +2586,15 @@ const InventoryManagementPage = () => {
                   )}
                 </div>
               </form>
-            </div>
+            </motion.div>
           </motion.section>
         )}
       </AnimatePresence>
 
       {/* Stock Status Table */}
+      {view === 'stock-status' && (
       <motion.section
+        id="inventory-stock-status"
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 0.2 }}
@@ -2504,11 +2684,42 @@ const InventoryManagementPage = () => {
           />
         </div>
       </motion.section>
+      )}
 
       {/* Recent Activity Grid */}
-      <div className="grid gap-6 lg:grid-cols-2 mb-6">
+      {(view === 'stock-counts' || view === 'stock-adjustments') && (
+        <>
+          <section className="mb-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
+            {[
+              ['Total counts', stockCountMetrics.total, 'text-primary', 'bg-primary/10'],
+              ['Matched', stockCountMetrics.matched, 'text-success', 'bg-success/10'],
+              ['Shortages', stockCountMetrics.shortages, 'text-error', 'bg-error/10'],
+              ['Surpluses', stockCountMetrics.surpluses, 'text-secondary', 'bg-secondary/10'],
+              ['Adjusted', stockCountMetrics.adjusted, 'text-accent', 'bg-accent/10'],
+              ['Net variance', stockCountMetrics.netVariance > 0 ? `+${stockCountMetrics.netVariance}` : stockCountMetrics.netVariance, stockCountMetrics.netVariance < 0 ? 'text-error' : 'text-text', 'bg-background']
+            ].map(([label, value, color, background]) => (
+              <div key={String(label)} className="rounded-2xl border border-border bg-white p-4 shadow-sm">
+                <div className={`mb-3 flex h-9 w-9 items-center justify-center rounded-xl ${background}`}><ScaleIcon className={`h-5 w-5 ${color}`} /></div>
+                <p className="text-xs text-text-tertiary">{label}</p><p className={`mt-1 text-xl font-bold ${color}`}>{value}</p>
+              </div>
+            ))}
+          </section>
+          <section className="mb-6 rounded-2xl border border-border bg-white p-4 shadow-sm">
+            <div className="grid gap-4 md:grid-cols-3">
+              <TextInput label="Search counts" value={stockCountSearch} onChange={(event) => setStockCountSearch(event.target.value)} placeholder="Product, branch or reference" />
+              <Select label="Branch" value={stockCountBranchFilter} onChange={(event) => setStockCountBranchFilter(String(event.target.value))} options={[{ label: 'All branches', value: 'all' }, ...branchOptions.slice(1)]} />
+              <Select label="Count result" value={stockCountResultFilter} onChange={(event) => setStockCountResultFilter(String(event.target.value))} options={[{ label: 'All results', value: 'all' }, { label: 'Matched', value: 'matched' }, { label: 'Shortage', value: 'shortage' }, { label: 'Surplus', value: 'surplus' }]} />
+            </div>
+            <p className="mt-3 text-xs text-text-tertiary">Showing {filteredStockCounts.length} of {stockCountsHistoryQuery.data?.length ?? 0} records</p>
+          </section>
+        </>
+      )}
+      {(view === 'restocks' || view === 'stock-counts' || view === 'stock-adjustments') && (
+      <div className="mb-6">
         {/* Recent Restocks */}
+        {view === 'restocks' && (
         <motion.section
+          id="inventory-restocks"
           initial={{ opacity: 0, x: -20 }}
           animate={{ opacity: 1, x: 0 }}
           transition={{ delay: 0.3 }}
@@ -2522,10 +2733,10 @@ const InventoryManagementPage = () => {
             </div>
             <DataTable
               columns={restocksColumns}
-              data={inventoryDashboardQuery.data?.recent_restocks ?? []}
+              data={restocksHistoryQuery.data ?? []}
               getRowKey={(row) => row.id}
               emptyState={
-                inventoryDashboardQuery.isLoading ? (
+                restocksHistoryQuery.isLoading ? (
                   <div className="p-8 text-center">
                     <ArrowPathIcon className="h-6 w-6 mx-auto text-primary/30 animate-spin" />
                   </div>
@@ -2538,9 +2749,12 @@ const InventoryManagementPage = () => {
             />
           </div>
         </motion.section>
+        )}
 
         {/* Recent Stock Counts */}
+        {(view === 'stock-counts' || view === 'stock-adjustments') && (
         <motion.section
+          id="inventory-stock-counts"
           initial={{ opacity: 0, x: 20 }}
           animate={{ opacity: 1, x: 0 }}
           transition={{ delay: 0.3 }}
@@ -2549,31 +2763,37 @@ const InventoryManagementPage = () => {
             <div className="p-4 border-b border-border">
               <h2 className="text-sm font-semibold text-text flex items-center gap-2">
                 <ScaleIcon className="h-4 w-4 text-primary" />
-                Recent Stock Counts
+                {view === 'stock-adjustments' ? 'Adjustment History' : 'Stock Count History'}
               </h2>
             </div>
             <DataTable
               columns={stockCountsColumns}
-              data={inventoryDashboardQuery.data?.recent_stock_counts ?? []}
+              data={filteredStockCounts}
               getRowKey={(row) => row.id}
               emptyState={
-                inventoryDashboardQuery.isLoading ? (
+                stockCountsHistoryQuery.isLoading ? (
                   <div className="p-8 text-center">
                     <ArrowPathIcon className="h-6 w-6 mx-auto text-primary/30 animate-spin" />
                   </div>
                 ) : (
                   <div className="p-8 text-center">
-                    <p className="text-sm text-text-secondary">No stock counts yet</p>
+                    <p className="text-sm text-text-secondary">
+                      {stockCountsHistoryQuery.isError ? 'Could not load stock counts.' : 'No stock counts match these filters.'}
+                    </p>
                   </div>
                 )
               }
             />
           </div>
         </motion.section>
+        )}
       </div>
+      )}
 
       {/* Alerts Section */}
+      {view === 'alerts' && (
       <motion.section
+        id="inventory-alerts"
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 0.4 }}
@@ -2605,6 +2825,7 @@ const InventoryManagementPage = () => {
           />
         </div>
       </motion.section>
+      )}
     </div>
   )
 }

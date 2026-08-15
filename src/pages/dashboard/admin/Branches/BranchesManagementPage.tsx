@@ -23,6 +23,7 @@ import {
   createBranchRequest,
   deleteBranchRequest,
   getBranchRequest,
+  getNextBranchCodeRequest,
   listBranchesRequest,
   updateBranchRequest,
   type BranchResponse
@@ -165,6 +166,11 @@ const BranchesManagementPage = () => {
     queryFn: () => listUsersRequest({ limit: 100 })
   })
 
+  const nextBranchCodeQuery = useQuery({
+    queryKey: ['branches', 'next-code'],
+    queryFn: getNextBranchCodeRequest
+  })
+
   const editingBranch = useMemo(
     () => (branchesQuery.data ?? []).find((branch) => branch.id === editingBranchId) ?? null,
     [branchesQuery.data, editingBranchId]
@@ -219,7 +225,6 @@ const BranchesManagementPage = () => {
   const saveBranchMutation = useMutation({
     mutationFn: async (payload: BranchFormState) => {
       const name = payload.name.trim()
-      const code = payload.code.trim().toUpperCase()
       const location = payload.location.trim() || undefined
       const managerUserId = parseOptionalNumber(payload.managerUserId)
 
@@ -227,14 +232,9 @@ const BranchesManagementPage = () => {
         throw new Error('Branch name must be at least 2 characters.')
       }
 
-      if (code.length < 2) {
-        throw new Error('Branch code must be at least 2 characters.')
-      }
-
       if (editingBranchId !== null) {
         await updateBranchRequest(editingBranchId, {
           name,
-          code,
           location,
           is_active: payload.isActive,
           is_online_shop_source: payload.isOnlineShopSource
@@ -252,7 +252,6 @@ const BranchesManagementPage = () => {
 
       return createBranchRequest({
         name,
-        code,
         location,
         is_active: payload.isActive,
         is_online_shop_source: payload.isOnlineShopSource,
@@ -386,7 +385,7 @@ const BranchesManagementPage = () => {
     },
     {
       key: 'is_online_shop_source',
-      header: 'Online Source',
+      header: 'Online Store',
       render: (branch) => (
         <span
           className={`inline-flex items-center gap-1 rounded-full px-3 py-1 text-xs font-medium ${
@@ -396,7 +395,7 @@ const BranchesManagementPage = () => {
           }`}
         >
           <GlobeAltIcon className="h-3 w-3" />
-          {branch.is_online_shop_source ? 'Enabled' : 'Disabled'}
+          {branch.is_online_shop_source ? 'Allowed' : 'Not allowed'}
         </span>
       )
     },
@@ -457,14 +456,18 @@ const BranchesManagementPage = () => {
         <Button
           onClick={() => {
             setEditingBranchId(null)
-            setBranchForm(createEmptyBranchForm())
-            setIsFormVisible((current) => !current)
+            setBranchForm({
+              ...createEmptyBranchForm(),
+              code: nextBranchCodeQuery.data ?? ''
+            })
+            setIsFormVisible(true)
             setFeedback(null)
+            nextBranchCodeQuery.refetch()
           }}
           className="flex items-center gap-2 bg-gradient-to-r from-primary to-secondary text-white"
         >
           <PlusIcon className="h-4 w-4" />
-          {isFormVisible ? 'Close Branch Form' : 'New Branch'}
+          Create Branch
         </Button>
       </motion.div>
 
@@ -497,7 +500,7 @@ const BranchesManagementPage = () => {
             icon: XCircleIcon
           },
           {
-            label: 'Online Sources',
+            label: 'Online Enabled',
             value: stats.onlineSources,
             color: 'text-secondary',
             bg: 'bg-secondary/10',
@@ -559,20 +562,33 @@ const BranchesManagementPage = () => {
 
       <AnimatePresence>
         {isFormVisible && (
-          <motion.section
-            initial={{ opacity: 0, height: 0 }}
-            animate={{ opacity: 1, height: 'auto' }}
-            exit={{ opacity: 0, height: 0 }}
-            className="mb-6 overflow-hidden"
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm"
+            onClick={() => {
+              if (!saveBranchMutation.isPending) {
+                setIsFormVisible(false)
+                setEditingBranchId(null)
+                setBranchForm(createEmptyBranchForm())
+              }
+            }}
           >
-            <div className="rounded-xl border border-border bg-white p-6 shadow-sm">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.96, y: 18 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.96, y: 18 }}
+              className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-3xl border border-border bg-white p-6 shadow-2xl"
+              onClick={(event) => event.stopPropagation()}
+            >
               <div className="mb-6 flex items-start justify-between gap-4">
                 <div>
                   <h2 className="text-lg font-semibold text-text">
                     {editingBranchId !== null ? 'Edit Branch' : 'Create Branch'}
                   </h2>
                   <p className="mt-1 text-sm text-text-secondary">
-                    Keep branch details and manager assignment aligned with your backend
+                    Add a physical location for your business. You can update it later.
                   </p>
                 </div>
                 <button
@@ -591,20 +607,18 @@ const BranchesManagementPage = () => {
               <form onSubmit={onSubmitBranch} className="space-y-5">
                 <div className="grid gap-4 md:grid-cols-2">
                   <TextInput
+                    label="Code"
+                    value={editingBranchId !== null ? branchForm.code : (nextBranchCodeQuery.data ?? 'Generating...')}
+                    readOnly
+                    helperText="Generated automatically for this business."
+                  />
+                  <TextInput
                     label="Branch Name"
                     value={branchForm.name}
                     onChange={(event) =>
                       setBranchForm((prev) => ({ ...prev, name: event.target.value }))
                     }
                     placeholder="Main Branch"
-                  />
-                  <TextInput
-                    label="Code"
-                    value={branchForm.code}
-                    onChange={(event) =>
-                      setBranchForm((prev) => ({ ...prev, code: event.target.value.toUpperCase() }))
-                    }
-                    placeholder="MAIN"
                   />
                 </div>
 
@@ -632,24 +646,30 @@ const BranchesManagementPage = () => {
                   />
                 </div>
 
-                <div className="flex flex-wrap gap-6 rounded-xl border border-border bg-background px-4 py-3">
-                  <Checkbox
-                    label="Branch is active"
-                    checked={branchForm.isActive}
-                    onChange={(event) =>
-                      setBranchForm((prev) => ({ ...prev, isActive: event.target.checked }))
-                    }
-                  />
-                  <Checkbox
-                    label="Use as online shop source"
-                    checked={branchForm.isOnlineShopSource}
-                    onChange={(event) =>
-                      setBranchForm((prev) => ({
-                        ...prev,
-                        isOnlineShopSource: event.target.checked
-                      }))
-                    }
-                  />
+                <div className="space-y-3 rounded-xl border border-border bg-background px-4 py-3">
+                  <div className="flex flex-wrap gap-6">
+                    <Checkbox
+                      label="Branch is active"
+                      checked={branchForm.isActive}
+                      onChange={(event) =>
+                        setBranchForm((prev) => ({ ...prev, isActive: event.target.checked }))
+                      }
+                    />
+                    <Checkbox
+                      label="Allow this branch to sell online"
+                      checked={branchForm.isOnlineShopSource}
+                      onChange={(event) =>
+                        setBranchForm((prev) => ({
+                          ...prev,
+                          isOnlineShopSource: event.target.checked
+                        }))
+                      }
+                    />
+                  </div>
+                  <p className="text-xs text-text-tertiary">
+                    This applies only to this branch. You can enable online selling for any number
+                    of branches.
+                  </p>
                 </div>
 
                 <div className="flex items-center gap-3">
@@ -669,8 +689,8 @@ const BranchesManagementPage = () => {
                   </Button>
                 </div>
               </form>
-            </div>
-          </motion.section>
+            </motion.div>
+          </motion.div>
         )}
       </AnimatePresence>
 

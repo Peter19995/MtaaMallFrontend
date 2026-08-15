@@ -23,14 +23,11 @@ import {
   SparklesIcon,
 } from '@heroicons/react/24/outline'
 import { useAuth } from '@hooks/useAuth'
-import brandLogo from '@/assets/business-logo.svg'
 
 type NavChildItem = {
-  path?: string
+  path: string
   label: string
-  state?: Record<string, unknown>
   end?: boolean
-  action?: 'openProductForm'
 }
 
 type NavItem = {
@@ -49,13 +46,26 @@ const navItems: NavItem[] = [
     icon: CubeIcon,
     children: [
       { path: '/dashboard/admin/products', label: 'Catalog', end: true },
-      { label: 'New Product', action: 'openProductForm' },
-      { path: '/dashboard/admin/products/settings', label: 'Product Settings' }
+      { path: '/dashboard/admin/products/categories', label: 'Categories' },
+      { path: '/dashboard/admin/products/brands', label: 'Brands' },
+      { path: '/dashboard/admin/products/variant-options', label: 'Variant Options' }
     ]
   },
   { path: '/dashboard/admin/branches', label: 'Branches', icon: BuildingStorefrontIcon },
   { path: '/dashboard/admin/customers', label: 'Customers', icon: UserIcon },
-  { path: '/dashboard/admin/inventory', label: 'Inventory', icon: ServerStackIcon },
+  {
+    label: 'Inventory',
+    icon: ServerStackIcon,
+    children: [
+      { path: '/dashboard/admin/inventory', label: 'Inventory Overview', end: true },
+      { path: '/dashboard/admin/inventory/stock-status', label: 'Stock Status' },
+      { path: '/dashboard/admin/inventory/restocks', label: 'Restock Transactions' },
+      { path: '/dashboard/admin/inventory/stock-counts', label: 'Stock Counts' },
+      { path: '/dashboard/admin/inventory/stock-adjustments', label: 'Stock Adjustments' },
+      { path: '/dashboard/admin/inventory/stock-transfers', label: 'Stock Transfers' },
+      { path: '/dashboard/admin/inventory/alerts', label: 'Inventory Alerts' }
+    ]
+  },
   { path: '/dashboard/admin/services', label: 'Services', icon: WrenchScrewdriverIcon },
   { path: '/dashboard/admin/projects', label: 'Projects', icon: BuildingOfficeIcon },
   { path: '/dashboard/admin/sales', label: 'Sales', icon: CurrencyDollarIcon, end: true },
@@ -74,7 +84,8 @@ export const DashboardLayout = () => {
   const [isProfileMenuOpen, setIsProfileMenuOpen] = useState(false)
   const [isScrolled, setIsScrolled] = useState(false)
   const [openMenus, setOpenMenus] = useState<Record<string, boolean>>(() => ({
-    Products: location.pathname.startsWith('/dashboard/admin/products')
+    Products: location.pathname.startsWith('/dashboard/admin/products'),
+    Inventory: location.pathname.startsWith('/dashboard/admin/inventory')
   }))
 
   // Close mobile menu on route change
@@ -85,6 +96,9 @@ export const DashboardLayout = () => {
   useEffect(() => {
     if (location.pathname.startsWith('/dashboard/admin/products')) {
       setOpenMenus((previous) => ({ ...previous, Products: true }))
+    }
+    if (location.pathname.startsWith('/dashboard/admin/inventory')) {
+      setOpenMenus((previous) => ({ ...previous, Inventory: true }))
     }
   }, [location.pathname])
 
@@ -122,11 +136,16 @@ export const DashboardLayout = () => {
       return false
     }
 
-    if (child.end) {
-      return location.pathname === child.path
+    const childUrl = new URL(child.path, window.location.origin)
+    if (childUrl.search) {
+      return location.pathname === childUrl.pathname && location.search === childUrl.search
     }
 
-    return location.pathname.startsWith(child.path)
+    if (child.end) {
+      return location.pathname === childUrl.pathname && !location.search
+    }
+
+    return location.pathname.startsWith(childUrl.pathname)
   }
 
   const isItemActive = (item: NavItem) => {
@@ -171,17 +190,6 @@ export const DashboardLayout = () => {
     return 'Dashboard'
   }
 
-  const handleChildAction = (child: NavChildItem) => {
-    if (child.action === 'openProductForm') {
-      navigate('/dashboard/admin/products', { state: { openProductForm: true } })
-      return
-    }
-
-    if (child.path) {
-      navigate(child.path, child.state ? { state: child.state } : undefined)
-    }
-  }
-
   const renderNavItem = (item: NavItem, isMobile = false) => {
     const Icon = item.icon
 
@@ -222,28 +230,10 @@ export const DashboardLayout = () => {
               >
                 <div className="space-y-1 py-1">
                   {item.children.map((child) => {
-                    if (child.action) {
-                      return (
-                        <button
-                          key={`${item.label}-${child.label}`}
-                          type="button"
-                          onClick={() => {
-                            handleChildAction(child)
-                            if (isMobile) {
-                              setIsMobileMenuOpen(false)
-                            }
-                          }}
-                          className={childNavClass(false)}
-                        >
-                          {child.label}
-                        </button>
-                      )
-                    }
-
                     return (
                       <NavLink
                         key={`${item.label}-${child.label}`}
-                        to={child.path ?? '/dashboard/admin'}
+                        to={child.path}
                         end={child.end}
                         className={() => childNavClass(isChildActive(child))}
                         onClick={() => {
@@ -304,13 +294,14 @@ export const DashboardLayout = () => {
           <div className="flex h-16 items-center border-b border-border px-4">
             <Link to="/" className="flex items-center gap-2">
               <img
-                src={brandLogo}
-                alt="Julian Interiors logo"
-                className="h-9 w-auto rounded-full border border-primary/10 bg-white p-0.5"
+                src="/mtaamall-logo.png"
+                alt="MtaaMall logo"
+                className="h-10 w-auto object-contain"
               />
               <div className="leading-tight">
-                <p className="text-sm font-bold text-primary">Julian Interiors</p>
-                <p className="text-xs font-medium text-text-tertiary">Admin</p>
+                <p className="text-xs font-medium text-text-tertiary">
+                  {user?.role === 'business_owner' ? 'Business' : 'Admin'}
+                </p>
               </div>
             </Link>
           </div>
@@ -323,7 +314,7 @@ export const DashboardLayout = () => {
               </div>
               <div className="flex-1 min-w-0">
                 <p className="text-sm font-semibold text-text truncate">{user?.name || 'Admin User'}</p>
-                <p className="text-xs text-text-tertiary truncate">{user?.email || 'admin@julian.com'}</p>
+                <p className="text-xs text-text-tertiary truncate">{user?.email || 'admin@mtaamall.com'}</p>
               </div>
             </div>
           </div>
@@ -380,12 +371,11 @@ export const DashboardLayout = () => {
           <div className="flex h-16 items-center justify-between border-b border-border px-4">
             <Link to="/" className="flex items-center gap-2">
               <img
-                src={brandLogo}
-                alt="Julian Interiors logo"
-                className="h-9 w-auto rounded-full border border-primary/10 bg-white p-0.5"
+                src="/mtaamall-logo.png"
+                alt="MtaaMall logo"
+                className="h-10 w-auto object-contain"
               />
               <div className="leading-tight">
-                <p className="text-sm font-bold text-primary">Julian Interiors</p>
                 <p className="text-xs font-medium text-text-tertiary">Admin</p>
               </div>
             </Link>
@@ -405,7 +395,7 @@ export const DashboardLayout = () => {
               </div>
               <div className="flex-1 min-w-0">
                 <p className="text-sm font-semibold text-text truncate">{user?.name || 'Admin User'}</p>
-                <p className="text-xs text-text-tertiary truncate">{user?.email || 'admin@julian.com'}</p>
+                <p className="text-xs text-text-tertiary truncate">{user?.email || 'admin@mtaamall.com'}</p>
               </div>
             </div>
           </div>

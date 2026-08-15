@@ -27,11 +27,14 @@ import {
 } from '@api/modules/inventory.api'
 import {
   attachVariantOptionToProductRequest,
+  updateProductVariantOptionValuesRequest,
+  updateProductVariantPricingRequest,
   deleteProductImageRequest,
   deleteProductRequest,
   detachVariantOptionFromProductRequest,
   getProductRequest,
   listCategoriesRequest,
+  listBrandsRequest,
   listProductVariantOptionsRequest,
   listVariantOptionsRequest,
   type ProductResponse,
@@ -47,6 +50,7 @@ type ManageProductFormState = {
   description: string
   tags: string
   categoryId: string
+  brandId: string
   stockQuantity: string
   reorderLevel: string
   isActive: boolean
@@ -60,12 +64,21 @@ const EMPTY_FORM: ManageProductFormState = {
   description: '',
   tags: '',
   categoryId: '',
+  brandId: '',
   stockQuantity: '0',
   reorderLevel: '5',
   isActive: true,
   isOnOffer: false,
   maxOffer: '0',
   imageFiles: []
+}
+
+type VariantPriceDraft = {
+  useBasePrice: boolean
+  sellingPrice: string
+  costPrice: string
+  compareAtPrice: string
+  offerPrice: string
 }
 
 const formatCurrency = (amount: number): string =>
@@ -142,7 +155,19 @@ const ManageProductPage = () => {
   const [activeTab, setActiveTab] = useState<'details' | 'images' | 'variants'>(initialTab)
   const [uploadProgress, setUploadProgress] = useState(0)
   const [selectedVariantOptionId, setSelectedVariantOptionId] = useState('')
+  const [selectedVariantValueIds, setSelectedVariantValueIds] = useState<number[]>([])
+  const [variantValueSelections, setVariantValueSelections] = useState<Record<number, number[]>>({})
+  const [pricingStrategy, setPricingStrategy] = useState<'shared' | 'mixed' | 'variant'>('shared')
+  const [baseSellingPrice, setBaseSellingPrice] = useState('0')
+  const [baseCostPrice, setBaseCostPrice] = useState('')
+  const [baseCompareAtPrice, setBaseCompareAtPrice] = useState('')
+  const [variantPriceDrafts, setVariantPriceDrafts] = useState<Record<number, VariantPriceDraft>>({})
   const [variantActionError, setVariantActionError] = useState<string | null>(null)
+
+  const brandsQuery = useQuery({
+    queryKey: ['products', 'brands'],
+    queryFn: listBrandsRequest
+  })
 
   const productQuery = useQuery({
     queryKey: ['products', 'details', productId],
@@ -187,6 +212,7 @@ const ManageProductPage = () => {
       description: product.description ?? '',
       tags: product.tags ?? '',
       categoryId: product.category_id ? String(product.category_id) : '',
+      brandId: product.brand_id ? String(product.brand_id) : '',
       stockQuantity: String(product.stock_quantity),
       reorderLevel: String(product.reorder_level),
       isActive: product.is_active,
@@ -205,6 +231,14 @@ const ManageProductPage = () => {
       }))
     ],
     [categoriesQuery.data]
+  )
+
+  const brandOptions = useMemo(
+    () => [
+      { label: 'No brand / unbranded', value: '' },
+      ...(brandsQuery.data ?? []).map((brand) => ({ label: brand.name, value: String(brand.id) }))
+    ],
+    [brandsQuery.data]
   )
 
   const pendingImagePreviews = useMemo<PendingImagePreview[]>(
@@ -236,6 +270,31 @@ const ManageProductPage = () => {
   const activeVariantCount =
     productQuery.data?.variants?.filter((variant) => variant.is_active).length ?? 0
 
+  useEffect(() => {
+    setVariantValueSelections(
+      Object.fromEntries(attachedVariantOptions.map((option) => [option.id, option.values.map((value) => value.id)]))
+    )
+  }, [attachedVariantOptions])
+
+  useEffect(() => {
+    const product = productQuery.data
+    if (!product) return
+    setPricingStrategy(product.pricing_strategy ?? 'shared')
+    setBaseSellingPrice(String(product.selling_price ?? product.price ?? 0))
+    setBaseCostPrice(product.cost_price == null ? '' : String(product.cost_price))
+    setBaseCompareAtPrice(product.compare_at_price == null ? '' : String(product.compare_at_price))
+    setVariantPriceDrafts(Object.fromEntries((product.variants ?? []).map((variant) => [
+      variant.id,
+      {
+        useBasePrice: variant.inherits_price ?? variant.price_override == null,
+        sellingPrice: variant.price_override == null ? '' : String(variant.price_override),
+        costPrice: variant.cost_price == null ? '' : String(variant.cost_price),
+        compareAtPrice: variant.compare_at_price == null ? '' : String(variant.compare_at_price),
+        offerPrice: variant.offer_price == null ? '' : String(variant.offer_price),
+      },
+    ])))
+  }, [productQuery.data])
+
   useEffect(
     () => () => {
       pendingImagePreviews.forEach(({ previewUrl }) => URL.revokeObjectURL(previewUrl))
@@ -253,6 +312,7 @@ const ManageProductPage = () => {
       const reorderLevel = Number(payload.reorderLevel)
       const maxOffer = Number(payload.maxOffer)
       const categoryId = payload.categoryId ? Number(payload.categoryId) : undefined
+      const brandId = payload.brandId ? Number(payload.brandId) : undefined
       const tags = payload.tags.trim()
 
       if (!payload.name.trim()) {
@@ -273,6 +333,7 @@ const ManageProductPage = () => {
         description: payload.description.trim() || undefined,
         tags: tags || undefined,
         category_id: categoryId,
+        brand_id: brandId,
         stock_quantity: stockQuantity,
         reorder_level: reorderLevel,
         is_active: payload.isActive,
@@ -338,16 +399,17 @@ const ManageProductPage = () => {
   })
 
   const attachVariantOptionMutation = useMutation({
-    mutationFn: async (optionId: number) => {
+    mutationFn: async ({ optionId, valueIds }: { optionId: number; valueIds: number[] }) => {
       if (!Number.isFinite(productId) || productId <= 0) {
         throw new Error('Invalid product ID.')
       }
 
-      return attachVariantOptionToProductRequest(productId, optionId)
+      return attachVariantOptionToProductRequest(productId, optionId, valueIds)
     },
     onSuccess: () => {
       setVariantActionError(null)
       setSelectedVariantOptionId('')
+      setSelectedVariantValueIds([])
       queryClient.invalidateQueries({ queryKey: ['products', 'details', productId, 'variant-options'] })
       queryClient.invalidateQueries({ queryKey: ['products', 'details', productId] })
       queryClient.invalidateQueries({ queryKey: ['products', 'list'] })
@@ -355,6 +417,45 @@ const ManageProductPage = () => {
     onError: (error: Error) => {
       setVariantActionError(error.message || 'Could not attach variant option to product.')
     }
+  })
+
+  const updateVariantValuesMutation = useMutation({
+    mutationFn: ({ optionId, valueIds }: { optionId: number; valueIds: number[] }) =>
+      updateProductVariantOptionValuesRequest(productId, optionId, valueIds),
+    onSuccess: () => {
+      setVariantActionError(null)
+      queryClient.invalidateQueries({ queryKey: ['products', 'details', productId, 'variant-options'] })
+      queryClient.invalidateQueries({ queryKey: ['products', 'details', productId] })
+      queryClient.invalidateQueries({ queryKey: ['products', 'list'] })
+    },
+    onError: (error: Error) => setVariantActionError(error.message || 'Could not update variant values.')
+  })
+
+  const updateVariantPricingMutation = useMutation({
+    mutationFn: () => updateProductVariantPricingRequest(productId, {
+      pricing_strategy: pricingStrategy,
+      selling_price: Number(baseSellingPrice || 0),
+      cost_price: baseCostPrice === '' ? null : Number(baseCostPrice),
+      compare_at_price: baseCompareAtPrice === '' ? null : Number(baseCompareAtPrice),
+      currency_code: productQuery.data?.currency_code ?? 'KES',
+      variants: (productQuery.data?.variants ?? []).map((variant) => {
+        const draft = variantPriceDrafts[variant.id]
+        return {
+          variant_id: variant.id,
+          use_base_price: draft?.useBasePrice ?? true,
+          selling_price: draft?.useBasePrice || !draft?.sellingPrice ? null : Number(draft.sellingPrice),
+          cost_price: !draft?.costPrice ? null : Number(draft.costPrice),
+          compare_at_price: !draft?.compareAtPrice ? null : Number(draft.compareAtPrice),
+          offer_price: !draft?.offerPrice ? null : Number(draft.offerPrice),
+        }
+      }),
+    }),
+    onSuccess: (updated) => {
+      setVariantActionError(null)
+      queryClient.setQueryData(['products', 'details', productId], updated)
+      queryClient.invalidateQueries({ queryKey: ['products', 'list'] })
+    },
+    onError: (error: Error) => setVariantActionError(error.message || 'Could not save variant pricing.')
   })
 
   const detachVariantOptionMutation = useMutation({
@@ -448,7 +549,12 @@ const ManageProductPage = () => {
       return
     }
 
-    attachVariantOptionMutation.mutate(optionId)
+    if (selectedVariantValueIds.length === 0) {
+      setVariantActionError('Select at least one value for this product.')
+      return
+    }
+
+    attachVariantOptionMutation.mutate({ optionId, valueIds: selectedVariantValueIds })
   }
 
   if (!Number.isFinite(productId) || productId <= 0) {
@@ -608,6 +714,13 @@ const ManageProductPage = () => {
                             value={form.categoryId}
                             onChange={(e) => setForm({ ...form, categoryId: String(e.target.value) })}
                             icon={<TagIcon className="h-4 w-4 text-text-tertiary" />}
+                          />
+
+                          <Select
+                            label="Brand"
+                            options={brandOptions}
+                            value={form.brandId}
+                            onChange={(e) => setForm({ ...form, brandId: String(e.target.value) })}
                           />
 
                           <TextInput
@@ -924,7 +1037,7 @@ const ManageProductPage = () => {
                       initial={{ opacity: 0, y: 10 }}
                       animate={{ opacity: 1, y: 0 }}
                       exit={{ opacity: 0, y: -10 }}
-                      className="space-y-6"
+                      className="flex flex-col gap-6"
                     >
                       {variantActionError && (
                         <div className="flex items-center gap-2 rounded-lg border border-error/20 bg-error/5 px-3 py-2 text-sm text-error">
@@ -932,25 +1045,148 @@ const ManageProductPage = () => {
                           <span>{variantActionError}</span>
                         </div>
                       )}
-                      <div className="rounded-xl border border-primary/15 bg-primary/5 p-5">
+                      <div className="order-1 rounded-xl border border-primary/15 bg-primary/5 p-5">
                         <div className="flex items-start gap-3">
                           <SparklesIcon className="mt-0.5 h-5 w-5 shrink-0 text-primary" />
                           <div>
-                            <h3 className="text-sm font-semibold text-text">Backend Variant Flow</h3>
+                            <h3 className="text-sm font-semibold text-text">Set up variants in 3 simple steps</h3>
                             <p className="mt-1 text-sm text-text-secondary">
-                              Attach reusable option groups like Size or Color to this product. The
-                              backend will generate the valid variant combinations automatically.
+                              Choose what the product comes in, review the generated combinations,
+                              then decide whether they share a price or use different prices.
                             </p>
                           </div>
                         </div>
+                        <div className="mt-4 grid gap-3 sm:grid-cols-3">
+                          {[
+                            ['1', 'Choose options', 'Select values such as Vanilla, Strawberry, 250ml and 500ml.'],
+                            ['2', 'Review combinations', 'The system creates only the combinations from your selections.'],
+                            ['3', 'Set prices', 'Use one price for all, or override only the variants that differ.'],
+                          ].map(([number, title, description]) => (
+                            <div key={number} className="rounded-xl border border-primary/10 bg-white p-3">
+                              <div className="flex items-center gap-2"><span className="flex h-6 w-6 items-center justify-center rounded-full bg-primary text-xs font-bold text-white">{number}</span><p className="text-sm font-semibold text-text">{title}</p></div>
+                              <p className="mt-2 text-xs leading-5 text-text-secondary">{description}</p>
+                            </div>
+                          ))}
+                        </div>
                       </div>
 
-                      <div className="rounded-xl border border-border bg-white p-5">
+                      <div className="order-3 rounded-xl border border-border bg-white p-5">
+                        <div className="flex flex-wrap items-center justify-between gap-3">
+                          <div>
+                            <h3 className="text-sm font-semibold text-text">Step 2: Review generated combinations</h3>
+                            <p className="mt-1 text-xs text-text-secondary">These are the exact items customers and cashiers will choose from.</p>
+                          </div>
+                          <span className="rounded-full bg-background px-3 py-1 text-xs font-medium text-text-secondary">{variantCount} combination{variantCount === 1 ? '' : 's'}</span>
+                        </div>
+                        {variantCount > 0 ? (
+                          <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                            {(productQuery.data?.variants ?? []).map((variant) => (
+                              <div key={variant.id} className="rounded-xl border border-border bg-background p-3">
+                                <p className="text-sm font-semibold text-text">{Object.values(variant.options).join(' / ') || 'Default variant'}</p>
+                                <div className="mt-2 flex items-center justify-between gap-2 text-xs text-text-secondary"><span>{variant.sku}</span><span className="font-semibold text-primary">{formatCurrency(variant.price)}</span></div>
+                              </div>
+                            ))}
+                          </div>
+                        ) : (
+                          <div className="mt-4 rounded-xl border border-dashed border-border bg-background p-6 text-center"><CubeIcon className="mx-auto h-8 w-8 text-text-tertiary/40" /><p className="mt-2 text-sm text-text-secondary">Choose an option and its values first. Combinations will appear here automatically.</p></div>
+                        )}
+                      </div>
+
+                      <div className="order-4 rounded-xl border border-border bg-white p-5">
+                        <div className="flex flex-wrap items-start justify-between gap-3">
+                          <div>
+                            <h3 className="text-sm font-semibold text-text">Step 3: Set prices</h3>
+                            <p className="mt-1 text-xs text-text-secondary">
+                              Use one price for every variant, individual prices, or a mixture where only some variants override the base price.
+                            </p>
+                          </div>
+                          <span className="rounded-full bg-primary/10 px-3 py-1 text-xs font-medium text-primary">
+                            {productQuery.data?.currency_code ?? 'KES'}
+                          </span>
+                        </div>
+
+                        <div className="mt-4 grid gap-3 md:grid-cols-3">
+                          {[
+                            { value: 'shared' as const, title: 'Same price for all', description: 'Best for colour or shape choices that do not change the price.' },
+                            { value: 'mixed' as const, title: 'Mostly the same price', description: 'Use the base price, then override only larger or premium variants.' },
+                            { value: 'variant' as const, title: 'Every variant has a price', description: 'Best when each size, weight, or pack has its own price.' },
+                          ].map((choice) => (
+                            <button
+                              key={choice.value}
+                              type="button"
+                              onClick={() => {
+                                setPricingStrategy(choice.value)
+                                setVariantPriceDrafts((current) => Object.fromEntries(Object.entries(current).map(([id, draft]) => [id, {
+                                  ...draft,
+                                  useBasePrice: choice.value === 'shared' ? true : choice.value === 'variant' ? false : draft.useBasePrice,
+                                  sellingPrice: choice.value === 'variant' && !draft.sellingPrice ? baseSellingPrice : draft.sellingPrice,
+                                }])) )
+                              }}
+                              className={`rounded-xl border p-4 text-left transition ${pricingStrategy === choice.value ? 'border-primary bg-primary/5 ring-2 ring-primary/15' : 'border-border bg-white hover:border-primary/40'}`}
+                            >
+                              <span className="flex items-center gap-2 text-sm font-semibold text-text"><span className={`h-3 w-3 rounded-full border-2 ${pricingStrategy === choice.value ? 'border-primary bg-primary' : 'border-border'}`} />{choice.title}</span>
+                              <span className="mt-2 block text-xs leading-5 text-text-secondary">{choice.description}</span>
+                            </button>
+                          ))}
+                        </div>
+
+                        <div className="mt-5 grid gap-4 md:grid-cols-3">
+                          <TextInput label="Base selling price" type="number" min="0" step="0.01" value={baseSellingPrice} onChange={(event) => setBaseSellingPrice(event.target.value)} />
+                          <TextInput label="Base cost price (optional)" type="number" min="0" step="0.01" value={baseCostPrice} onChange={(event) => setBaseCostPrice(event.target.value)} />
+                          <TextInput label="Compare-at price (optional)" type="number" min="0" step="0.01" value={baseCompareAtPrice} onChange={(event) => setBaseCompareAtPrice(event.target.value)} helperText="Original/list price shown before a discount." />
+                        </div>
+
+                        {(productQuery.data?.variants ?? []).length > 0 ? (
+                          <div className="mt-5 space-y-3 border-t border-border pt-5">
+                            {(productQuery.data?.variants ?? []).map((variant) => {
+                              const draft = variantPriceDrafts[variant.id] ?? { useBasePrice: true, sellingPrice: '', costPrice: '', compareAtPrice: '', offerPrice: '' }
+                              const updateDraft = (changes: Partial<VariantPriceDraft>) => setVariantPriceDrafts((current) => ({ ...current, [variant.id]: { ...draft, ...changes } }))
+                              return (
+                                <div key={variant.id} className="rounded-xl border border-border bg-background p-4">
+                                  <div className="flex flex-wrap items-center justify-between gap-3">
+                                    <div>
+                                      <p className="font-medium text-text">{Object.values(variant.options).join(' / ') || variant.sku}</p>
+                                      <p className="mt-1 text-xs text-text-tertiary">{variant.sku} • Current {formatCurrency(variant.price)}</p>
+                                    </div>
+                                    <label className="flex items-center gap-2 text-xs font-medium text-text-secondary">
+                                      <input type="checkbox" checked={draft.useBasePrice} disabled={pricingStrategy === 'shared'} onChange={(event) => updateDraft({ useBasePrice: event.target.checked })} className="h-4 w-4 rounded border-border text-primary" />
+                                      Use base price
+                                    </label>
+                                  </div>
+                                  <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                                    <TextInput label="Selling price" type="number" min="0" step="0.01" value={draft.sellingPrice} disabled={draft.useBasePrice} onChange={(event) => updateDraft({ sellingPrice: event.target.value })} placeholder={baseSellingPrice} />
+                                    <TextInput label="Offer price" type="number" min="0" step="0.01" value={draft.offerPrice} onChange={(event) => updateDraft({ offerPrice: event.target.value })} placeholder="Optional" />
+                                  </div>
+                                  <details className="mt-3 rounded-lg border border-border bg-white px-3 py-2">
+                                    <summary className="cursor-pointer text-xs font-medium text-text-secondary">
+                                      Advanced pricing: cost and original price
+                                    </summary>
+                                    <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                                      <TextInput label="Cost price" type="number" min="0" step="0.01" value={draft.costPrice} onChange={(event) => updateDraft({ costPrice: event.target.value })} placeholder={baseCostPrice || 'Optional'} />
+                                      <TextInput label="Compare-at price" type="number" min="0" step="0.01" value={draft.compareAtPrice} onChange={(event) => updateDraft({ compareAtPrice: event.target.value })} placeholder="Optional" />
+                                    </div>
+                                  </details>
+                                </div>
+                              )
+                            })}
+                          </div>
+                        ) : (
+                          <p className="mt-4 rounded-lg bg-background p-3 text-xs text-text-secondary">Attach variant options to generate combinations. Products without variants use the base price.</p>
+                        )}
+
+                        <div className="mt-5 flex justify-end">
+                          <Button type="button" onClick={() => updateVariantPricingMutation.mutate()} loading={updateVariantPricingMutation.isPending}>
+                            Save Pricing
+                          </Button>
+                        </div>
+                      </div>
+
+                      <div className="order-2 rounded-xl border border-border bg-white p-5">
                         <div className="flex items-center justify-between gap-3">
                           <div>
-                            <h3 className="text-sm font-semibold text-text">Attached Options</h3>
+                            <h3 className="text-sm font-semibold text-text">Step 1: Choose the available values</h3>
                             <p className="mt-1 text-xs text-text-secondary">
-                              These option groups are currently linked to this product.
+                              Click values to include or exclude them, then save. Selected values become product variants.
                             </p>
                           </div>
                           <span className="rounded-full bg-background px-3 py-1 text-xs font-medium text-text-secondary">
@@ -968,7 +1204,10 @@ const ManageProductPage = () => {
                             </div>
                           ) : attachedVariantOptions.length > 0 ? (
                             <div className="grid gap-4 md:grid-cols-2">
-                              {attachedVariantOptions.map((option) => (
+                              {attachedVariantOptions.map((option) => {
+                                const globalOption = variantOptions.find((candidate) => candidate.id === option.id) ?? option
+                                const selectedIds = variantValueSelections[option.id] ?? option.values.map((value) => value.id)
+                                return (
                                 <div
                                   key={option.id}
                                   className="rounded-xl border border-border bg-background p-4"
@@ -999,22 +1238,41 @@ const ManageProductPage = () => {
                                   </div>
 
                                   <div className="mt-3 flex flex-wrap gap-2">
-                                    {option.values.slice(0, 6).map((value) => (
-                                      <span
+                                    {globalOption.values.map((value) => (
+                                      <label
                                         key={value.id}
-                                        className="rounded-full bg-white px-3 py-1 text-xs font-medium text-text-secondary ring-1 ring-border"
+                                        className={`cursor-pointer rounded-full px-3 py-1.5 text-xs font-medium ring-1 transition ${selectedIds.includes(value.id) ? 'bg-primary text-white ring-primary' : 'bg-white text-text-secondary ring-border hover:ring-primary'}`}
                                       >
+                                        <input
+                                          type="checkbox"
+                                          className="sr-only"
+                                          checked={selectedIds.includes(value.id)}
+                                          onChange={() => setVariantValueSelections((current) => ({
+                                            ...current,
+                                            [option.id]: selectedIds.includes(value.id)
+                                              ? selectedIds.filter((id) => id !== value.id)
+                                              : [...selectedIds, value.id],
+                                          }))}
+                                        />
                                         {value.display_value || value.value}
-                                      </span>
+                                      </label>
                                     ))}
-                                    {option.values.length > 6 && (
-                                      <span className="rounded-full bg-white px-3 py-1 text-xs font-medium text-text-tertiary ring-1 ring-border">
-                                        +{option.values.length - 6} more
-                                      </span>
-                                    )}
+                                  </div>
+                                  <div className="mt-3 flex items-center justify-between gap-3">
+                                    <p className="text-xs text-text-tertiary">{selectedIds.length} of {globalOption.values.length} selected</p>
+                                    <Button
+                                      type="button"
+                                      size="sm"
+                                      disabled={selectedIds.length === 0}
+                                      loading={updateVariantValuesMutation.isPending && updateVariantValuesMutation.variables?.optionId === option.id}
+                                      onClick={() => updateVariantValuesMutation.mutate({ optionId: option.id, valueIds: selectedIds })}
+                                    >
+                                      Update {option.option_name}
+                                    </Button>
                                   </div>
                                 </div>
-                              ))}
+                                )
+                              })}
                             </div>
                           ) : (
                             <div className="rounded-xl border border-dashed border-border bg-background px-4 py-8 text-center">
@@ -1028,18 +1286,18 @@ const ManageProductPage = () => {
                         </div>
                       </div>
 
-                      <div className="rounded-xl border border-border bg-white p-5">
+                      <div className="order-2 rounded-xl border border-border bg-white p-5">
                         <div className="flex items-center justify-between gap-3">
                           <div>
-                            <h3 className="text-sm font-semibold text-text">Attach Existing Option</h3>
+                            <h3 className="text-sm font-semibold text-text">Add another option (optional)</h3>
                             <p className="mt-1 text-xs text-text-secondary">
-                              Pick a global option and link it to this product.
+                              Add another choice such as Flavour, Volume, Weight, Colour, or Pack Quantity.
                             </p>
                           </div>
                           <Button
                             type="button"
                             variant="ghost"
-                            onClick={() => navigate('/dashboard/admin/products/settings')}
+                            onClick={() => navigate('/dashboard/admin/products/variant-options')}
                           >
                             Manage Options
                           </Button>
@@ -1064,7 +1322,7 @@ const ManageProductPage = () => {
                                 <Button
                                   type="button"
                                   variant="outline"
-                                  onClick={() => navigate('/dashboard/admin/products/settings')}
+                                  onClick={() => navigate('/dashboard/admin/products/variant-options')}
                                 >
                                   Open Product Settings
                                 </Button>
@@ -1082,7 +1340,10 @@ const ManageProductPage = () => {
                               <Select
                                 label="Variant Option"
                                 value={selectedVariantOptionId}
-                                onChange={(event) => setSelectedVariantOptionId(String(event.target.value))}
+                                onChange={(event) => {
+                                  setSelectedVariantOptionId(String(event.target.value))
+                                  setSelectedVariantValueIds([])
+                                }}
                                 options={[
                                   { label: 'Select a variant option', value: '' },
                                   ...availableVariantOptions.map((option) => ({
@@ -1093,18 +1354,41 @@ const ManageProductPage = () => {
                                 icon={<TagIcon className="h-4 w-4 text-text-tertiary" />}
                               />
 
+                              {selectedVariantOptionId && (() => {
+                                const selectedOption = availableVariantOptions.find((option) => String(option.id) === selectedVariantOptionId)
+                                if (!selectedOption) return null
+                                return (
+                                  <div>
+                                    <p className="mb-2 text-xs font-medium text-text-secondary">Select the values this product carries</p>
+                                    <div className="flex flex-wrap gap-2">
+                                      {selectedOption.values.map((value) => (
+                                        <label key={value.id} className={`cursor-pointer rounded-full px-3 py-1.5 text-xs font-medium ring-1 transition ${selectedVariantValueIds.includes(value.id) ? 'bg-primary text-white ring-primary' : 'bg-background text-text-secondary ring-border hover:ring-primary'}`}>
+                                          <input
+                                            type="checkbox"
+                                            className="sr-only"
+                                            checked={selectedVariantValueIds.includes(value.id)}
+                                            onChange={() => setSelectedVariantValueIds((current) => current.includes(value.id) ? current.filter((id) => id !== value.id) : [...current, value.id])}
+                                          />
+                                          {value.display_value || value.value}
+                                        </label>
+                                      ))}
+                                    </div>
+                                  </div>
+                                )
+                              })()}
+
                               <div className="flex items-center gap-3">
                                 <Button
                                   type="submit"
                                   loading={attachVariantOptionMutation.isPending}
-                                  disabled={!selectedVariantOptionId}
+                                  disabled={!selectedVariantOptionId || selectedVariantValueIds.length === 0}
                                 >
-                                  Attach To Product
+                                  Add {selectedVariantValueIds.length} Selected Value{selectedVariantValueIds.length === 1 ? '' : 's'}
                                 </Button>
                                 <Button
                                   type="button"
                                   variant="ghost"
-                                  onClick={() => setSelectedVariantOptionId('')}
+                                  onClick={() => { setSelectedVariantOptionId(''); setSelectedVariantValueIds([]) }}
                                 >
                                   Clear
                                 </Button>
@@ -1289,9 +1573,9 @@ const ManageProductPage = () => {
                       Checking stock across branches before deletion...
                     </div>
                   ) : deleteProductStockStatusQuery.isError ? (
-                    <p className="text-sm text-error">
-                      Could not verify stock across branches. Deletion is disabled until stock
-                      status can be checked.
+                    <p className="text-sm text-warning">
+                      Branch stock preview is unavailable. The server will still verify stock safely
+                      when you delete.
                     </p>
                   ) : deleteBlockingStocks.length > 0 ? (
                     <>
@@ -1326,20 +1610,23 @@ const ManageProductPage = () => {
                   </Button>
                   <Button
                     onClick={() => {
-                      setShowDeleteConfirm(false)
                       deleteProductMutation.mutate()
                     }}
                     className="flex-1 bg-error text-white hover:bg-error-dark"
                     loading={deleteProductMutation.isPending}
                     disabled={
                       deleteProductStockStatusQuery.isLoading ||
-                      deleteProductStockStatusQuery.isError ||
                       deleteBlockingStocks.length > 0
                     }
                   >
                     {deleteBlockingStocks.length > 0 ? 'Stock Exists in Branches' : 'Delete Product'}
                   </Button>
                 </div>
+                {deleteProductMutation.isError && (
+                  <p className="mt-3 rounded-lg bg-error/10 p-3 text-sm text-error">
+                    {(deleteProductMutation.error as Error).message || 'Could not delete product.'}
+                  </p>
+                )}
               </div>
             </motion.div>
           </motion.div>

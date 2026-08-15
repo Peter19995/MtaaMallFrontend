@@ -1,18 +1,18 @@
 services:
-  julian_frontend:
-    container_name: julian-frontend
+  mtaamall_frontend:
+    container_name: mtaamall-frontend
     build:
       context: .
       dockerfile: Dockerfile
       args:
-        VITE_API_BASE_URL: ${VITE_API_BASE_URL:-https://api.julian-interiors.com/api/v1}
-    image: julian-interiors-frontend:latest
+        VITE_API_BASE_URL: ${VITE_API_BASE_URL:-https://api.mtaamall.com/api/v1}
+    image: mtaamall-frontend:latest
     restart: unless-stopped
     expose:
       - "3000"
     networks:
-      - julian-public
+      - mtaamall-public
 
 networks:
-  julian-public:
+  mtaamall-public:
     external: true

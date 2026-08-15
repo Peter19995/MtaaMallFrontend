@@ -21,7 +21,7 @@ const faqItems: FaqItem[] = [
   {
     id: 'consultation-time',
     category: 'General',
-    question: 'How do I book a consultation with Julian Interiors?',
+    question: 'How do I book a consultation with MtaaMall?',
     answer:
       'You can submit the contact form, call our team, or message us on WhatsApp. We confirm your consultation time within one business day.',
   },

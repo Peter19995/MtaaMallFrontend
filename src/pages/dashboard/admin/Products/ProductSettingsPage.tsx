@@ -10,7 +10,8 @@ import {
   TrashIcon,
   XCircleIcon
 } from '@heroicons/react/24/outline'
-import { Button, Select, TextInput } from '@components/common'
+import { Button, Select, TextArea, TextInput } from '@components/common'
+import { useConfirmDialog } from '@contexts/ConfirmDialogContext'
 import {
   createCategoryRequest,
   createVariantOptionRequest,
@@ -93,7 +94,13 @@ const buildVariantOptionValuePayload = (
   }
 }
 
-const ProductSettingsPage = () => {
+type ProductSettingsPageProps = {
+  mode?: 'categories' | 'variants'
+}
+
+const ProductSettingsPage = ({ mode = 'categories' }: ProductSettingsPageProps) => {
+  const confirm = useConfirmDialog()
+  const showCategories = mode === 'categories'
   const queryClient = useQueryClient()
   const [categoryName, setCategoryName] = useState('')
   const [categoryDescription, setCategoryDescription] = useState('')
@@ -428,20 +435,26 @@ const ProductSettingsPage = () => {
         >
           <h1 className="flex items-center gap-2 text-2xl font-bold text-text">
             <CubeIcon className="h-6 w-6 text-primary" />
-            Product Settings
+            {showCategories ? 'Product Categories' : 'Variant Options'}
           </h1>
           <p className="mt-1 text-sm text-text-secondary">
-            Manage reusable product configuration such as categories and variant options.
+            {showCategories
+              ? 'Create and organize the categories used throughout your product catalog.'
+              : 'Create reusable product choices such as color, size, material, or packaging.'}
           </p>
         </motion.div>
 
-        <div className="grid gap-4 md:grid-cols-3">
+        <div className="grid gap-4 md:grid-cols-2">
+          {showCategories && (
           <div className="rounded-xl border border-border bg-white p-4 shadow-sm">
             <p className="text-xs text-text-tertiary">Categories</p>
             <p className="mt-2 text-2xl font-semibold text-text">
               {categoriesQuery.data?.length ?? 0}
             </p>
           </div>
+          )}
+          {!showCategories && (
+          <>
           <div className="rounded-xl border border-border bg-white p-4 shadow-sm">
             <p className="text-xs text-text-tertiary">Variant Options</p>
             <p className="mt-2 text-2xl font-semibold text-text">
@@ -454,9 +467,12 @@ const ProductSettingsPage = () => {
               {(variantOptionsQuery.data ?? []).reduce((sum, option) => sum + option.values.length, 0)}
             </p>
           </div>
+          </>
+          )}
         </div>
 
-        <div className="grid gap-6 xl:grid-cols-2">
+        <div className="grid gap-6">
+          {showCategories && (
           <motion.section
             initial={{ opacity: 0, x: -20 }}
             animate={{ opacity: 1, x: 0 }}
@@ -478,8 +494,9 @@ const ProductSettingsPage = () => {
                 placeholder="e.g., Curtains, Seats, Furniture"
                 required
               />
-              <TextInput
+              <TextArea
                 label="Description"
+                rows={4}
                 value={categoryDescription}
                 onChange={(event) => setCategoryDescription(event.target.value)}
                 placeholder="Optional category description"
@@ -526,7 +543,9 @@ const ProductSettingsPage = () => {
               )}
             </div>
           </motion.section>
+          )}
 
+          {!showCategories && (
           <motion.section
             initial={{ opacity: 0, x: 20 }}
             animate={{ opacity: 1, x: 0 }}
@@ -673,11 +692,9 @@ const ProductSettingsPage = () => {
                               deleteVariantOptionMutation.isPending &&
                               deleteVariantOptionMutation.variables === option.id
                             }
-                            onClick={() => {
+                            onClick={async () => {
                               if (
-                                window.confirm(
-                                  `Delete the "${option.option_name}" option and all of its values?`
-                                )
+                                await confirm({ title: 'Delete variant?', message: `Delete the "${option.option_name}" option and all of its values?` })
                               ) {
                                 deleteVariantOptionMutation.mutate(option.id)
                               }
@@ -875,13 +892,9 @@ const ProductSettingsPage = () => {
                                         deleteVariantOptionValueMutation.isPending &&
                                         deleteVariantOptionValueMutation.variables === value.id
                                       }
-                                      onClick={() => {
+                                      onClick={async () => {
                                         if (
-                                          window.confirm(
-                                            `Delete "${value.display_value || value.value}" from ${
-                                              option.option_name
-                                            }?`
-                                          )
+                                          await confirm({ title: 'Delete option?', message: `Delete "${value.display_value || value.value}" from ${option.option_name}?` })
                                         ) {
                                           deleteVariantOptionValueMutation.mutate(value.id)
                                         }
@@ -979,6 +992,7 @@ const ProductSettingsPage = () => {
               )}
             </div>
           </motion.section>
+          )}
         </div>
       </div>
     </div>

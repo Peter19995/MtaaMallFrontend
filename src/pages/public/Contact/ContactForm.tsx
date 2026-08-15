@@ -1,5 +1,5 @@
 import { FormEvent, useState } from 'react'
-import { TextInput, TextArea, Button } from '@components/common'
+import { TextInput, TextArea, Button, Select } from '@components/common'
 
 export const ContactForm = () => {
   const [submitting, setSubmitting] = useState(false)
@@ -44,27 +44,21 @@ export const ContactForm = () => {
         required
       />
       <TextInput name="phone" label="Phone number" placeholder="+254 700 000 000" />
-      <div className="space-y-1.5 text-xs sm:text-sm">
-        <label htmlFor="serviceType" className="block font-medium text-text-secondary">
-          Service type
-        </label>
-        <select
-          id="serviceType"
-          name="serviceType"
-          className="w-full rounded-md border border-border bg-surface px-3 py-2 text-xs sm:text-sm outline-none transition shadow-sm focus:border-primary focus:ring-1 focus:ring-primary"
-          defaultValue=""
-        >
-          <option value="" disabled>
-            Select a service
-          </option>
-          <option value="interior_design">Interior design</option>
-          <option value="curtain_installation">Curtain installation</option>
-          <option value="furniture_customization">Furniture customization</option>
-          <option value="wall_painting">Wall painting</option>
-          <option value="post_construction_cleaning">Post-construction cleaning</option>
-          <option value="other">Other</option>
-        </select>
-      </div>
+      <Select
+        id="serviceType"
+        name="serviceType"
+        label="Service type"
+        defaultValue=""
+        options={[
+          { label: 'Select a service', value: '' },
+          { label: 'Interior design', value: 'interior_design' },
+          { label: 'Curtain installation', value: 'curtain_installation' },
+          { label: 'Furniture customization', value: 'furniture_customization' },
+          { label: 'Wall painting', value: 'wall_painting' },
+          { label: 'Post-construction cleaning', value: 'post_construction_cleaning' },
+          { label: 'Other', value: 'other' },
+        ]}
+      />
       <TextArea
         name="message"
         label="How can we help?"

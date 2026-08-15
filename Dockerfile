@@ -7,7 +7,7 @@ RUN npm ci
 
 COPY . .
 
-ARG VITE_API_BASE_URL=https://api.julian-interiors.com
+ARG VITE_API_BASE_URL=https://api.mtaamall.com
 ENV VITE_API_BASE_URL=${VITE_API_BASE_URL}
 
 RUN npx vite build

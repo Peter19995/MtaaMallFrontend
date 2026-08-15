@@ -1,6 +1,7 @@
 import { useQuery } from '@tanstack/react-query'
 import { Link } from 'react-router-dom'
 import { getSalesSummaryRequest } from '@api/modules/reports.api'
+import { useAuth } from '@hooks/useAuth'
 
 const formatCurrency = (amount: number): string => {
   return new Intl.NumberFormat('en-KE', {
@@ -11,6 +12,8 @@ const formatCurrency = (amount: number): string => {
 }
 
 const AdminOverview = () => {
+  const { user } = useAuth()
+  const isBusinessOwner = user?.role === 'business_owner'
   const { data, isLoading, isError } = useQuery({
     queryKey: ['reports', 'summary'],
     queryFn: () => getSalesSummaryRequest()
@@ -44,10 +47,12 @@ const AdminOverview = () => {
     <div className="space-y-6 text-text">
       <header className="space-y-1">
         <h1 className="text-lg font-semibold tracking-tight sm:text-xl">
-          Admin overview
+          {isBusinessOwner ? 'Business overview' : 'Admin overview'}
         </h1>
         <p className="text-xs text-text-tertiary sm:text-sm">
-          High-level snapshot across projects, sales, inventory and staff activity.
+          {isBusinessOwner
+            ? 'Manage products, branches, inventory, online orders and POS sales.'
+            : 'High-level snapshot across projects, sales, inventory and staff activity.'}
         </p>
         {isLoading ? (
           <p className="text-xs text-text-tertiary">Loading live summary from `/api/v1/reports/summary`…</p>

@@ -30,6 +30,7 @@ import {
   SparklesIcon,
 } from '@heroicons/react/24/outline'
 import { Button, DataTable, Select, TextArea, TextInput, type Column } from '@components/common'
+import { useConfirmDialog } from '@contexts/ConfirmDialogContext'
 import { listProductsRequest } from '@api/modules/products.api'
 import { listBranchesRequest } from '@api/modules/branches.api'
 import {
@@ -241,6 +242,7 @@ const staggerContainer = {
 }
 
 const ProjectsOperationsPage = () => {
+  const confirm = useConfirmDialog()
   const queryClient = useQueryClient()
   const [selectedProjectId, setSelectedProjectId] = useState<number | null>(null)
   const [projectSearch, setProjectSearch] = useState('')
@@ -765,8 +767,8 @@ const ProjectsOperationsPage = () => {
           <button
             type="button"
             className="p-2 text-text-secondary hover:text-error hover:bg-error/5 rounded-lg transition-all"
-            onClick={() => {
-              if (window.confirm(`Delete project "${row.name}"? This action cannot be undone.`)) {
+            onClick={async () => {
+              if (await confirm({ title: 'Delete project?', message: `Delete project "${row.name}"? This action cannot be undone.` })) {
                 deleteProjectMutation.mutate(row.id)
               }
             }}
@@ -1078,15 +1080,11 @@ const ProjectsOperationsPage = () => {
                 <MagnifyingGlassIcon className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-text-tertiary" />
               </div>
               <div className="w-full md:w-48">
-                <select
+                <Select
                   value={projectStatusFilter}
                   onChange={(e) => setProjectStatusFilter(e.target.value)}
-                  className="w-full h-10 px-3 bg-white border border-border rounded-lg text-sm focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
-                >
-                  {projectStatusFilterOptions.map(opt => (
-                    <option key={opt.value} value={opt.value}>{opt.label}</option>
-                  ))}
-                </select>
+                  options={projectStatusFilterOptions}
+                />
               </div>
               <div>
                 <Button

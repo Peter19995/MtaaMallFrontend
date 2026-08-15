@@ -112,8 +112,8 @@ const isDev = import.meta.env.DEV
 const runtimeHostname = typeof window !== 'undefined' ? window.location.hostname : ''
 const shouldUseSameOriginApi =
   isDev ||
-  runtimeHostname === 'julian-interiors.com' ||
-  runtimeHostname === 'www.julian-interiors.com'
+  runtimeHostname === 'mtaamall.com' ||
+  runtimeHostname === 'www.mtaamall.com'
 const configuredBaseUrl = normalizedApiUrl
   ? normalizedApiUrl.endsWith('/api/v1')
     ? normalizedApiUrl
@@ -184,6 +184,10 @@ api.interceptors.response.use(
   },
   async (error) => {
     const originalRequest = error.config as RetryableRequest | undefined
+    const apiMessage = getAuthErrorMessage(error.response?.data)
+    if (apiMessage) {
+      error.message = apiMessage
+    }
 
     if (
       isRetriableAuthError(error) &&

@@ -18,7 +18,7 @@ import {
   PaintBrushIcon,
   DevicePhoneMobileIcon
 } from '@heroicons/react/24/outline'
-import { Button, TextInput } from '@components/common'
+import { Button, Select, TextInput } from '@components/common'
 import { CartContext } from '@contexts/CartContext'
 import {
   listServiceCategoriesRequest,
@@ -69,6 +69,10 @@ const serviceIcons: Record<string, ElementType> = {
   'Design': PaintBrushIcon,
   'Consultation': UserGroupIcon,
   'Maintenance': DevicePhoneMobileIcon,
+  'Repairs': WrenchScrewdriverIcon,
+  'Beauty & Wellness': SparklesIcon,
+  'Events': CalendarIcon,
+  'Professional': UserGroupIcon,
   'default': SparklesIcon
 }
 
@@ -129,8 +133,8 @@ const ServicesPage = () => {
       quantity: 1
     })
 
-    toast.success(`${service.name} added to your cart`, {
-      icon: '🛠️',
+    toast.success(`${service.name} added to your booking cart`, {
+      icon: '📅',
       style: {
         borderRadius: '10px',
         background: AppTheme.colors.successSoft,
@@ -199,7 +203,7 @@ const ServicesPage = () => {
             <div>
               <h4 className="text-sm font-semibold text-text mb-2">Description</h4>
               <p className="text-text-secondary leading-relaxed">
-                {selectedService.description || 'Professional service tailored to your specific needs. Our expert team ensures high-quality results with attention to detail.'}
+                {selectedService.description || 'A trusted service tailored to your needs, with clear details to help you book confidently.'}
               </p>
               {serviceImages.length > 1 ? (
                 <p className="mt-2 text-xs text-text-tertiary">{serviceImages.length} images available</p>
@@ -230,12 +234,12 @@ const ServicesPage = () => {
               <h4 className="text-sm font-semibold text-text mb-3">What's included</h4>
               <ul className="grid grid-cols-2 gap-2">
                 {[
-                  'Professional service',
-                  'Quality guaranteed',
-                  'Expert team',
+                  'Verified service details',
+                  'Clear pricing',
+                  'Skilled provider',
                   'Flexible scheduling',
-                  'Satisfaction assured',
-                  'Follow-up support'
+                  'Booking confirmation',
+                  'Customer support'
                 ].map((feature, index) => (
                   <li key={index} className="flex items-center gap-2 text-sm text-text-secondary">
                     <CheckCircleIcon className="w-4 h-4 text-success" />
@@ -255,7 +259,7 @@ const ServicesPage = () => {
                 }}
                 className="flex-1"
               >
-                Add to Cart
+                Book This Service
               </Button>
               <Button
                 size="lg"
@@ -286,19 +290,36 @@ const ServicesPage = () => {
             <div className="inline-flex items-center gap-2 bg-primary/10 rounded-full px-4 py-2 mb-4">
               <SparklesIcon className="w-4 h-4 text-primary" />
               <span className="text-xs font-semibold uppercase tracking-wider text-primary">
-                Professional Services
+                Find & Book Services
               </span>
             </div>
             <h1 className="text-3xl md:text-4xl lg:text-5xl font-bold text-text mb-4">
-              Transform Your Space with{' '}
+              Find the Right Service,{' '}
               <span className="bg-gradient-to-r from-primary to-secondary bg-clip-text text-transparent">
-                Expert Services
+                Book with Confidence
               </span>
             </h1>
             <p className="text-text-secondary max-w-2xl mx-auto text-lg">
-              From installation to design consultation, our professional team delivers 
-              exceptional quality for every project.
+              Discover trusted providers for home, business, personal, and professional needs.
+              Compare services, review pricing and duration, then book the option that works for you.
             </p>
+
+            <div className="mx-auto mt-8 grid max-w-3xl gap-3 text-left sm:grid-cols-3">
+              {[
+                { title: '1. Find', text: 'Search by service or category.', icon: MagnifyingGlassIcon },
+                { title: '2. Compare', text: 'Check pricing, duration, and details.', icon: AdjustmentsHorizontalIcon },
+                { title: '3. Book', text: 'Choose a service and confirm your booking.', icon: CalendarIcon },
+              ].map((step) => {
+                const Icon = step.icon
+                return (
+                  <div key={step.title} className="rounded-2xl border border-border bg-white/80 p-4 shadow-sm backdrop-blur-sm">
+                    <Icon className="h-5 w-5 text-primary" />
+                    <p className="mt-2 text-sm font-semibold text-text">{step.title}</p>
+                    <p className="mt-1 text-xs text-text-secondary">{step.text}</p>
+                  </div>
+                )
+              })}
+            </div>
           </motion.div>
         </div>
       </section>
@@ -312,7 +333,7 @@ const ServicesPage = () => {
             transition={{ delay: 0.1 }}
             className="bg-white rounded-xl border border-border p-4"
           >
-            <p className="text-xs text-text-tertiary mb-1">Total Services</p>
+            <p className="text-xs text-text-tertiary mb-1">Services Available</p>
             <p className="text-2xl font-bold text-primary">{services.length}</p>
           </motion.div>
           <motion.div
@@ -330,7 +351,7 @@ const ServicesPage = () => {
             transition={{ delay: 0.3 }}
             className="bg-white rounded-xl border border-border p-4"
           >
-            <p className="text-xs text-text-tertiary mb-1">In Your Cart</p>
+            <p className="text-xs text-text-tertiary mb-1">Selected for Booking</p>
             <p className="text-2xl font-bold text-accent">
               {cart.items.filter(item => item.id.startsWith('service-')).length}
             </p>
@@ -345,7 +366,7 @@ const ServicesPage = () => {
                 type="text"
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                placeholder="Search services by name or description..."
+                placeholder="What service do you need?"
                 className="w-full h-12 pl-12 pr-4 bg-white border-2 border-border rounded-xl 
                          focus:border-primary focus:outline-none focus:ring-4 
                          focus:ring-primary/20 transition-all text-text"
@@ -362,24 +383,19 @@ const ServicesPage = () => {
             </div>
 
             <div className="flex gap-2">
-              <select
-                className="h-12 px-4 bg-white border-2 border-border rounded-xl 
-                         text-text focus:border-primary focus:outline-none focus:ring-4 
-                         focus:ring-primary/20 transition-all min-w-[180px]"
+              <Select
+                className="min-w-[180px] border-2"
                 value={selectedCategoryId}
                 onChange={(event) =>
                   setSelectedCategoryId(
                     event.target.value === 'all' ? 'all' : Number(event.target.value)
                   )
                 }
-              >
-                <option value="all">All Categories</option>
-                {(categoriesQuery.data ?? []).map((category) => (
-                  <option key={category.id} value={category.id}>
-                    {category.name}
-                  </option>
-                ))}
-              </select>
+                options={[
+                  { label: 'All Categories', value: 'all' },
+                  ...(categoriesQuery.data ?? []).map((category) => ({ label: category.name, value: category.id })),
+                ]}
+              />
 
               <button
                 onClick={() => setShowFilters(!showFilters)}
@@ -410,7 +426,7 @@ const ServicesPage = () => {
                 <div className="flex items-center justify-between mb-4">
                   <h3 className="font-semibold text-text flex items-center gap-2">
                     <AdjustmentsHorizontalIcon className="w-5 h-5 text-primary" />
-                    Advanced Filters
+                    Refine Your Search
                   </h3>
                   <button
                     onClick={resetFilters}
@@ -526,7 +542,7 @@ const ServicesPage = () => {
           >
             <WrenchScrewdriverIcon className="w-16 h-16 mx-auto text-error/30 mb-4" />
             <h3 className="text-lg font-semibold text-error-dark mb-2">Unable to Load Services</h3>
-            <p className="text-error/80 mb-4">There was an error loading the services. Please try again later.</p>
+            <p className="text-error/80 mb-4">We could not load available services. Please try again.</p>
             <Button variant="outline" onClick={() => servicesQuery.refetch()}>
               Retry
             </Button>
@@ -542,7 +558,7 @@ const ServicesPage = () => {
           >
             <WrenchScrewdriverIcon className="w-20 h-20 mx-auto text-text-tertiary/30 mb-4" />
             <h3 className="text-xl font-semibold text-text mb-2">No Services Found</h3>
-            <p className="text-text-secondary mb-4">Try adjusting your search or filter criteria</p>
+            <p className="text-text-secondary mb-4">Try another service name, category, or price range.</p>
             <Button variant="outline" onClick={resetFilters}>
               Clear Filters
             </Button>
@@ -605,7 +621,7 @@ const ServicesPage = () => {
 
                       {/* Description */}
                       <p className="text-text-secondary text-sm line-clamp-2 mb-4">
-                        {service.description || 'Professional service tailored to your specific needs.'}
+                        {service.description || 'A trusted service with clear details to help you book confidently.'}
                       </p>
                       {imageUrls.length > 1 ? (
                         <p className="mb-3 text-[11px] text-text-tertiary">{imageUrls.length} images</p>
@@ -638,7 +654,7 @@ const ServicesPage = () => {
                           className="relative overflow-hidden group/btn"
                         >
                           <span className="relative z-10 flex items-center gap-2">
-                            Add to Cart
+                            Book Service
                           </span>
                           <motion.div
                             className="absolute inset-0 bg-gradient-to-r from-primary to-primaryDark"

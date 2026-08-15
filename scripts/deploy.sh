@@ -1,10 +1,10 @@
 #!/usr/bin/env sh
 set -eu
 
-DEPLOY_PATH="${DEPLOY_PATH:-/opt/julian-interiors-frontend}"
+DEPLOY_PATH="${DEPLOY_PATH:-/opt/mtaamall-frontend}"
 COMPOSE_FILE="docker-compose.prod.yml"
 ENV_FILE=".env.production"
-NETWORK_NAME="julian-public"
+NETWORK_NAME="mtaamall-public"
 
 cd "$DEPLOY_PATH"
 
@@ -22,7 +22,7 @@ fi
 case "$API_BASE_URL" in
   *localhost*|*127.0.0.1*)
     echo "Refusing to deploy with local API base URL: $API_BASE_URL"
-    echo "Set VITE_API_BASE_URL=https://api.julian-interiors.com/api/v1 in $ENV_FILE"
+    echo "Set VITE_API_BASE_URL=https://api.mtaamall.com/api/v1 in $ENV_FILE"
     exit 1
     ;;
 esac

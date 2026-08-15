@@ -11,6 +11,23 @@ export type ProductCategoryCreate = {
   description?: string
 }
 
+export type ProductCategoryUpdate = Partial<ProductCategoryCreate>
+
+export type ProductBrandResponse = {
+  id: number
+  name: string
+  description?: string | null
+  country_of_origin?: string | null
+}
+
+export type ProductBrandCreate = {
+  name: string
+  description?: string
+  country_of_origin?: string
+}
+
+export type ProductBrandUpdate = Partial<ProductBrandCreate>
+
 export type ProductImageRecord = {
   id: number
   image_url?: string | null
@@ -59,7 +76,11 @@ export type ProductVariantOptionResponse = {
 
 export type ProductVariantCreate = {
   sku: string
+  barcode?: string | null
   price_override?: number | null
+  cost_price?: number | null
+  compare_at_price?: number | null
+  offer_price?: number | null
   stock_quantity?: number
   weight?: number | null
   image_url?: string | null
@@ -69,7 +90,11 @@ export type ProductVariantCreate = {
 
 export type ProductVariantUpdate = {
   sku?: string | null
+  barcode?: string | null
   price_override?: number | null
+  cost_price?: number | null
+  compare_at_price?: number | null
+  offer_price?: number | null
   stock_quantity?: number | null
   weight?: number | null
   image_url?: string | null
@@ -80,8 +105,14 @@ export type ProductVariantUpdate = {
 export type ProductVariantResponse = {
   id: number
   sku: string
+  barcode?: string | null
   price: number
   price_override?: number | null
+  base_price: number
+  inherits_price: boolean
+  cost_price?: number | null
+  compare_at_price?: number | null
+  offer_price?: number | null
   stock_quantity: number
   weight?: number | null
   image_url?: string | null
@@ -99,11 +130,17 @@ export type ProductResponse = {
   tags?: string | null
   category_id?: number | null
   category_name?: string | null
+  brand_id?: number | null
+  brand_name?: string | null
   stock_quantity: number
   reorder_level: number
   is_active: boolean
   price: number
   selling_price?: number
+  cost_price?: number | null
+  compare_at_price?: number | null
+  currency_code?: string
+  pricing_strategy?: 'shared' | 'mixed' | 'variant'
   is_on_offer?: boolean
   max_offer?: number
   image_urls?: string[]
@@ -121,10 +158,15 @@ export type ProductCreate = {
   description?: string
   tags?: string | null
   category_id?: number
+  brand_id?: number
   stock_quantity?: number
   reorder_level?: number
   is_active?: boolean
   selling_price?: number
+  cost_price?: number | null
+  compare_at_price?: number | null
+  currency_code?: string
+  pricing_strategy?: 'shared' | 'mixed' | 'variant'
   is_on_offer?: boolean
   max_offer?: number
 }
@@ -134,16 +176,37 @@ export type ProductUpdate = {
   description?: string
   tags?: string | null
   category_id?: number
+  brand_id?: number
   stock_quantity?: number
   reorder_level?: number
   is_active?: boolean
   selling_price?: number
+  cost_price?: number | null
+  compare_at_price?: number | null
+  currency_code?: string
+  pricing_strategy?: 'shared' | 'mixed' | 'variant'
   is_on_offer?: boolean
   max_offer?: number
 }
 
 export type ProductPriceUpdate = {
   selling_price: number
+}
+
+export type ProductVariantPricingUpdate = {
+  pricing_strategy: 'shared' | 'mixed' | 'variant'
+  selling_price: number
+  cost_price?: number | null
+  compare_at_price?: number | null
+  currency_code?: string
+  variants: Array<{
+    variant_id: number
+    use_base_price: boolean
+    selling_price?: number | null
+    cost_price?: number | null
+    compare_at_price?: number | null
+    offer_price?: number | null
+  }>
 }
 
 export type ProductOfferUpdate = {
@@ -191,6 +254,52 @@ export type GeneratedProductSkuResponse = {
 export const listCategoriesRequest = async (): Promise<ProductCategoryResponse[]> => {
   const { data } = await api.get<ProductCategoryResponse[]>('/products/categories/list')
   return data
+}
+
+export const getCategoryRequest = async (categoryId: number): Promise<ProductCategoryResponse> => {
+  const { data } = await api.get<ProductCategoryResponse>(`/products/categories/${categoryId}`)
+  return data
+}
+
+export const updateCategoryRequest = async (
+  categoryId: number,
+  payload: ProductCategoryUpdate
+): Promise<ProductCategoryResponse> => {
+  const { data } = await api.put<ProductCategoryResponse>(`/products/categories/${categoryId}`, payload)
+  return data
+}
+
+export const deleteCategoryRequest = async (categoryId: number): Promise<void> => {
+  await api.delete(`/products/categories/${categoryId}`)
+}
+
+export const listBrandsRequest = async (): Promise<ProductBrandResponse[]> => {
+  const { data } = await api.get<ProductBrandResponse[]>('/products/brands/list')
+  return data
+}
+
+export const createBrandRequest = async (
+  payload: ProductBrandCreate
+): Promise<ProductBrandResponse> => {
+  const { data } = await api.post<ProductBrandResponse>('/products/brands', payload)
+  return data
+}
+
+export const getBrandRequest = async (brandId: number): Promise<ProductBrandResponse> => {
+  const { data } = await api.get<ProductBrandResponse>(`/products/brands/${brandId}`)
+  return data
+}
+
+export const updateBrandRequest = async (
+  brandId: number,
+  payload: ProductBrandUpdate
+): Promise<ProductBrandResponse> => {
+  const { data } = await api.put<ProductBrandResponse>(`/products/brands/${brandId}`, payload)
+  return data
+}
+
+export const deleteBrandRequest = async (brandId: number): Promise<void> => {
+  await api.delete(`/products/brands/${brandId}`)
 }
 
 export const generateProductSkuRequest = async (
@@ -275,9 +384,18 @@ export const listProductVariantOptionsRequest = async (
 
 export const attachVariantOptionToProductRequest = async (
   productId: number,
-  optionId: number
+  optionId: number,
+  valueIds: number[]
 ): Promise<void> => {
-  await api.post(`/products/${productId}/variant-options/${optionId}`)
+  await api.post(`/products/${productId}/variant-options/${optionId}`, { value_ids: valueIds })
+}
+
+export const updateProductVariantOptionValuesRequest = async (
+  productId: number,
+  optionId: number,
+  valueIds: number[]
+): Promise<void> => {
+  await api.put(`/products/${productId}/variant-options/${optionId}/values`, { value_ids: valueIds })
 }
 
 export const detachVariantOptionFromProductRequest = async (
@@ -419,4 +537,12 @@ export const deleteProductVariantRequest = async (
   variantId: number
 ): Promise<void> => {
   await api.delete(`/products/${productId}/variants/${variantId}`)
+}
+
+export const updateProductVariantPricingRequest = async (
+  productId: number,
+  payload: ProductVariantPricingUpdate
+): Promise<ProductResponse> => {
+  const { data } = await api.put<ProductResponse>(`/products/${productId}/variant-pricing`, payload)
+  return data
 }

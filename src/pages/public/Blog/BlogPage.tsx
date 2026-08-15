@@ -20,7 +20,7 @@ import {
   ChevronRightIcon
 } from '@heroicons/react/24/outline'
 import { HeartIcon as HeartIconSolid } from '@heroicons/react/24/solid'
-import { Button, TextInput } from '@components/common'
+import { Button, Select, TextInput } from '@components/common'
 import {
   listPublicBlogCategoriesRequest,
   listPublicBlogsRequest,
@@ -220,7 +220,7 @@ const BlogPage = () => {
                 </span>
                 <span className="flex items-center gap-1">
                   <UserIcon className="w-4 h-4" />
-                  {selectedBlog.author_name || 'Julian Interiors'}
+                  {selectedBlog.author_name || 'MtaaMall'}
                 </span>
               </div>
               <div className="flex items-center gap-2">
@@ -410,17 +410,16 @@ const BlogPage = () => {
 
             <div className="flex gap-2">
               {/* Sort Dropdown */}
-              <select
+              <Select
                 value={sortBy}
                 onChange={(e) => setSortBy(e.target.value as any)}
-                className="h-12 px-4 bg-white border-2 border-border rounded-xl 
-                         text-text focus:border-primary focus:outline-none focus:ring-4 
-                         focus:ring-primary/20 transition-all min-w-[140px]"
-              >
-                <option value="latest">Latest</option>
-                <option value="popular">Most Popular</option>
-                <option value="trending">Trending</option>
-              </select>
+                className="min-w-[140px] border-2"
+                options={[
+                  { label: 'Latest', value: 'latest' },
+                  { label: 'Most Popular', value: 'popular' },
+                  { label: 'Trending', value: 'trending' },
+                ]}
+              />
 
               {/* Filter Toggle */}
               <button
@@ -502,20 +501,14 @@ const BlogPage = () => {
                     <label className="block text-xs font-medium text-text-secondary mb-2">
                       Category
                     </label>
-                    <select
+                    <Select
                       value={categoryId}
                       onChange={(e) => setCategoryId(e.target.value === 'all' ? 'all' : Number(e.target.value))}
-                      className="w-full px-3 py-2 bg-white border border-border rounded-lg 
-                               text-text focus:border-primary focus:outline-none focus:ring-2 
-                               focus:ring-primary/20 transition-all"
-                    >
-                      <option value="all">All Categories</option>
-                      {(categoriesQuery.data ?? []).map((category) => (
-                        <option key={category.id} value={category.id}>
-                          {category.name}
-                        </option>
-                      ))}
-                    </select>
+                      options={[
+                        { label: 'All Categories', value: 'all' },
+                        ...(categoriesQuery.data ?? []).map((category) => ({ label: category.name, value: category.id })),
+                      ]}
+                    />
                   </div>
 
                   {/* Featured Filter */}
