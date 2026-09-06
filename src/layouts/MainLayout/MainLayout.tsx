@@ -52,7 +52,7 @@ export const MainLayout = () => {
   )
 
   const isAuthenticated = Boolean(user)
-  const dashboardPath = '/dashboard/admin'
+  const dashboardPath = user?.role === 'customer' ? '/customer/profile' : '/dashboard/admin'
 
   // Handle scroll effect
   useEffect(() => {

@@ -4,9 +4,10 @@ import { getMeRequest, refreshTokenRequest, type UserResponse } from '@api/modul
 export type AuthUser = {
   id: string
   name: string
+  username: string
   role: string
   roles?: string[]
-  email: string
+  email?: string
 }
 
 type AuthContextValue = {
@@ -38,17 +39,17 @@ const resolveUserRole = (me: Pick<UserResponse, 'is_superuser' | 'roles' | 'perm
   const roles = me.roles ?? []
   const permissions = me.permissions ?? []
 
-  if (me.is_superuser || roles.includes('admin')) {
+  if (roles.includes('root_system_admin') || roles.includes('system_admin')) {
     return {
-      role: 'admin',
+      role: roles.includes('root_system_admin') ? 'root_system_admin' : 'system_admin',
       roles
     }
   }
 
   if (roles.length === 0 && permissions.length === 0) {
     return {
-      role: 'admin',
-      roles: ['admin']
+      role: 'unassigned',
+      roles: []
     }
   }
 
@@ -64,9 +65,10 @@ const toAuthUser = (me: UserResponse): AuthUser => {
   return {
     id: String(me.id),
     name: me.full_name?.trim() ? me.full_name : me.username,
+    username: me.username,
     role,
     roles,
-    email: me.email
+    email: me.email ?? undefined
   }
 }
 

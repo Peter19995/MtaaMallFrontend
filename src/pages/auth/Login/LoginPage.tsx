@@ -57,19 +57,17 @@ const resolveUserRole = (me: {
   const roles = me.roles ?? []
   const permissions = me.permissions ?? []
 
-  if (me.is_superuser || roles.includes('admin')) {
+  if (roles.includes('root_system_admin') || roles.includes('system_admin')) {
     return {
-      role: 'admin',
+      role: roles.includes('root_system_admin') ? 'root_system_admin' : 'system_admin',
       roles
     }
   }
 
-  // The current backend can return an authenticated admin user without RBAC metadata.
-  // This keeps the existing dashboard accessible until explicit role assignment is in place.
   if (roles.length === 0 && permissions.length === 0) {
     return {
-      role: 'admin',
-      roles: ['admin']
+      role: 'unassigned',
+      roles: []
     }
   }
 
@@ -147,6 +145,7 @@ const LoginPage = () => {
         {
           id: String(me.id),
           name: me.full_name?.trim() ? me.full_name : me.username,
+          username: me.username,
           email: me.email,
           roles,
           role
@@ -156,7 +155,11 @@ const LoginPage = () => {
       )
 
       const locationState = location.state as LoginLocationState | null
-      const redirectTo = locationState?.from?.pathname ?? '/dashboard/admin'
+      const redirectTo =
+        role === 'customer'
+          ? '/customer/profile'
+          : locationState?.from?.pathname ??
+            (role === 'root_system_admin' || role === 'system_admin' ? '/dashboard/admin' : '/')
       navigate(redirectTo, { replace: true })
     } catch (error) {
       setErrorMessage(getErrorMessage(error))
@@ -483,6 +486,13 @@ const LoginPage = () => {
                     )}
                   </AnimatePresence>
                 </form>
+
+                <p className="mt-6 text-center text-sm text-text-secondary">
+                  New to MtaaMall?{' '}
+                  <Link to="/register" className="font-semibold text-primary hover:text-primary-dark">
+                    Create an account
+                  </Link>
+                </p>
 
                 {/* Demo Credentials */}
                 <div className="mt-6 p-4 rounded-xl bg-background border border-border">

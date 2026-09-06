@@ -12,8 +12,11 @@ export type TokenResponse = {
   expires_in: number
 }
 
+export type AccountType = 'business' | 'customer'
+
 export type UserCreate = {
-  email: string
+  account_type: AccountType
+  email?: string
   username: string
   full_name?: string
   phone?: string
@@ -40,7 +43,7 @@ export type PasswordResetConfirmRequest = {
 
 export type UserResponse = {
   id: number
-  email: string
+  email?: string | null
   username: string
   full_name?: string | null
   phone?: string | null

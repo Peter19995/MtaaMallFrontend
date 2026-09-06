@@ -18,6 +18,8 @@ const StylingStudioPage = lazy(() => import('@pages/public/StylingStudio/Styling
 const CheckoutPage = lazy(() => import('@pages/public/Checkout/CheckoutPage'))
 const CartPage = lazy(() => import('@pages/public/Cart/CartPage'))
 const LoginPage = lazy(() => import('@pages/auth/Login/LoginPage'))
+const RegisterPage = lazy(() => import('@pages/auth/Register/RegisterPage'))
+const CustomerProfilePage = lazy(() => import('@pages/customer/CustomerProfilePage'))
 const AdminOverview = lazy(
   () => import('@pages/dashboard/admin/Overview/AdminOverview')
 )
@@ -90,8 +92,15 @@ export const AppRoutes = () => {
         </Route>
 
         <Route path="/login" element={<LoginPage />} />
+        <Route path="/register" element={<RegisterPage />} />
 
-        <Route element={<PrivateRoute requiredRoles={['admin']} />}>
+        <Route element={<PrivateRoute requiredRoles={['customer']} />}>
+          <Route element={<MainLayout />}>
+            <Route path="/customer/profile" element={<CustomerProfilePage />} />
+          </Route>
+        </Route>
+
+        <Route element={<PrivateRoute requiredRoles={['root_system_admin', 'system_admin']} />}>
           <Route element={<DashboardLayout />}>
             <Route path="/dashboard/admin" element={<AdminOverview />} />
             <Route path="/dashboard/admin/products" element={<ProductManagementPage />} />
