@@ -1,3 +1,4 @@
+import { useWorkspacePath } from '@hooks/useWorkspacePath'
 import { FormEvent, useEffect, useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useLocation, useNavigate, useParams } from 'react-router-dom'
@@ -125,6 +126,7 @@ type PendingImagePreview = {
 }
 
 const ManageProductPage = () => {
+  const workspacePath = useWorkspacePath()
   const queryClient = useQueryClient()
   const navigate = useNavigate()
   const location = useLocation()
@@ -385,7 +387,7 @@ const ManageProductPage = () => {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['products', 'list'] })
-      navigate('/dashboard/admin/products')
+      navigate(workspacePath('/dashboard/admin/products'))
     },
     onError: (error: Error) => {
       setFormError(error.message || 'Could not delete product.')
@@ -458,7 +460,7 @@ const ManageProductPage = () => {
           <ExclamationTriangleIcon className="h-16 w-16 mx-auto text-error/30 mb-4" />
           <h2 className="text-2xl font-bold text-text mb-2">Invalid Product ID</h2>
           <p className="text-text-secondary mb-6">The product ID provided is not valid.</p>
-          <Button onClick={() => navigate('/dashboard/admin/products')}>
+          <Button onClick={() => navigate(workspacePath('/dashboard/admin/products'))}>
             <ArrowLeftIcon className="h-4 w-4 mr-2" />
             Back to Products
           </Button>
@@ -485,7 +487,7 @@ const ManageProductPage = () => {
           <Button
             type="button"
             variant="ghost"
-            onClick={() => navigate('/dashboard/admin/products')}
+            onClick={() => navigate(workspacePath('/dashboard/admin/products'))}
             className="!p-2"
           >
             <ArrowLeftIcon className="h-5 w-5" />
@@ -1039,7 +1041,7 @@ const ManageProductPage = () => {
                           <Button
                             type="button"
                             variant="ghost"
-                            onClick={() => navigate('/dashboard/admin/products/settings')}
+                            onClick={() => navigate(workspacePath('/dashboard/admin/products/settings'))}
                           >
                             Manage Options
                           </Button>
@@ -1064,7 +1066,7 @@ const ManageProductPage = () => {
                                 <Button
                                   type="button"
                                   variant="outline"
-                                  onClick={() => navigate('/dashboard/admin/products/settings')}
+                                  onClick={() => navigate(workspacePath('/dashboard/admin/products/settings'))}
                                 >
                                   Open Product Settings
                                 </Button>
@@ -1228,7 +1230,7 @@ const ManageProductPage = () => {
                 <Button
                   fullWidth
                   variant="outline"
-                  onClick={() => navigate('/dashboard/admin/products')}
+                  onClick={() => navigate(workspacePath('/dashboard/admin/products'))}
                 >
                   View All Products
                 </Button>
@@ -1237,7 +1239,7 @@ const ManageProductPage = () => {
                   variant="outline"
                   onClick={() => {
                     // Navigate to create new product
-                    navigate('/dashboard/admin/products/new')
+                    navigate(workspacePath('/dashboard/admin/products/new'))
                   }}
                 >
                   Create New Product

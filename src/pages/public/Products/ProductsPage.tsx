@@ -1,4 +1,5 @@
 import { useContext, useMemo, useState, useEffect } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { motion, AnimatePresence } from 'framer-motion'
 import toast from 'react-hot-toast'
@@ -17,7 +18,7 @@ import {
 import { HeartIcon as HeartIconSolid } from '@heroicons/react/24/solid'
 import { Button, TextInput } from '@components/common'
 import { CartContext } from '@contexts/CartContext'
-import { listProductsRequest, type ProductResponse } from '@api/modules/products.api'
+import { listProductsRequest, listProductVariantsRequest, type ProductResponse, type ProductVariantResponse } from '@api/modules/products.api'
 import { AppTheme, withOpacity } from '@constants/theme'
 import { resolveMediaUrls } from '@utils/media'
 
@@ -71,9 +72,11 @@ const sortOptions = [
 ]
 
 const ProductsPage = () => {
+  const [variantChoice, setVariantChoice] = useState<{ product: ProductResponse; variants: ProductVariantResponse[] } | null>(null)
   const cart = useContext(CartContext)
-  const [search, setSearch] = useState('')
-  const [selectedCategory, setSelectedCategory] = useState<string>('all')
+  const [searchParams] = useSearchParams()
+  const [search, setSearch] = useState(searchParams.get('search') ?? '')
+  const [selectedCategory, setSelectedCategory] = useState<string>(searchParams.get('category') ?? 'all')
   const [sortBy, setSortBy] = useState('newest')
   const [priceRange, setPriceRange] = useState<[number, number]>([0, 100000])
   const [showFilters, setShowFilters] = useState(false)
@@ -81,6 +84,10 @@ const ProductsPage = () => {
   const [inStockOnly, setInStockOnly] = useState(false)
   const [onOfferOnly, setOnOfferOnly] = useState(false)
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid')
+  useEffect(() => {
+    setSearch(searchParams.get('search') ?? '')
+    setSelectedCategory(searchParams.get('category') ?? 'all')
+  }, [searchParams])
 
   if (!cart) {
     throw new Error('CartContext is required for ProductsPage.')
@@ -163,7 +170,7 @@ const ProductsPage = () => {
     return filtered
   }, [products, search, selectedCategory, sortBy, priceRange, inStockOnly, onOfferOnly])
 
-  const addProductToCart = (product: ProductResponse) => {
+  const addProductToCart = async (product: ProductResponse, variant?: ProductVariantResponse) => {
     if (product.stock_quantity <= 0) {
       toast.error(`${product.name} is currently out of stock`, {
         icon: '😞',
@@ -176,12 +183,20 @@ const ProductsPage = () => {
       return
     }
 
-    cart.addItem({
+    try {
+    if (!variant) {
+      const variants = await listProductVariantsRequest(product.id)
+      if (variants.length) { setVariantChoice({ product, variants }); return }
+    }
+    await cart.addItem({
       id: String(product.id),
-      name: product.name,
-      price: getOfferPrice(product),
+      product_id: product.id,
+      product_variant_id: variant?.id,
+      name: product.name + (variant ? ' · ' + variant.sku : ''),
+      price: variant?.price_override ?? product.price,
       quantity: 1
     })
+    setVariantChoice(null)
 
     toast.success(`${product.name} added to your cart`, {
       icon: '🛒',
@@ -191,6 +206,7 @@ const ProductsPage = () => {
         color: AppTheme.colors.successDark,
       }
     })
+    } catch (e: any) { toast.error(String(e?.response?.data?.message || e?.message || 'Could not add this product.')) }
   }
 
   const toggleWishlist = (productId: number) => {
@@ -232,6 +248,7 @@ const ProductsPage = () => {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-background via-white to-background">
+      {variantChoice && <div role="dialog" aria-modal="true" aria-label="Choose product variant" className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"><div className="max-h-[80vh] w-full max-w-lg overflow-auto rounded-2xl bg-white p-6"><h2 className="mb-4 text-xl font-semibold">Choose {variantChoice.product.name}</h2>{variantChoice.variants.map(v => <button key={v.id} disabled={cart.isBusy || !v.is_active || v.stock_quantity <= 0} className="mb-2 block w-full rounded-lg border p-3 text-left disabled:opacity-40" onClick={() => addProductToCart(variantChoice.product, v)}>{Object.entries(v.options).map(([k, value]) => `${k}: ${value}`).join(' · ') || v.sku}<span className="block text-sm">{formatCurrency(v.price_override ?? variantChoice.product.price)}</span></button>)}<button className="mt-3 underline" onClick={() => setVariantChoice(null)}>Cancel</button></div></div>}
       {/* Hero Section */}
       <section className="relative overflow-hidden bg-gradient-to-br from-primary/5 via-transparent to-secondary/5 py-12">
         <div className="absolute inset-0 bg-grid-pattern opacity-5" />

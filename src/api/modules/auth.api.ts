@@ -10,17 +10,33 @@ export type TokenResponse = {
   refresh_token: string
   token_type: string
   expires_in: number
+  security?: { ready: boolean }
 }
 
 export type AccountType = 'business' | 'customer'
 
-export type UserCreate = {
-  account_type: AccountType
+export type CustomerRegistration = {
   email?: string
   username: string
   full_name?: string
-  phone?: string
+  phone: string
   password: string
+}
+
+export type BusinessRegistration = {
+  name: string
+  legal_name: string
+  registration_number: string
+  business_type: string
+  description?: string
+  email?: string
+  phone?: string
+  address?: string
+  country: string
+  currency: string
+  timezone: string
+  owner: { email?: string; username: string; full_name: string; phone: string; password: string }
+  branches: []
 }
 
 export type RefreshTokenRequest = {
@@ -42,12 +58,24 @@ export type PasswordResetConfirmRequest = {
 }
 
 export type UserResponse = {
+  experience?: import('../../utils/experiences').Experience
+  landing_path?: string
+  membership_id?: number | null
+  platform_permissions?: string[]
+  business_permissions?: string[]
+  allowed_branch_ids?: number[]
+  context?: string
+  business_memberships?: import('./memberships.api').Membership[]
+  platform_memberships?: import('./memberships.api').Membership[]
+  business_id?: string | null
+  business_status?: import('./businesses.api').BusinessStatus | null
   id: number
   email?: string | null
   username: string
   full_name?: string | null
   phone?: string | null
-  managed_branch_id?: number | null
+  branch_scope?: 'all' | 'selected' | null
+  branch_ids?: number[]
   is_active: boolean
   is_superuser: boolean
   created_at?: string
@@ -59,7 +87,7 @@ export type UserResponse = {
 type AuthActionResponse = Record<string, unknown>
 
 export const loginRequest = async (payload: LoginRequest): Promise<TokenResponse> => {
-  const { data } = await api.post<TokenResponse>('/auth/login', payload, {
+  const { data } = await api.post<TokenResponse>('/auth/login', { ...payload, use_cookies: true }, {
     headers: {
       'Content-Type': 'application/json',
       Accept: 'application/json'
@@ -76,14 +104,21 @@ export const refreshTokenRequest = async (
   return data
 }
 
-export const registerRequest = async (payload: UserCreate): Promise<UserResponse> => {
-  const { data } = await api.post<UserResponse>('/auth/register', payload, {
+export const registerCustomerRequest = async (payload: CustomerRegistration) => {
+  const { data } = await api.post('/auth/register/customer', payload, {
     headers: {
       'Content-Type': 'application/json',
       Accept: 'application/json'
     }
   })
 
+  return data
+}
+
+export const registerBusinessRequest = async (payload: BusinessRegistration) => {
+  const { data } = await api.post('/auth/register/business', payload, {
+    headers: { 'Content-Type': 'application/json', Accept: 'application/json' }
+  })
   return data
 }
 
@@ -119,9 +154,12 @@ export const verifyEmailRequest = async (token: string): Promise<AuthActionRespo
   return data
 }
 
-export const getMeRequest = async (accessToken?: string): Promise<UserResponse> => {
+export const acceptPlatformInvitationRequest = async (token: string, password: string) =>
+  (await api.post(`/auth/invitations/platform/${encodeURIComponent(token)}/accept`, { password })).data
+
+export const getMeRequest = async (accessToken?: string, context?: string): Promise<UserResponse> => {
   const { data } = await api.get<UserResponse>('/users/me', {
-    headers: accessToken ? { Authorization: `Bearer ${accessToken}` } : undefined
+    headers: { ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}), ...(context ? { 'X-Context': context } : {}) }
   })
 
   return data

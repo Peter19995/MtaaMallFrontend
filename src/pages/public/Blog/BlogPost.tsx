@@ -1,5 +1,5 @@
 import { useMemo, useState, useEffect } from 'react'
-import { Link, useParams } from 'react-router-dom'
+import { Link, useParams, useSearchParams } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
@@ -107,6 +107,8 @@ const staggerContainer = {
 
 const BlogPost = () => {
   const { slug } = useParams<{ slug: string }>()
+  const [searchParams] = useSearchParams()
+  const business = searchParams.get('business') ?? undefined
   const [isLiked, setIsLiked] = useState(false)
   const [isBookmarked, setIsBookmarked] = useState(false)
   const [likeCount, setLikeCount] = useState(0)
@@ -114,12 +116,12 @@ const BlogPost = () => {
   const [commentText, setCommentText] = useState('')
 
   const blogQuery = useQuery({
-    queryKey: ['blogs', 'public', 'detail', slug],
+    queryKey: ['blogs', 'public', 'detail', slug, business],
     queryFn: () => {
       if (!slug) {
         throw new Error('Missing blog slug')
       }
-      return getPublicBlogRequest(slug)
+      return getPublicBlogRequest(slug, business)
     },
     enabled: Boolean(slug)
   })

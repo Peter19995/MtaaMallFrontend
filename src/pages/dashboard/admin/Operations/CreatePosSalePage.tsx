@@ -1,3 +1,5 @@
+import { requestApproval } from '@api/modules/audit.api'
+import { useWorkspacePath } from '@hooks/useWorkspacePath'
 import { FormEvent, useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useMutation, useQueries, useQuery, useQueryClient } from '@tanstack/react-query'
@@ -302,6 +304,7 @@ const staggerContainer = {
 }
 
 const CreatePosSalePage = () => {
+  const workspacePath = useWorkspacePath()
   const queryClient = useQueryClient()
   const [createSaleForm, setCreateSaleForm] = useState<CreatePosSaleFormState>(createEmptySaleForm())
   const [feedback, setFeedback] = useState<FeedbackState | null>(null)
@@ -781,6 +784,15 @@ const CreatePosSalePage = () => {
         throw new Error('Phone number is required for M-Pesa payments (minimum 9 digits).')
       }
 
+      if (discountAmount > 0) {
+        const reason = window.prompt('Request manager approval for this discounted sale. Reason:')
+        if (!reason || reason.trim().length < 3) throw new Error('An approval reason is required. No sale was created.')
+        const approval = await requestApproval('discount', reason.trim(), {
+          items, payment_mode_id: paymentModeId, discount_amount: discountAmount,
+          branch_id: branchId, customer_id: parseOptionalNumber(payload.customerId)
+        })
+        return { kind: 'approval' as const, approval }
+      }
       const sale = await createPosSaleRequest({
         items,
         payment_mode_id: paymentModeId,
@@ -805,6 +817,7 @@ const CreatePosSalePage = () => {
         )
 
         return {
+          kind: 'sale' as const,
           sale,
           paymentStatus: paymentResult.result_status
         }
@@ -815,6 +828,12 @@ const CreatePosSalePage = () => {
       }
     },
     onSuccess: (result, payload) => {
+      if (result.kind === 'approval') {
+        setFeedback({ type: 'success', message: 'Approval requested. No sale or payment has been completed. Follow progress in Approvals.' })
+        setCreateSaleForm(createEmptySaleForm(createSaleForm.branchId))
+        queryClient.invalidateQueries({ queryKey: ['approvals'] })
+        return
+      }
       const sale = result.sale
       const paymentModeName =
         activePaymentModes.find((mode) => String(mode.id) === payload.paymentModeId)?.name ??
@@ -899,7 +918,7 @@ const CreatePosSalePage = () => {
         animate={{ opacity: 1, y: 0 }}
         className="mb-6"
       >
-        <Link to="/dashboard/admin/sales">
+        <Link to={workspacePath('/dashboard/admin/sales')}>
           <Button variant="ghost" size="sm" className="mb-3">
             <ArrowLeftIcon className="h-4 w-4 mr-2" />
             Back to sales operations
@@ -1395,7 +1414,7 @@ const CreatePosSalePage = () => {
 
             {/* Form Actions */}
             <div className="flex justify-end gap-3 pt-4 border-t border-border">
-              <Link to="/dashboard/admin/sales">
+              <Link to={workspacePath('/dashboard/admin/sales')}>
                 <Button type="button" variant="outline">
                   Cancel
                 </Button>
@@ -1491,7 +1510,7 @@ const CreatePosSalePage = () => {
                 </div>
 
                 <div className="flex gap-3">
-                  <Link to={`/dashboard/admin/sales`} className="flex-1">
+                  <Link to={workspacePath('/dashboard/admin/sales')} className="flex-1">
                     <Button variant="outline" className="w-full">
                       View All Sales
                     </Button>

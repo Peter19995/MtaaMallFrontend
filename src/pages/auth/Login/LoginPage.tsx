@@ -6,23 +6,24 @@ import {
   EnvelopeIcon,
   LockClosedIcon,
   ArrowRightIcon,
-  SparklesIcon,
   EyeIcon,
   EyeSlashIcon,
-  CheckCircleIcon,
   XCircleIcon,
   ShieldCheckIcon,
   BuildingOfficeIcon,
   UserGroupIcon,
 } from '@heroicons/react/24/outline'
 import { useAuth } from '@hooks/useAuth'
+import { toAuthUser } from '@contexts/AuthContext'
 import { getMeRequest, loginRequest } from '@api/modules/auth.api'
-import { AppTheme } from '@constants/theme'
-import brandLogo from '@/assets/business-logo.svg'
+import brandLogo from '@/assets/mtaamall-logo.svg'
+import { loginLanding } from '@utils/experiences'
+import { canAccessDashboard } from '@utils/dashboardAccess'
 
 type LoginLocationState = {
   from?: {
     pathname?: string
+    search?: string
   }
 }
 
@@ -49,34 +50,6 @@ const getErrorMessage = (error: unknown): string => {
   return 'Sign in failed. Please check your credentials and try again.'
 }
 
-const resolveUserRole = (me: {
-  is_superuser: boolean
-  roles?: string[]
-  permissions?: string[]
-}) => {
-  const roles = me.roles ?? []
-  const permissions = me.permissions ?? []
-
-  if (roles.includes('root_system_admin') || roles.includes('system_admin')) {
-    return {
-      role: roles.includes('root_system_admin') ? 'root_system_admin' : 'system_admin',
-      roles
-    }
-  }
-
-  if (roles.length === 0 && permissions.length === 0) {
-    return {
-      role: 'unassigned',
-      roles: []
-    }
-  }
-
-  return {
-    role: roles[0] ?? 'staff',
-    roles
-  }
-}
-
 // Animation variants
 const fadeInUp = {
   initial: { opacity: 0, y: 20 },
@@ -96,8 +69,8 @@ const LoginPage = () => {
   const navigate = useNavigate()
   const location = useLocation()
   const { login } = useAuth()
-  const [email, setEmail] = useState('admin@mtaamall.com')
-  const [password, setPassword] = useState('ChangeMe@123')
+  const [email, setEmail] = useState('')
+  const [password, setPassword] = useState('')
   const [showPassword, setShowPassword] = useState(false)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
@@ -109,7 +82,7 @@ const LoginPage = () => {
   const [passwordStrength, setPasswordStrength] = useState<'weak' | 'medium' | 'strong' | null>(null)
 
   useEffect(() => {
-    if (password && password !== 'ChangeMe@123') {
+    if (password) {
       const hasUpperCase = /[A-Z]/.test(password)
       const hasLowerCase = /[a-z]/.test(password)
       const hasNumbers = /\d/.test(password)
@@ -133,33 +106,35 @@ const LoginPage = () => {
     setErrorMessage(null)
 
     try {
+      localStorage.removeItem('auth_context')
       const tokens = await loginRequest({
         username: email.trim(),
         password
       })
 
-      const me = await getMeRequest(tokens.access_token)
-      const { role, roles } = resolveUserRole(me)
+      if (tokens.security && !tokens.security.ready) {
+        navigate('/security', { replace: true })
+        return
+      }
+      const me = await getMeRequest()
 
       login(
-        {
-          id: String(me.id),
-          name: me.full_name?.trim() ? me.full_name : me.username,
-          username: me.username,
-          email: me.email,
-          roles,
-          role
-        },
+        toAuthUser(me),
         tokens.access_token,
         tokens.refresh_token
       )
 
       const locationState = location.state as LoginLocationState | null
+      const requestedPath = locationState?.from?.pathname
+      const requestedSearch = locationState?.from?.search ?? ''
       const redirectTo =
-        role === 'customer'
-          ? '/customer/profile'
-          : locationState?.from?.pathname ??
-            (role === 'root_system_admin' || role === 'system_admin' ? '/dashboard/admin' : '/')
+        requestedPath === '/business/invitations/accept'
+          ? requestedPath + requestedSearch
+          : requestedPath?.startsWith('/account/') && loginLanding(me) !== '/account/workspaces'
+          ? requestedPath + requestedSearch
+          : requestedPath && canAccessDashboard(me, requestedPath)
+          ? requestedPath + requestedSearch : loginLanding(me)
+
       navigate(redirectTo, { replace: true })
     } catch (error) {
       setErrorMessage(getErrorMessage(error))
@@ -314,7 +289,7 @@ const LoginPage = () => {
                   <img
                     src={brandLogo}
                     alt="MtaaMall logo"
-                    className="mx-auto mb-4 h-20 w-auto rounded-full border border-primary/10 bg-white p-1 shadow-lg"
+                    className="mx-auto mb-4 h-16 w-auto sm:h-20"
                   />
                   <h2 className="text-2xl font-bold text-text">
                     Sign in to your account
@@ -327,8 +302,8 @@ const LoginPage = () => {
                 <form onSubmit={handleSubmit} className="space-y-5">
                   {/* Email Field */}
                   <div className="space-y-1">
-                    <label className="block text-xs font-medium text-text-secondary">
-                      Email or username
+                    <label htmlFor="login-identifier" className="block text-xs font-medium text-text-secondary">
+                      Username, email or phone
                     </label>
                     <div className="relative">
                       <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
@@ -337,6 +312,12 @@ const LoginPage = () => {
                         }`} />
                       </div>
                       <input
+                        id="login-identifier"
+                        autoComplete="username"
+                        autoCapitalize="none"
+                        autoCorrect="off"
+                        spellCheck={false}
+                        aria-describedby="login-identifier-hint"
                         type="text"
                         required
                         value={email}
@@ -347,14 +328,17 @@ const LoginPage = () => {
                                  text-text placeholder-text-tertiary/50
                                  focus:border-primary focus:outline-none focus:ring-4 focus:ring-primary/20 
                                  transition-all"
-                        placeholder="you@example.com"
+                        placeholder="Username, email or phone"
                       />
                     </div>
+                    <p id="login-identifier-hint" className="text-xs text-text-secondary">
+                      Usernames are not case-sensitive.
+                    </p>
                   </div>
 
                   {/* Password Field */}
                   <div className="space-y-1">
-                    <label className="block text-xs font-medium text-text-secondary">
+                    <label htmlFor="login-password" className="block text-xs font-medium text-text-secondary">
                       Password
                     </label>
                     <div className="relative">
@@ -364,6 +348,8 @@ const LoginPage = () => {
                         }`} />
                       </div>
                       <input
+                        id="login-password"
+                        autoComplete="current-password"
                         type={showPassword ? 'text' : 'password'}
                         required
                         value={password}
@@ -493,18 +479,6 @@ const LoginPage = () => {
                     Create an account
                   </Link>
                 </p>
-
-                {/* Demo Credentials */}
-                <div className="mt-6 p-4 rounded-xl bg-background border border-border">
-                  <p className="text-xs font-medium text-text-secondary flex items-center gap-1 mb-2">
-                    <SparklesIcon className="h-3 w-3 text-primary" />
-                    Demo credentials (pre-filled)
-                  </p>
-                  <div className="space-y-1 text-xs text-text-tertiary">
-                    <p>Email: admin@mtaamall.com</p>
-                    <p>Password: ChangeMe@123</p>
-                  </div>
-                </div>
 
                 {/* API Endpoint Info */}
                 <p className="mt-4 text-center text-[10px] text-text-tertiary">

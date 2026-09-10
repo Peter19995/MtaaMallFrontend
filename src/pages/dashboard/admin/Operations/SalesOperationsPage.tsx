@@ -1,3 +1,7 @@
+import { requestApproval } from '@api/modules/audit.api'
+import { useAuth } from '@hooks/useAuth'
+import { canAccessWorkspace } from '@utils/experiences'
+import { useWorkspacePath } from '@hooks/useWorkspacePath'
 import { useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
@@ -43,7 +47,6 @@ import {
   getDailyPosSummaryRequest,
   getPosSaleRequest,
   listPosSalesRequest,
-  refundPosSaleRequest,
   type PosSaleResponse
 } from '@api/modules/pos.api'
 import { AppTheme, withOpacity } from '@constants/theme'
@@ -99,6 +102,11 @@ const staggerContainer = {
 }
 
 const SalesOperationsPage = () => {
+  const workspacePath = useWorkspacePath()
+  const { user, hasPermission } = useAuth()
+  const canReport = hasPermission('reports.read')
+  const canSell = canAccessWorkspace(user, workspacePath('/dashboard/admin/sales/create'))
+  const canMutate = !['suspended', 'closed'].includes(user?.business_status ?? '')
   const queryClient = useQueryClient()
   const [branchId, setBranchId] = useState('')
   const [startDate, setStartDate] = useState('')
@@ -141,23 +149,23 @@ const SalesOperationsPage = () => {
 
   const branchesQuery = useQuery({
     queryKey: ['branches', 'operations'],
-    queryFn: listBranchesRequest
+    queryFn: () => listBranchesRequest(), enabled: hasPermission('branches.read')
   })
 
   const summaryQuery = useQuery({
     queryKey: ['reports', 'summary', reportParams],
-    queryFn: () => getSalesSummaryRequest(reportParams)
+    queryFn: () => getSalesSummaryRequest(reportParams), enabled: canReport
   })
 
   const dailySalesQuery = useQuery({
     queryKey: ['reports', 'daily-sales', reportParams],
-    queryFn: () => getDailySalesRequest(reportParams)
+    queryFn: () => getDailySalesRequest(reportParams), enabled: canReport
   })
 
   const branchOperationsQuery = useQuery({
     queryKey: ['branches', 'operations', 'summary', branchIdNumber],
     queryFn: () => getBranchOperationsSummaryRequest(branchIdNumber as number),
-    enabled: Boolean(branchIdNumber)
+    enabled: canReport && Boolean(branchIdNumber)
   })
 
   const posSalesQuery = useQuery({
@@ -171,7 +179,7 @@ const SalesOperationsPage = () => {
       getDailyPosSummaryRequest({
         branch_id: branchIdNumber,
         summary_date: dailySummaryDate || undefined
-      })
+      }), enabled: canReport
   })
 
   const selectedSaleQuery = useQuery({
@@ -241,37 +249,16 @@ const SalesOperationsPage = () => {
 
   const refundSaleMutation = useMutation({
     mutationFn: (input: { saleId: number; reason?: string; branchId?: number; restockItems: boolean }) =>
-      refundPosSaleRequest(
-        input.saleId,
-        {
-          reason: input.reason,
-          restock_items: input.restockItems
-        },
-        {
-          branch_id: input.branchId
-        }
-      ),
-    onSuccess: (result) => {
-      setFeedback({
-        type: 'success',
-        message: `Refund posted for sale #${result.sale.id}: ${formatCurrency(result.refunded_amount)}.`
-      })
-      queryClient.invalidateQueries({ queryKey: ['pos', 'sales'] })
-      queryClient.invalidateQueries({ queryKey: ['pos', 'sales', 'detail', result.sale.id] })
-      queryClient.invalidateQueries({ queryKey: ['pos', 'daily-summary'] })
-      queryClient.invalidateQueries({ queryKey: ['inventory', 'dashboard'] })
-      setTimeout(() => setFeedback(null), 3000)
+      requestApproval('refund', input.reason ?? '', { sale_id: input.saleId, reason: input.reason, restock_items: input.restockItems }),
+    onSuccess: () => {
+      setFeedback({ type: 'success', message: 'Refund approval requested. No refund has been posted. Follow progress in Approvals.' })
+      queryClient.invalidateQueries({ queryKey: ['approvals'] })
     },
-    onError: (error: Error) => {
-      setFeedback({
-        type: 'error',
-        message: error.message || 'Failed to refund sale.'
-      })
-    }
+    onError: (error: Error) => setFeedback({ type: 'error', message: error.message || 'Could not request refund approval.' })
   })
 
   const onCancelSale = (sale: PosSaleResponse) => {
-    const reasonInput = window.prompt(`Cancel sale #${sale.id}. Reason (optional):`)
+    const reasonInput = window.prompt(`Cancel unpaid sale #${sale.id}. Reason (required):`)
     if (reasonInput === null) {
       return
     }
@@ -285,7 +272,7 @@ const SalesOperationsPage = () => {
   }
 
   const onRefundSale = (sale: PosSaleResponse) => {
-    const reasonInput = window.prompt(`Refund sale #${sale.id}. Reason (optional):`)
+    const reasonInput = window.prompt(`Request approval to refund sale #${sale.id}. Reason (required):`)
     if (reasonInput === null) {
       return
     }
@@ -404,7 +391,7 @@ const SalesOperationsPage = () => {
             >
               <EyeIcon className="h-4 w-4" />
             </button>
-            <button
+            {canMutate && hasPermission('pos.void') && <button
               type="button"
               className="p-2 text-text-secondary hover:text-error hover:bg-error/5 rounded-lg transition-all"
               onClick={() => onCancelSale(sale)}
@@ -412,16 +399,16 @@ const SalesOperationsPage = () => {
               title="Cancel sale"
             >
               <XCircleIcon className="h-4 w-4" />
-            </button>
-            <button
+            </button>}
+            {canMutate && hasPermission('approvals.request') && <button
               type="button"
               className="p-2 text-text-secondary hover:text-accent hover:bg-accent/5 rounded-lg transition-all"
               onClick={() => onRefundSale(sale)}
               disabled={isRefundingCurrentSale}
-              title="Refund sale"
+              title="Request refund approval"
             >
               <BanknotesIcon className="h-4 w-4" />
-            </button>
+            </button>}
           </div>
         )
       }
@@ -555,7 +542,7 @@ const SalesOperationsPage = () => {
       </motion.section>
 
       {/* Stats Cards */}
-      <motion.section
+      {canReport && <><motion.section
         variants={staggerContainer}
         initial="initial"
         animate="animate"
@@ -791,8 +778,9 @@ const SalesOperationsPage = () => {
         </motion.section>
       </div>
 
+      </>}
       {/* Create POS Sale CTA */}
-      <motion.section
+      {canSell && <motion.section
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 0.3 }}
@@ -811,7 +799,7 @@ const SalesOperationsPage = () => {
                 </p>
               </div>
             </div>
-            <Link to="/dashboard/admin/sales/create">
+            <Link to={workspacePath('/dashboard/admin/sales/create')}>
               <Button className="flex items-center gap-2 bg-gradient-to-r from-primary to-secondary text-white">
                 <PlusIcon className="h-4 w-4" />
                 Create POS Sale
@@ -819,7 +807,7 @@ const SalesOperationsPage = () => {
             </Link>
           </div>
         </div>
-      </motion.section>
+      </motion.section>}
 
       {/* POS Sales Table */}
       <motion.section
@@ -975,7 +963,7 @@ const SalesOperationsPage = () => {
 
                     {/* Action Buttons */}
                     <div className="flex gap-2 pt-2">
-                      <Button
+                      {canMutate && hasPermission('pos.void') && <Button
                         variant="outline"
                         onClick={() => {
                           setSelectedSaleId(null)
@@ -985,8 +973,8 @@ const SalesOperationsPage = () => {
                       >
                         <XCircleIcon className="h-4 w-4" />
                         Cancel Sale
-                      </Button>
-                      <Button
+                      </Button>}
+                      {canMutate && hasPermission('approvals.request') && <Button
                         variant="outline"
                         onClick={() => {
                           setSelectedSaleId(null)
@@ -995,8 +983,8 @@ const SalesOperationsPage = () => {
                         className="flex items-center gap-2"
                       >
                         <BanknotesIcon className="h-4 w-4" />
-                        Refund Sale
-                      </Button>
+                        Request refund approval
+                      </Button>}
                     </div>
                   </div>
                 ) : (

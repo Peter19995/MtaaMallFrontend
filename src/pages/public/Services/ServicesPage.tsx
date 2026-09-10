@@ -1,7 +1,6 @@
 import { useContext, useMemo, useState, useEffect, type ElementType } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { motion, AnimatePresence } from 'framer-motion'
-import toast from 'react-hot-toast'
 import { 
   ClockIcon, 
   MagnifyingGlassIcon, 
@@ -121,22 +120,8 @@ const ServicesPage = () => {
     }
   }, [services])
 
-  const addServiceToCart = (service: ServiceOfferingResponse) => {
-    cart.addItem({
-      id: `service-${service.id}`,
-      name: service.name,
-      price: service.price,
-      quantity: 1
-    })
-
-    toast.success(`${service.name} added to your cart`, {
-      icon: '🛠️',
-      style: {
-        borderRadius: '10px',
-        background: AppTheme.colors.successSoft,
-        color: AppTheme.colors.successDark,
-      }
-    })
+  const addServiceToCart = (_service: ServiceOfferingResponse) => {
+    window.location.assign('/contact')
   }
 
   const resetFilters = () => {
@@ -255,7 +240,7 @@ const ServicesPage = () => {
                 }}
                 className="flex-1"
               >
-                Add to Cart
+                Enquire
               </Button>
               <Button
                 size="lg"
@@ -638,7 +623,7 @@ const ServicesPage = () => {
                           className="relative overflow-hidden group/btn"
                         >
                           <span className="relative z-10 flex items-center gap-2">
-                            Add to Cart
+                            Enquire
                           </span>
                           <motion.div
                             className="absolute inset-0 bg-gradient-to-r from-primary to-primaryDark"

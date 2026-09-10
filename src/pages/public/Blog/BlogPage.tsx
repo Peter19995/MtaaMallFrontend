@@ -797,7 +797,7 @@ const BlogPage = () => {
                           </span>
                         </div>
                         <Link
-                          to={blog.slug ? `/blog/${blog.slug}` : '/blog'}
+                          to={blog.slug ? `/blog/${blog.slug}${blog.business_public_id ? `?business=${blog.business_public_id}` : ''}` : '/blog'}
                           onClick={(event) => event.stopPropagation()}
                           className="text-xs text-primary group-hover:translate-x-1 transition-transform flex items-center gap-1"
                         >

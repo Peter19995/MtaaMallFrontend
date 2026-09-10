@@ -12,6 +12,7 @@ export type BlogCategoryResponse = {
 }
 
 export type BlogSummaryResponse = {
+  business_public_id?: string
   id: number
   title: string
   slug: string
@@ -28,6 +29,7 @@ export type BlogSummaryResponse = {
 }
 
 export type BlogResponse = {
+  business_public_id?: string
   id: number
   title: string
   slug: string
@@ -88,8 +90,8 @@ export const listPublicBlogsRequest = async (
   return data
 }
 
-export const getPublicBlogRequest = async (slug: string): Promise<BlogResponse> => {
-  const { data } = await api.get<BlogResponse>(`/blogs/public/${slug}`)
+export const getPublicBlogRequest = async (slug: string, business?: string): Promise<BlogResponse> => {
+  const { data } = await api.get<BlogResponse>(`/blogs/public/${slug}`, { params: { business } })
   return data
 }
 

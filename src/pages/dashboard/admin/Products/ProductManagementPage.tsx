@@ -1,3 +1,5 @@
+import { useAuth } from '@hooks/useAuth'
+import { useWorkspacePath } from '@hooks/useWorkspacePath'
 import { FormEvent, useEffect, useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { motion, AnimatePresence } from 'framer-motion'
@@ -140,6 +142,12 @@ const staggerContainer = {
 }
 
 const ProductManagementPage = () => {
+  const workspacePath = useWorkspacePath()
+  const { user, hasPermission } = useAuth()
+  const canOperate = !['suspended', 'closed'].includes(user?.business_status ?? '')
+  const canCreate = hasPermission('products.create') && canOperate
+  const canEdit = hasPermission('products.update') && canOperate
+  const canDelete = hasPermission('products.delete') && canOperate
   const navigate = useNavigate()
   const location = useLocation()
   const queryClient = useQueryClient()
@@ -278,7 +286,7 @@ const ProductManagementPage = () => {
       setFormError(null)
 
       if (!isEditing) {
-        navigate(`/dashboard/admin/products/${product.id}`, {
+        navigate(workspacePath(`/dashboard/admin/products/${product.id}`), {
           state: { initialTab: 'variants' }
         })
       }
@@ -376,7 +384,7 @@ const ProductManagementPage = () => {
   )
 
   useEffect(() => {
-    if (location.state?.openProductForm !== true) {
+    if (!canCreate || location.state?.openProductForm !== true) {
       return
     }
 
@@ -385,7 +393,7 @@ const ProductManagementPage = () => {
     setFormError(null)
     setShowProductForm(true)
     navigate(location.pathname, { replace: true })
-  }, [location.pathname, location.state, navigate])
+  }, [location.pathname, location.state, navigate, canCreate])
 
   useEffect(() => {
     if (editingProductId || !generatedSkuMeta?.suggested_sku) {
@@ -574,30 +582,30 @@ const ProductManagementPage = () => {
           >
             <EyeIcon className="h-4 w-4" />
           </button>
-          <button
+          {canEdit && <button
             type="button"
             className="p-2 text-text-secondary hover:text-primary hover:bg-primary/5 rounded-lg transition-all"
             onClick={() => openPriceModal(row)}
             title="Update price"
           >
             <BanknotesIcon className="h-4 w-4" />
-          </button>
-          <button
+          </button>}
+          {canEdit && <button
             type="button"
             className="p-2 text-text-secondary hover:text-primary hover:bg-primary/5 rounded-lg transition-all"
-            onClick={() => navigate(`/dashboard/admin/products/${row.id}`)}
+            onClick={() => navigate(workspacePath(`/dashboard/admin/products/${row.id}`))}
             title="Manage product"
           >
             <PencilIcon className="h-4 w-4" />
-          </button>
-          <button
+          </button>}
+          {canDelete && <button
             type="button"
             className="p-2 text-text-secondary hover:text-error hover:bg-error/5 rounded-lg transition-all"
             onClick={() => setDeleteCandidate(row)}
             title="Delete product"
           >
             <TrashIcon className="h-4 w-4" />
-          </button>
+          </button>}
         </div>
       )
     }
@@ -657,7 +665,7 @@ const ProductManagementPage = () => {
             </p>
           </div>
           
-          <div className="flex gap-2">
+          {canCreate && <div className="flex gap-2">
             <Button
               variant="outline"
               onClick={() => setShowCategoryForm(!showCategoryForm)}
@@ -678,7 +686,7 @@ const ProductManagementPage = () => {
               <PlusIcon className="h-4 w-4" />
               {showProductForm ? 'Close Product Form' : 'New Product'}
             </Button>
-          </div>
+          </div>}
         </div>
       </motion.div>
 
@@ -801,7 +809,7 @@ const ProductManagementPage = () => {
 
       {/* Category Form */}
       <AnimatePresence>
-        {showCategoryForm && (
+        {canCreate && showCategoryForm && (
           <motion.section
             initial={{ opacity: 0, y: -20 }}
             animate={{ opacity: 1, y: 0 }}
@@ -851,7 +859,7 @@ const ProductManagementPage = () => {
 
       {/* Product Form */}
       <AnimatePresence>
-        {showProductForm && (
+        {canCreate && showProductForm && (
           <motion.section
             initial={{ opacity: 0, y: -20 }}
             animate={{ opacity: 1, y: 0 }}
@@ -1323,19 +1331,19 @@ const ProductManagementPage = () => {
                 >
                   Close
                 </Button>
-                <Button
+                {canEdit && <Button
                   type="button"
                   variant="outline"
                   onClick={() => openPriceModal(selectedProduct)}
                 >
                   Update Price
-                </Button>
-                <Button
+                </Button>}
+                {canEdit && <Button
                   type="button"
-                  onClick={() => navigate(`/dashboard/admin/products/${selectedProduct.id}`)}
+                  onClick={() => navigate(workspacePath(`/dashboard/admin/products/${selectedProduct.id}`))}
                 >
                   Manage Product
-                </Button>
+                </Button>}
               </div>
             </motion.div>
           </motion.div>

@@ -1,7 +1,7 @@
 import axios, { type InternalAxiosRequestConfig } from 'axios'
+import { requestTenantContext } from './tenantContext'
 
-type RetryableRequest = InternalAxiosRequestConfig & { _retry?: boolean }
-type RefreshResponse = { access_token: string; refresh_token?: string }
+type RetryableRequest = InternalAxiosRequestConfig & { _retry?: boolean; _contextAtDispatch?: string | null }
 type ApiEnvelope<T> = {
   data?: T
   message?: string
@@ -13,7 +13,7 @@ type ApiEnvelope<T> = {
   code?: string | number
 }
 
-const AUTH_BYPASS_PATHS = ['/auth/login', '/auth/register', '/auth/refresh']
+const AUTH_BYPASS_PATHS = ['/auth/login', '/auth/register', '/auth/invitations/platform', '/auth/refresh']
 
 const shouldBypassStoredToken = (url?: string) => {
   if (!url) {
@@ -21,18 +21,6 @@ const shouldBypassStoredToken = (url?: string) => {
   }
 
   return AUTH_BYPASS_PATHS.some((path) => url.includes(path))
-}
-
-const getExistingAuthorizationHeader = (config: InternalAxiosRequestConfig) => {
-  const headers = config.headers as
-    | {
-        Authorization?: string
-        authorization?: string
-        get?: (name: string) => string | undefined
-      }
-    | undefined
-
-  return headers?.get?.('Authorization') ?? headers?.Authorization ?? headers?.authorization
 }
 
 const getAuthErrorMessage = (payload: unknown): string => {
@@ -122,56 +110,33 @@ const configuredBaseUrl = normalizedApiUrl
 const baseURL = shouldUseSameOriginApi ? '/api/v1' : configuredBaseUrl
 
 const api = axios.create({
-  baseURL
+  baseURL,
+  withCredentials: true,
+  headers: { 'X-Requested-With': 'MtaaMall' }
 })
 
 api.interceptors.request.use((config) => {
-  const token = localStorage.getItem('access_token')
-
-  if (token && !shouldBypassStoredToken(config.url) && !getExistingAuthorizationHeader(config)) {
-    config.headers = {
-      ...config.headers,
-      Authorization: `Bearer ${token}`
-    }
+  const context = localStorage.getItem('auth_context')
+  const requestContext = requestTenantContext(window.location.pathname, config.url, context)
+  ;(config as RetryableRequest)._contextAtDispatch = context
+  if (!shouldBypassStoredToken(config.url) && requestContext && !config.headers.has('X-Context')) {
+    config.headers.set('X-Context', requestContext)
   }
+
+
   return config
 })
 
 let refreshPromise: Promise<string | null> | null = null
 
 const refreshAccessToken = async (): Promise<string | null> => {
-  const refreshToken = localStorage.getItem('refresh_token')
-  if (!refreshToken) {
-    return null
-  }
-
   try {
-    const refreshBase = baseURL.startsWith('http')
-      ? baseURL
-      : `${window.location.origin}${baseURL}`
-
-    const { data } = await axios.post<RefreshResponse>(
-      `${refreshBase}/auth/refresh`,
-      { refresh_token: refreshToken },
-      {
-        headers: {
-          'Content-Type': 'application/json',
-          Accept: 'application/json'
-        }
-      }
-    )
-
-    const refreshPayload = unwrapApiPayload<RefreshResponse>(data)
-
-    localStorage.setItem('access_token', refreshPayload.access_token)
-    if (refreshPayload.refresh_token) {
-      localStorage.setItem('refresh_token', refreshPayload.refresh_token)
-    }
-
-    return refreshPayload.access_token
+    const refreshBase = baseURL.startsWith('http') ? baseURL : window.location.origin + baseURL
+    await axios.post(refreshBase + '/auth/refresh', {}, {
+      withCredentials: true, headers: { 'X-Requested-With': 'MtaaMall', 'Content-Type': 'application/json' }
+    })
+    return 'cookie-session'
   } catch {
-    localStorage.removeItem('access_token')
-    localStorage.removeItem('refresh_token')
     localStorage.removeItem('auth_user')
     return null
   }
@@ -179,11 +144,27 @@ const refreshAccessToken = async (): Promise<string | null> => {
 
 api.interceptors.response.use(
   (response) => {
+    if ((response.config as RetryableRequest)._contextAtDispatch !== localStorage.getItem('auth_context')) {
+      return Promise.reject(new axios.CanceledError('Workspace changed'))
+    }
     response.data = unwrapApiPayload(response.data)
     return response
   },
   async (error) => {
     const originalRequest = error.config as RetryableRequest | undefined
+    if (error.response?.status === 403 && getAuthErrorMessage(error.response.data).includes('Complete account security setup')) {
+      if (!window.location.pathname.startsWith('/security') && !window.location.pathname.startsWith('/verify-email')) window.location.replace('/security')
+      return Promise.reject(error)
+    }
+    if (originalRequest && originalRequest._contextAtDispatch !== localStorage.getItem('auth_context')) {
+      return Promise.reject(new axios.CanceledError('Workspace changed'))
+    }
+    if (error.response?.status === 403 && getAuthErrorMessage(error.response.data).includes('no active membership')) {
+      localStorage.setItem('auth_context', 'customer')
+      localStorage.removeItem('auth_user')
+      window.location.replace(`/account/workspaces?workspaceRefresh=${Date.now()}`)
+      return Promise.reject(error)
+    }
 
     if (
       isRetriableAuthError(error) &&
@@ -195,17 +176,19 @@ api.interceptors.response.use(
       originalRequest._retry = true
 
       if (!refreshPromise) {
-        refreshPromise = refreshAccessToken().finally(() => {
+        // Serialize rotating-cookie exchanges across tabs as well as within this
+        // tab. Each exchange reads the latest browser cookie after acquiring it.
+        const exchange = navigator.locks
+          ? navigator.locks.request('mtaamall-session-refresh', refreshAccessToken)
+          : refreshAccessToken()
+        refreshPromise = exchange.finally(() => {
           refreshPromise = null
         })
       }
 
       const nextAccessToken = await refreshPromise
       if (nextAccessToken) {
-        originalRequest.headers = {
-          ...originalRequest.headers,
-          Authorization: `Bearer ${nextAccessToken}`
-        }
+        originalRequest.headers.delete('Authorization')
         return api(originalRequest)
       }
     }

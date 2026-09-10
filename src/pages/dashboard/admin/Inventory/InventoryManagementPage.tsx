@@ -1,4 +1,5 @@
 import { FormEvent, useEffect, useMemo, useState } from 'react'
+import { requestApproval } from '@api/modules/audit.api'
 import { useMutation, useQueries, useQuery, useQueryClient } from '@tanstack/react-query'
 import { isAxiosError } from 'axios'
 import { motion, AnimatePresence } from 'framer-motion'
@@ -295,6 +296,18 @@ const staggerContainer = {
 }
 
 const InventoryManagementPage = () => {
+  const [approvalNotice, setApprovalNotice] = useState('')
+  const createStockCountOrRequestApproval = async (payload: Parameters<typeof createStockCountRequest>[0]) => {
+    try { return await createStockCountRequest(payload) }
+    catch (error) {
+      if (!extractApiErrorMessage(error, '').includes('stock_writeoff requires')) throw error
+      const reason = window.prompt('This stock reduction requires business-admin approval. Reason:', payload.notes ?? '')
+      if (!reason || reason.trim().length < 3) throw new Error('Write-off was not applied. A reason is required to request approval.')
+      const request = await requestApproval('stock_writeoff', reason.trim(), payload)
+      setApprovalNotice('Stock write-off submitted for approval. No stock was written off. Follow the request in Approvals.')
+      return request
+    }
+  }
   const queryClient = useQueryClient()
   const statusLimit = 50
   const recentLimit = 10
@@ -1001,7 +1014,7 @@ const InventoryManagementPage = () => {
           throw new Error(`Row ${index + 1}: adjustment selling price must be 0 or more.`)
         }
 
-        return createStockCountRequest({
+        return createStockCountOrRequestApproval({
           product_id: productId,
           branch_id: branchId,
           count_date: payload.countDate,
@@ -1358,6 +1371,7 @@ const InventoryManagementPage = () => {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-background via-white to-background p-6">
+      {approvalNotice && <p role="status" className="mb-5 rounded-xl border border-blue-200 bg-blue-50 p-4 text-sm">{approvalNotice}</p>}
       {/* Header */}
       <motion.div
         initial={{ opacity: 0, y: -20 }}

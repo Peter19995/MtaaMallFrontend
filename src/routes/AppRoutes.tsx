@@ -1,8 +1,16 @@
 import { lazy, Suspense } from 'react'
-import { Route, Routes } from 'react-router-dom'
-import { PrivateRoute } from './PrivateRoute'
+import { Navigate, Route, Routes, useLocation } from 'react-router-dom'
+import { PrivateRoute, ActiveBusinessRoute, WorkspaceRoute } from './PrivateRoute'
+import { useAuth } from '@hooks/useAuth'
+import { canonicalDashboardPath } from '@utils/experiences'
+import WorkspaceHome from '@pages/dashboard/WorkspaceHome'
+import AuditApprovalsPage from '@pages/dashboard/AuditApprovalsPage'
+import SecurityPage from '@pages/auth/SecurityPage'
+import VerifyEmailPage from '@pages/auth/VerifyEmail/VerifyEmailPage'
+import ResetPasswordPage from '@pages/auth/ResetPassword/ResetPasswordPage'
 import { MainLayout } from '@layouts/MainLayout/MainLayout'
 import { DashboardLayout } from '@layouts/DashboardLayout/DashboardLayout'
+import { AccountLayout, AccountOverview, AccountProfile, AccountAddresses, AccountOrders, AccountOrderDetails, AccountPayments, AccountReturns, AccountLoyalty, AccountCheckout } from '@pages/customer/AccountPages'
 
 const HomePage = lazy(() => import('@pages/public/Home/HomePage'))
 const AboutPage = lazy(() => import('@pages/public/About/AboutPage'))
@@ -19,7 +27,14 @@ const CheckoutPage = lazy(() => import('@pages/public/Checkout/CheckoutPage'))
 const CartPage = lazy(() => import('@pages/public/Cart/CartPage'))
 const LoginPage = lazy(() => import('@pages/auth/Login/LoginPage'))
 const RegisterPage = lazy(() => import('@pages/auth/Register/RegisterPage'))
-const CustomerProfilePage = lazy(() => import('@pages/customer/CustomerProfilePage'))
+const AcceptInvitationPage = lazy(() => import('@pages/auth/AcceptInvitation/AcceptInvitationPage'))
+const BusinessInvitationAcceptPage = lazy(() => import('@pages/auth/AcceptInvitation/BusinessInvitationAcceptPage'))
+const PlatformBusinessesPage = lazy(() => import('@pages/dashboard/business/PlatformBusinessesPage'))
+const MyBusinessPage = lazy(() => import('@pages/dashboard/business/MyBusinessPage'))
+const WorkspacesPage = lazy(() => import('@pages/customer/WorkspacesPage'))
+const MembershipManagementPage = lazy(() => import('@pages/dashboard/business/MembershipManagementPage'))
+const BusinessOverviewPage = lazy(() => import('@pages/dashboard/business/BusinessOverviewPage'))
+const UnauthorizedPage = lazy(() => import('@pages/errors/Unauthorized/UnauthorizedPage'))
 const AdminOverview = lazy(
   () => import('@pages/dashboard/admin/Overview/AdminOverview')
 )
@@ -40,9 +55,6 @@ const InventoryManagementPage = lazy(
 )
 const BranchesManagementPage = lazy(
   () => import('@pages/dashboard/admin/Branches/BranchesManagementPage')
-)
-const CustomersManagementPage = lazy(
-  () => import('@pages/dashboard/admin/Customers/CustomersManagementPage')
 )
 const ProjectsOperationsPage = lazy(
   () => import('@pages/dashboard/admin/Operations/ProjectsOperationsPage')
@@ -70,6 +82,12 @@ const Loader = () => (
   </div>
 )
 
+const LegacyDashboard = () => {
+  const { user } = useAuth()
+  const location = useLocation()
+  return <Navigate to={canonicalDashboardPath(user ?? {}, location.pathname) + location.search + location.hash} state={location.state} replace />
+}
+
 export const AppRoutes = () => {
   return (
     <Suspense fallback={<Loader />}>
@@ -92,30 +110,73 @@ export const AppRoutes = () => {
         </Route>
 
         <Route path="/login" element={<LoginPage />} />
+        <Route path="/security" element={<SecurityPage />} />
+        <Route path="/verify-email" element={<VerifyEmailPage />} />
+        <Route path="/reset-password" element={<ResetPasswordPage />} />
+        <Route path="/forgot-password" element={<ResetPasswordPage />} />
         <Route path="/register" element={<RegisterPage />} />
+        <Route path="/accept-invitation" element={<AcceptInvitationPage />} />
+        <Route path="/unauthorized" element={<UnauthorizedPage />} />
 
-        <Route element={<PrivateRoute requiredRoles={['customer']} />}>
+        <Route element={<PrivateRoute />}>
           <Route element={<MainLayout />}>
-            <Route path="/customer/profile" element={<CustomerProfilePage />} />
+            <Route path="/customer/profile" element={<Navigate to="/account/profile" replace />} />
+            <Route path="/account" element={<AccountLayout />}>
+              <Route index element={<AccountOverview />} />
+              <Route path="profile" element={<AccountProfile />} />
+              <Route path="addresses" element={<AccountAddresses />} />
+              <Route path="cart" element={<CartPage />} />
+              <Route path="checkout" element={<AccountCheckout />} />
+              <Route path="orders" element={<AccountOrders />} />
+              <Route path="orders/:id" element={<AccountOrderDetails />} />
+              <Route path="payments" element={<AccountPayments />} />
+              <Route path="returns" element={<AccountReturns />} />
+              <Route path="loyalty" element={<AccountLoyalty />} />
+            </Route>
           </Route>
         </Route>
 
-        <Route element={<PrivateRoute requiredRoles={['root_system_admin', 'system_admin']} />}>
-          <Route element={<DashboardLayout />}>
-            <Route path="/dashboard/admin" element={<AdminOverview />} />
-            <Route path="/dashboard/admin/products" element={<ProductManagementPage />} />
-            <Route path="/dashboard/admin/products/settings" element={<ProductSettingsPage />} />
-            <Route path="/dashboard/admin/products/:productId" element={<ManageProductPage />} />
-            <Route path="/dashboard/admin/services" element={<ServiceManagementPage />} />
-            <Route path="/dashboard/admin/branches" element={<BranchesManagementPage />} />
-            <Route path="/dashboard/admin/customers" element={<CustomersManagementPage />} />
-            <Route path="/dashboard/admin/inventory" element={<InventoryManagementPage />} />
-            <Route path="/dashboard/admin/projects" element={<ProjectsOperationsPage />} />
-            <Route path="/dashboard/admin/sales" element={<SalesOperationsPage />} />
-            <Route path="/dashboard/admin/sales/create" element={<CreatePosSalePage />} />
-            <Route path="/dashboard/admin/payment-modes" element={<PaymentModesPage />} />
-            <Route path="/dashboard/admin/styling" element={<StylingManagementPage />} />
-            <Route path="/dashboard/admin/settings" element={<SettingsPage />} />
+        <Route element={<PrivateRoute />}><Route element={<MainLayout />}>
+          <Route path="/account/workspaces" element={<WorkspacesPage />} />
+        </Route></Route>
+        <Route element={<PrivateRoute />}>
+          <Route path="/business/invitations/accept" element={<BusinessInvitationAcceptPage />} />
+        </Route>
+
+        <Route element={<PrivateRoute />}>
+          <Route path="/dashboard/*" element={<LegacyDashboard />} />
+          <Route element={<WorkspaceRoute />}>
+            <Route element={<DashboardLayout />}>
+              <Route path="/platform" element={<WorkspaceHome />} />
+              <Route path="/platform/audit" element={<AuditApprovalsPage />} />
+              <Route path="/platform/businesses" element={<PlatformBusinessesPage />} />
+              <Route path="/platform/admins" element={<MembershipManagementPage scope="platform" />} />
+              {['business', 'employee'].map(experience => <Route key={experience}>
+                <Route path={`/${experience}/audit`} element={<AuditApprovalsPage />} />
+                <Route path={`/${experience}/approvals`} element={<AuditApprovalsPage approvals />} />
+                <Route path={`/${experience}`} element={experience === 'business' ? <BusinessOverviewPage /> : <WorkspaceHome />} />
+                <Route path={`/${experience}/onboarding`} element={<WorkspaceHome lifecycle />} />
+                <Route path={`/${experience}/suspended`} element={<WorkspaceHome lifecycle />} />
+                <Route path={`/${experience}/profile`} element={<MyBusinessPage />} />
+                <Route path={`/${experience}/members`} element={<MembershipManagementPage />} />
+                <Route path={`/${experience}/overview`} element={<AdminOverview />} />
+                <Route path={`/${experience}/products`} element={<ProductManagementPage />} />
+                <Route path={`/${experience}/products/new`} element={<Navigate to={`/${experience}/products`} state={{ openProductForm: true }} replace />} />
+                <Route path={`/${experience}/products/settings`} element={<ProductSettingsPage />} />
+                <Route path={`/${experience}/products/:productId`} element={<ManageProductPage />} />
+                <Route path={`/${experience}/services`} element={<ServiceManagementPage />} />
+                <Route path={`/${experience}/branches`} element={<BranchesManagementPage />} />
+                <Route path={`/${experience}/inventory`} element={<InventoryManagementPage />} />
+                <Route path={`/${experience}/projects`} element={<ProjectsOperationsPage />} />
+                <Route path={`/${experience}/sales`} element={<SalesOperationsPage />} />
+                <Route element={<ActiveBusinessRoute />}>
+                  <Route path={`/${experience}/sales/create`} element={<CreatePosSalePage />} />
+                </Route>
+                <Route path={`/${experience}/payment-modes`} element={<PaymentModesPage />} />
+                <Route path={`/${experience}/styling`} element={<StylingManagementPage />} />
+                <Route path={`/${experience}/settings`} element={<SettingsPage />} />
+              </Route>)}
+            </Route>
           </Route>
         </Route>
 

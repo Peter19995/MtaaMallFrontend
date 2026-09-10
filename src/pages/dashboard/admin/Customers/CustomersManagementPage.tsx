@@ -271,8 +271,8 @@ const CustomersManagementPage = () => {
       }
 
       const password = payload.password.trim()
-      if (password.length < 8) {
-        throw new Error('Password must be at least 8 characters for new customers.')
+      if (password.length < 6) {
+        throw new Error('Password must be at least 6 characters for new customers.')
       }
 
       return createCustomerRequest({
@@ -783,7 +783,7 @@ const CustomersManagementPage = () => {
                     onChange={(event) =>
                       setCustomerForm((prev) => ({ ...prev, password: event.target.value }))
                     }
-                    placeholder="Minimum 8 characters"
+                    placeholder="Minimum 6 characters"
                   />
                 )}
 

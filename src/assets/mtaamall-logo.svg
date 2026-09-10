@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 500 128" role="img" aria-labelledby="title desc">
+  <title id="title">MtaaMall</title>
+  <desc id="desc">A teal lowercase m with a coral shopping bag handle beside the MtaaMall name.</desc>
+  <g>
+    <path d="M38 39C38 17 90 17 90 39" fill="none" stroke="#FF8A5C" stroke-width="12" stroke-linecap="round"/>
+    <path d="M22 108V61C22 39 49 38 64 60V108M64 60C79 38 106 39 106 61V108" fill="none" stroke="#51C4D8" stroke-width="25" stroke-linecap="round" stroke-linejoin="round"/>
+  </g>
+  <text x="137" y="91" fill="#1E2B32" font-family="Arial Rounded MT Bold, Nunito, Arial, sans-serif" font-size="68" font-weight="700" letter-spacing="-2">MtaaMall</text>
+</svg>
