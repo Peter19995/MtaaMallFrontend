@@ -23,7 +23,7 @@ import {
   MinusCircleIcon,
 } from '@heroicons/react/24/outline'
 import { CheckCircleIcon as CheckCircleSolid } from '@heroicons/react/24/solid'
-import { Button, Select, TextInput } from '@components/common'
+import { Button, Select, TextInput, useSiteDialog } from '@components/common'
 import { listBranchesRequest } from '@api/modules/branches.api'
 import {
   getDefaultCashCustomerRequest,
@@ -36,6 +36,7 @@ import {
   processOrderPaymentRequest
 } from '@api/modules/pos.api'
 import { AppTheme, withOpacity } from '@constants/theme'
+import { requiresExternalPosPayment } from '@utils/paymentModes'
 
 type SaleItemRowState = {
   id: string
@@ -304,6 +305,7 @@ const staggerContainer = {
 }
 
 const CreatePosSalePage = () => {
+  const siteDialog = useSiteDialog()
   const workspacePath = useWorkspacePath()
   const queryClient = useQueryClient()
   const [createSaleForm, setCreateSaleForm] = useState<CreatePosSaleFormState>(createEmptySaleForm())
@@ -390,13 +392,22 @@ const CreatePosSalePage = () => {
     [branchesQuery.data]
   )
 
+  const posCustomers = useMemo(() => {
+    const customers = [...(customersQuery.data ?? [])]
+    const defaultCashCustomer = defaultCashCustomerQuery.data
+    if (defaultCashCustomer && !customers.some((customer) => customer.id === defaultCashCustomer.id)) {
+      customers.push(defaultCashCustomer)
+    }
+    return customers
+  }, [customersQuery.data, defaultCashCustomerQuery.data])
+
   const customerOptions = useMemo(() => {
     if (customersQuery.isLoading) {
       return [{ label: 'Loading customers...', value: '' }]
     }
 
     const defaultCashCustomerId = defaultCashCustomerQuery.data?.id
-    const customers = [...(customersQuery.data ?? [])].sort((left, right) => {
+    const customers = [...posCustomers].sort((left, right) => {
       if (left.id === defaultCashCustomerId) {
         return -1
       }
@@ -411,13 +422,13 @@ const CreatePosSalePage = () => {
     return [
       { label: 'No customer selected', value: '' },
       ...customers.map((customer) => ({
-        label:
-          `${customer.full_name?.trim() || customer.username} (${customer.email})` +
-          (customer.is_cash_customer ? ' - Default cash customer' : ''),
+        label: customer.is_cash_customer
+          ? 'Cash Sale — Default walk-in customer'
+          : `${customer.full_name?.trim() || customer.username} (${customer.email})`,
         value: String(customer.id)
       }))
     ]
-  }, [customersQuery.isLoading, customersQuery.data, defaultCashCustomerQuery.data])
+  }, [customersQuery.isLoading, posCustomers, defaultCashCustomerQuery.data])
 
   const productOptions = useMemo(
     () => {
@@ -488,18 +499,17 @@ const CreatePosSalePage = () => {
   const hasSelectableProducts = (productsQuery.data ?? []).length > 0
   const selectedCustomer = useMemo(
     () =>
-      (customersQuery.data ?? []).find(
+      posCustomers.find(
         (customer) => String(customer.id) === createSaleForm.customerId
       ) ?? null,
-    [customersQuery.data, createSaleForm.customerId]
+    [posCustomers, createSaleForm.customerId]
   )
   const selectedPaymentMode = useMemo(
     () => activePaymentModes.find((mode) => String(mode.id) === createSaleForm.paymentModeId),
     [activePaymentModes, createSaleForm.paymentModeId]
   )
   const requiresPhoneForPayment = useMemo(() => {
-    const code = selectedPaymentMode?.code?.toLowerCase() ?? ''
-    return code.includes('mpesa')
+    return requiresExternalPosPayment(selectedPaymentMode?.code)
   }, [selectedPaymentMode])
 
   useEffect(() => {
@@ -507,7 +517,7 @@ const CreatePosSalePage = () => {
       return
     }
 
-    const activeCustomers = customersQuery.data ?? []
+    const activeCustomers = posCustomers
     const selectedCustomerId = parseOptionalNumber(createSaleForm.customerId)
     const hasSelectedCustomer =
       selectedCustomerId !== undefined &&
@@ -533,7 +543,7 @@ const CreatePosSalePage = () => {
     }))
   }, [
     customersQuery.isLoading,
-    customersQuery.data,
+    posCustomers,
     defaultCashCustomerQuery.isLoading,
     defaultCashCustomerQuery.data,
     createSaleForm.customerId
@@ -785,7 +795,14 @@ const CreatePosSalePage = () => {
       }
 
       if (discountAmount > 0) {
-        const reason = window.prompt('Request manager approval for this discounted sale. Reason:')
+        const reason = await siteDialog.prompt({
+          title: 'Request discount approval',
+          message: 'This discounted sale requires approval from a branch manager.',
+          inputLabel: 'Discount reason',
+          placeholder: 'Explain why this discount should be approved',
+          confirmLabel: 'Request approval',
+          minLength: 3
+        })
         if (!reason || reason.trim().length < 3) throw new Error('An approval reason is required. No sale was created.')
         const approval = await requestApproval('discount', reason.trim(), {
           items, payment_mode_id: paymentModeId, discount_amount: discountAmount,
@@ -800,6 +817,16 @@ const CreatePosSalePage = () => {
         branch_id: branchId,
         customer_id: parseOptionalNumber(payload.customerId)
       })
+
+      // Cash, card, and other immediate modes are paid atomically by the POS
+      // sale endpoint. Only M-Pesa needs the separate STK initiation request.
+      if (!requiresExternalPosPayment(selectedMode.code)) {
+        return {
+          kind: 'sale' as const,
+          sale,
+          paymentStatus: 'completed'
+        }
+      }
 
       try {
         const paymentResult = await processOrderPaymentRequest(
@@ -1029,10 +1056,10 @@ const CreatePosSalePage = () => {
                   disabled={customersQuery.isLoading}
                   helperText={
                     selectedCustomer
-                      ? `${selectedCustomer.email}${
-                          selectedCustomer.is_cash_customer ? ' • default cash customer' : ''
-                        }`
-                      : 'Optional. Defaults to your cash customer when available.'
+                      ? selectedCustomer.is_cash_customer
+                        ? 'Used automatically for walk-in sales without customer details.'
+                        : selectedCustomer.email
+                      : 'Defaults to Cash Sale for walk-in customers.'
                   }
                 />
               </div>
@@ -1485,7 +1512,7 @@ const CreatePosSalePage = () => {
                 </div>
                 <h3 className="text-xl font-bold text-text mb-2">Sale And Payment Completed</h3>
                 <p className="text-text-secondary mb-4">
-                  POS sale #{lastCreatedSaleId} has been created and payment processing was triggered.
+                  POS sale #{lastCreatedSaleId} has been created and payment recorded successfully.
                 </p>
                 
                 <div className="bg-background rounded-lg p-4 mb-6">

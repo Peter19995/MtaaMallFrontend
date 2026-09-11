@@ -10,7 +10,7 @@ import {
   TrashIcon,
   XCircleIcon
 } from '@heroicons/react/24/outline'
-import { Button, Select, TextInput } from '@components/common'
+import { Button, Select, TextInput, useSiteDialog } from '@components/common'
 import {
   createCategoryRequest,
   createVariantOptionRequest,
@@ -94,6 +94,7 @@ const buildVariantOptionValuePayload = (
 }
 
 const ProductSettingsPage = () => {
+  const siteDialog = useSiteDialog()
   const queryClient = useQueryClient()
   const [categoryName, setCategoryName] = useState('')
   const [categoryDescription, setCategoryDescription] = useState('')
@@ -673,11 +674,14 @@ const ProductSettingsPage = () => {
                               deleteVariantOptionMutation.isPending &&
                               deleteVariantOptionMutation.variables === option.id
                             }
-                            onClick={() => {
+                            onClick={async () => {
                               if (
-                                window.confirm(
-                                  `Delete the "${option.option_name}" option and all of its values?`
-                                )
+                                await siteDialog.confirm({
+                                  title: `Delete the “${option.option_name}” option?`,
+                                  message: 'All values belonging to this option will also be deleted.',
+                                  confirmLabel: 'Delete option',
+                                  tone: 'danger'
+                                })
                               ) {
                                 deleteVariantOptionMutation.mutate(option.id)
                               }
@@ -875,13 +879,14 @@ const ProductSettingsPage = () => {
                                         deleteVariantOptionValueMutation.isPending &&
                                         deleteVariantOptionValueMutation.variables === value.id
                                       }
-                                      onClick={() => {
+                                      onClick={async () => {
                                         if (
-                                          window.confirm(
-                                            `Delete "${value.display_value || value.value}" from ${
-                                              option.option_name
-                                            }?`
-                                          )
+                                          await siteDialog.confirm({
+                                            title: `Delete “${value.display_value || value.value}”?`,
+                                            message: `This value will be removed from ${option.option_name}.`,
+                                            confirmLabel: 'Delete value',
+                                            tone: 'danger'
+                                          })
                                         ) {
                                           deleteVariantOptionValueMutation.mutate(value.id)
                                         }

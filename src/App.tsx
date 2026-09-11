@@ -12,6 +12,7 @@ import { BranchProvider } from '@contexts/BranchContext'
 import { queryClient } from '@api/config/queryClient'
 import { AppTheme } from './constants/theme'
 import { AppRoutes } from '@routes/AppRoutes'
+import { SiteDialogProvider } from '@components/common'
 
 function App() {
   return (
@@ -23,17 +24,19 @@ function App() {
               <BranchProvider>
                 <CartProvider>
                   <NotificationProvider>
-                    <AppRoutes />
-                    <Toaster
-                      position="top-right"
-                      toastOptions={{
-                        duration: 4000,
-                        style: {
-                          background: AppTheme.colors.text,
-                          color: AppTheme.colors.textInverse
-                        }
-                      }}
-                    />
+                    <SiteDialogProvider>
+                      <AppRoutes />
+                      <Toaster
+                        position="top-right"
+                        toastOptions={{
+                          duration: 4000,
+                          style: {
+                            background: AppTheme.colors.text,
+                            color: AppTheme.colors.textInverse
+                          }
+                        }}
+                      />
+                    </SiteDialogProvider>
                   </NotificationProvider>
                 </CartProvider>
               </BranchProvider>

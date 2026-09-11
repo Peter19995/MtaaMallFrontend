@@ -29,7 +29,7 @@ import {
   WrenchScrewdriverIcon,
   SparklesIcon,
 } from '@heroicons/react/24/outline'
-import { Button, DataTable, Select, TextArea, TextInput, type Column } from '@components/common'
+import { Button, DataTable, Select, TextArea, TextInput, useSiteDialog, type Column } from '@components/common'
 import { listProductsRequest } from '@api/modules/products.api'
 import { listBranchesRequest } from '@api/modules/branches.api'
 import {
@@ -241,6 +241,7 @@ const staggerContainer = {
 }
 
 const ProjectsOperationsPage = () => {
+  const siteDialog = useSiteDialog()
   const queryClient = useQueryClient()
   const [selectedProjectId, setSelectedProjectId] = useState<number | null>(null)
   const [projectSearch, setProjectSearch] = useState('')
@@ -765,8 +766,13 @@ const ProjectsOperationsPage = () => {
           <button
             type="button"
             className="p-2 text-text-secondary hover:text-error hover:bg-error/5 rounded-lg transition-all"
-            onClick={() => {
-              if (window.confirm(`Delete project "${row.name}"? This action cannot be undone.`)) {
+            onClick={async () => {
+              if (await siteDialog.confirm({
+                title: `Delete project “${row.name}”?`,
+                message: 'This action cannot be undone.',
+                confirmLabel: 'Delete project',
+                tone: 'danger'
+              })) {
                 deleteProjectMutation.mutate(row.id)
               }
             }}

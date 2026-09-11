@@ -10,7 +10,7 @@ import {
   TrashIcon,
   XCircleIcon
 } from '@heroicons/react/24/outline'
-import { Button, Select } from '@components/common'
+import { Button, Select, useSiteDialog } from '@components/common'
 import { listBranchesRequest } from '@api/modules/branches.api'
 import {
   getDefaultValuationMethodRequest,
@@ -36,6 +36,7 @@ const formatDateTime = (value?: string) => {
 }
 
 const SettingsPage = () => {
+  const siteDialog = useSiteDialog()
   const queryClient = useQueryClient()
   const [valuationBranchId, setValuationBranchId] = useState<string>('')
   const [selectedValuationMethod, setSelectedValuationMethod] = useState<string>('')
@@ -492,8 +493,13 @@ const SettingsPage = () => {
                                   deleteSiteMediaMutation.isPending &&
                                   deleteSiteMediaMutation.variables === asset.id
                                 }
-                                onClick={() => {
-                                  if (!window.confirm('Remove this image from site media?')) {
+                                onClick={async () => {
+                                  if (!await siteDialog.confirm({
+                                    title: 'Remove site image?',
+                                    message: 'This image will no longer be available to the storefront.',
+                                    confirmLabel: 'Remove image',
+                                    tone: 'danger'
+                                  })) {
                                     return
                                   }
 

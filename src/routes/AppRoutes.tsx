@@ -41,6 +41,9 @@ const AdminOverview = lazy(
 const ProductManagementPage = lazy(
   () => import('@pages/dashboard/admin/Products/ProductManagementPage')
 )
+const ProductCategoriesPage = lazy(
+  () => import('@pages/dashboard/admin/Products/ProductCategoriesPage')
+)
 const ManageProductPage = lazy(
   () => import('@pages/dashboard/admin/Products/ManageProductPage')
 )
@@ -55,6 +58,9 @@ const InventoryManagementPage = lazy(
 )
 const BranchesManagementPage = lazy(
   () => import('@pages/dashboard/admin/Branches/BranchesManagementPage')
+)
+const CustomersManagementPage = lazy(
+  () => import('@pages/dashboard/admin/Customers/CustomersManagementPage')
 )
 const ProjectsOperationsPage = lazy(
   () => import('@pages/dashboard/admin/Operations/ProjectsOperationsPage')
@@ -161,12 +167,17 @@ export const AppRoutes = () => {
                 <Route path={`/${experience}/members`} element={<MembershipManagementPage />} />
                 <Route path={`/${experience}/overview`} element={<AdminOverview />} />
                 <Route path={`/${experience}/products`} element={<ProductManagementPage />} />
+                <Route path={`/${experience}/product-categories`} element={<ProductCategoriesPage />} />
                 <Route path={`/${experience}/products/new`} element={<Navigate to={`/${experience}/products`} state={{ openProductForm: true }} replace />} />
                 <Route path={`/${experience}/products/settings`} element={<ProductSettingsPage />} />
                 <Route path={`/${experience}/products/:productId`} element={<ManageProductPage />} />
                 <Route path={`/${experience}/services`} element={<ServiceManagementPage />} />
                 <Route path={`/${experience}/branches`} element={<BranchesManagementPage />} />
-                <Route path={`/${experience}/inventory`} element={<InventoryManagementPage />} />
+                <Route path={`/${experience}/customers`} element={<CustomersManagementPage />} />
+                <Route path={`/${experience}/inventory`} element={<InventoryManagementPage view="status" />} />
+                <Route path={`/${experience}/inventory/restocks`} element={<InventoryManagementPage view="restocks" />} />
+                <Route path={`/${experience}/inventory/stock-counts`} element={<InventoryManagementPage view="stock-counts" />} />
+                <Route path={`/${experience}/inventory/alerts`} element={<InventoryManagementPage view="alerts" />} />
                 <Route path={`/${experience}/projects`} element={<ProjectsOperationsPage />} />
                 <Route path={`/${experience}/sales`} element={<SalesOperationsPage />} />
                 <Route element={<ActiveBusinessRoute />}>

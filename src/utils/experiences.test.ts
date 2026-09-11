@@ -21,7 +21,7 @@ describe('separate application experiences', () => {
     expect(workspaceLanding({ roles: ['root_system_admin'], permissions: ['*'] })).toBe('/unauthorized')
     expect(workspaceMenu({ ...owner, permissions: [] })).toEqual([])
     expect(canAccessWorkspace({ ...owner, permissions: [] }, '/business')).toBe(false)
-    expect(workspaceMenu(employee).map(m => m.path)).toEqual(['/employee/products', '/employee/sales', '/employee/sales/create'])
+    expect(workspaceMenu(employee).map(m => m.path)).toEqual(['/employee/products', '/employee/product-categories', '/employee/sales', '/employee/sales/create'])
     expect(canAccessWorkspace(employee, '/employee/members')).toBe(false)
     expect(canAccessWorkspace(employee, '/employee/products/new')).toBe(false)
     expect(canAccessWorkspace(employee, '/employee/products/123')).toBe(false)
@@ -43,6 +43,17 @@ describe('separate application experiences', () => {
     expect(canAccessWorkspace(user, '/business/sales/create')).toBe(false)
     expect(canAccessWorkspace(user, '/business/products/new')).toBe(false)
     expect(canAccessWorkspace(user, '/business/settings')).toBe(false)
+  })
+  it('exposes inventory workflows as separate permission-protected pages', () => {
+    const inventoryUser = { ...owner, permissions: ['inventory.read'] }
+    expect(workspaceMenu(inventoryUser).map(module => module.path)).toEqual([
+      '/business/inventory',
+      '/business/inventory/restocks',
+      '/business/inventory/stock-counts',
+      '/business/inventory/alerts'
+    ])
+    expect(canAccessWorkspace(inventoryUser, '/business/inventory/restocks')).toBe(true)
+    expect(canAccessWorkspace({ ...inventoryUser, permissions: [] }, '/business/inventory/alerts')).toBe(false)
   })
   it('does not combine contexts or use business membership presence as a grant', () => {
     const personal = { ...customer, business_memberships: [{ status: 'active' }, { status: 'active' }] }

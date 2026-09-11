@@ -1,4 +1,4 @@
-import { TextareaHTMLAttributes } from 'react'
+import { TextareaHTMLAttributes, useId } from 'react'
 import clsx from 'clsx'
 
 export interface TextAreaProps extends TextareaHTMLAttributes<HTMLTextAreaElement> {
@@ -8,7 +8,8 @@ export interface TextAreaProps extends TextareaHTMLAttributes<HTMLTextAreaElemen
 }
 
 export const TextArea = ({ label, error, helperText, id, className, ...rest }: TextAreaProps) => {
-  const textAreaId = id ?? rest.name
+  const generatedId = useId()
+  const textAreaId = id ?? rest.name ?? generatedId
 
   return (
     <div className="space-y-1.5 text-xs sm:text-sm">
@@ -46,4 +47,3 @@ export const TextArea = ({ label, error, helperText, id, className, ...rest }: T
 }
 
 export default TextArea
-

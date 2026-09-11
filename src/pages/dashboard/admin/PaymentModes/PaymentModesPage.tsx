@@ -21,7 +21,7 @@ import {
   EyeSlashIcon,
 } from '@heroicons/react/24/outline'
 import { CheckCircleIcon as CheckCircleSolid } from '@heroicons/react/24/solid'
-import { Button, DataTable, Select, TextInput, type Column } from '@components/common'
+import { Button, DataTable, Select, TextInput, useSiteDialog, type Column } from '@components/common'
 import { listBranchesRequest } from '@api/modules/branches.api'
 import {
   createPaymentModeRequest,
@@ -88,6 +88,7 @@ const staggerContainer = {
 }
 
 const PaymentModesPage = () => {
+  const siteDialog = useSiteDialog()
   const queryClient = useQueryClient()
   const [branchId, setBranchId] = useState('')
   const [search, setSearch] = useState('')
@@ -290,8 +291,13 @@ const PaymentModesPage = () => {
     setIsFormVisible(false)
   }
 
-  const onDeletePaymentMode = (mode: PaymentModeResponse) => {
-    const confirmed = window.confirm(`Delete payment mode "${mode.name}"? This action cannot be undone.`)
+  const onDeletePaymentMode = async (mode: PaymentModeResponse) => {
+    const confirmed = await siteDialog.confirm({
+      title: `Delete payment mode “${mode.name}”?`,
+      message: 'This action cannot be undone.',
+      confirmLabel: 'Delete payment mode',
+      tone: 'danger'
+    })
     if (!confirmed) {
       return
     }

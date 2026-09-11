@@ -23,7 +23,7 @@ import {
   ChevronUpIcon,
   WrenchScrewdriverIcon,
 } from '@heroicons/react/24/outline'
-import { Button, DataTable, Select, TextArea, TextInput, type Column } from '@components/common'
+import { Button, DataTable, Select, TextArea, TextInput, useSiteDialog, type Column } from '@components/common'
 import {
   createServiceCategoryRequest,
   createServiceRequest,
@@ -85,6 +85,7 @@ const staggerContainer = {
 }
 
 const ServiceManagementPage = () => {
+  const siteDialog = useSiteDialog()
   const queryClient = useQueryClient()
   const [search, setSearch] = useState('')
   const [showForm, setShowForm] = useState(false)
@@ -339,8 +340,13 @@ const ServiceManagementPage = () => {
           <button
             type="button"
             className="p-2 text-text-secondary hover:text-error hover:bg-error/5 rounded-lg transition-all"
-            onClick={() => {
-              if (window.confirm(`Delete "${row.name}"? This action cannot be undone.`)) {
+            onClick={async () => {
+              if (await siteDialog.confirm({
+                title: `Delete “${row.name}”?`,
+                message: 'This action cannot be undone.',
+                confirmLabel: 'Delete service',
+                tone: 'danger'
+              })) {
                 deleteServiceMutation.mutate(row.id)
               }
             }}

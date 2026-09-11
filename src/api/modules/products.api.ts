@@ -11,6 +11,11 @@ export type ProductCategoryCreate = {
   description?: string
 }
 
+export type ProductCategoryUpdate = {
+  name?: string
+  description?: string | null
+}
+
 export type ProductImageRecord = {
   id: number
   image_url?: string | null
@@ -294,6 +299,26 @@ export const createCategoryRequest = async (
   return data
 }
 
+export const getCategoryRequest = async (categoryId: number): Promise<ProductCategoryResponse> => {
+  const { data } = await api.get<ProductCategoryResponse>(`/products/categories/${categoryId}`)
+  return data
+}
+
+export const updateCategoryRequest = async (
+  categoryId: number,
+  payload: ProductCategoryUpdate
+): Promise<ProductCategoryResponse> => {
+  const { data } = await api.put<ProductCategoryResponse>(
+    `/products/categories/${categoryId}`,
+    payload
+  )
+  return data
+}
+
+export const deleteCategoryRequest = async (categoryId: number): Promise<void> => {
+  await api.delete(`/products/categories/${categoryId}`)
+}
+
 export const listProductsRequest = async (
   params?: ProductListParams
 ): Promise<ProductResponse[]> => {
@@ -324,8 +349,21 @@ const buildProductImagesFormData = (images: File[]): FormData => {
   return formData
 }
 
-export const createProductRequest = async (payload: ProductCreate): Promise<ProductResponse> => {
-  const { data } = await api.post<ProductResponse>('/products/', payload)
+export const createProductRequest = async (
+  payload: ProductCreate,
+  images: File[] = []
+): Promise<ProductResponse> => {
+  if (images.length === 0) {
+    const { data } = await api.post<ProductResponse>('/products/', payload)
+    return data
+  }
+
+  const formData = new FormData()
+  Object.entries(payload).forEach(([key, value]) => {
+    if (value !== undefined && value !== null) formData.append(key, String(value))
+  })
+  images.forEach(image => formData.append('files', image))
+  const { data } = await api.post<ProductResponse>('/products/', formData)
   return data
 }
 

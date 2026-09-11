@@ -1,5 +1,4 @@
 import { useAuth } from '@hooks/useAuth'
-import { useWorkspacePath } from '@hooks/useWorkspacePath'
 import { FormEvent, useEffect, useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { motion, AnimatePresence } from 'framer-motion'
@@ -20,7 +19,6 @@ import {
   ExclamationTriangleIcon,
   SparklesIcon,
   DocumentDuplicateIcon,
-  BanknotesIcon,
   EyeIcon,
   EyeSlashIcon,
   ChevronDownIcon,
@@ -32,7 +30,6 @@ import {
   type ProductStockStatusResponse as InventoryProductStockStatusResponse
 } from '@api/modules/inventory.api'
 import {
-  createCategoryRequest,
   createProductRequest,
   deleteProductRequest,
   generateProductSkuRequest,
@@ -43,7 +40,6 @@ import {
   type ProductCreate,
   type ProductResponse,
   type ProductUpdate,
-  updateProductPriceRequest,
   uploadProductImagesRequest,
   updateProductRequest
 } from '@api/modules/products.api'
@@ -58,6 +54,7 @@ type ProductFormState = {
   categoryId: string
   stockQuantity: string
   reorderLevel: string
+  sellingPrice: string
   isActive: boolean
   isOnOffer: boolean
   maxOffer: string
@@ -72,6 +69,7 @@ const EMPTY_FORM: ProductFormState = {
   categoryId: '',
   stockQuantity: '0',
   reorderLevel: '5',
+  sellingPrice: '0',
   isActive: true,
   isOnOffer: false,
   maxOffer: '0',
@@ -79,6 +77,22 @@ const EMPTY_FORM: ProductFormState = {
 }
 
 const ALL_CATEGORIES = 'all'
+const MAX_PRODUCT_IMAGES = 5
+const MAX_PRODUCT_IMAGE_SIZE = 5 * 1024 * 1024
+const PRODUCT_IMAGE_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp', 'image/gif'])
+const PRODUCT_IMAGE_EXTENSIONS = new Set(['jpg', 'jpeg', 'png', 'webp', 'gif'])
+
+export const productImageSelectionError = (files: File[], totalImageCount: number): string | null => {
+  if (totalImageCount > MAX_PRODUCT_IMAGES) return `A product can have at most ${MAX_PRODUCT_IMAGES} images.`
+  const invalidType = files.find(file => {
+    const extension = file.name.split('.').pop()?.toLowerCase() ?? ''
+    return !PRODUCT_IMAGE_TYPES.has(file.type.toLowerCase()) || !PRODUCT_IMAGE_EXTENSIONS.has(extension)
+  })
+  if (invalidType) return `${invalidType.name} is not supported. Select JPG, PNG, WEBP or GIF images only.`
+  const oversized = files.find(file => file.size > MAX_PRODUCT_IMAGE_SIZE)
+  if (oversized) return `${oversized.name} is larger than 5 MB.`
+  return null
+}
 
 const formatCurrency = (amount: number): string =>
   new Intl.NumberFormat('en-KE', {
@@ -142,7 +156,6 @@ const staggerContainer = {
 }
 
 const ProductManagementPage = () => {
-  const workspacePath = useWorkspacePath()
   const { user, hasPermission } = useAuth()
   const canOperate = !['suspended', 'closed'].includes(user?.business_status ?? '')
   const canCreate = hasPermission('products.create') && canOperate
@@ -155,19 +168,13 @@ const ProductManagementPage = () => {
   const [categoryFilter, setCategoryFilter] = useState(ALL_CATEGORIES)
   const [inStockOnly, setInStockOnly] = useState(false)
   const [showProductForm, setShowProductForm] = useState(false)
-  const [showCategoryForm, setShowCategoryForm] = useState(false)
   const [editingProductId, setEditingProductId] = useState<number | null>(null)
   const [form, setForm] = useState<ProductFormState>(EMPTY_FORM)
   const [formError, setFormError] = useState<string | null>(null)
-  const [categoryName, setCategoryName] = useState('')
-  const [categoryDescription, setCategoryDescription] = useState('')
   const [showFilters, setShowFilters] = useState(false)
   const [previewImage, setPreviewImage] = useState<string | null>(null)
   const [selectedProduct, setSelectedProduct] = useState<ProductResponse | null>(null)
-  const [pricingProduct, setPricingProduct] = useState<ProductResponse | null>(null)
   const [deleteCandidate, setDeleteCandidate] = useState<ProductResponse | null>(null)
-  const [priceValue, setPriceValue] = useState('')
-  const [priceError, setPriceError] = useState<string | null>(null)
 
   const categoriesQuery = useQuery({
     queryKey: ['products', 'categories'],
@@ -222,6 +229,7 @@ const ProductManagementPage = () => {
       const isEditing = Boolean(editingProductId)
       const stockQuantity = Number(payload.stockQuantity)
       const reorderLevel = Number(payload.reorderLevel)
+      const sellingPrice = Number(payload.sellingPrice)
       const maxOffer = Number(payload.maxOffer)
       const categoryId = payload.categoryId ? Number(payload.categoryId) : undefined
       const tags = payload.tags.trim()
@@ -238,6 +246,9 @@ const ProductManagementPage = () => {
       if (Number.isNaN(reorderLevel) || reorderLevel < 0) {
         throw new Error('Reorder level must be a number greater than or equal to 0.')
       }
+      if (Number.isNaN(sellingPrice) || sellingPrice < 0) {
+        throw new Error('Selling price must be a number greater than or equal to 0.')
+      }
       if (Number.isNaN(maxOffer) || maxOffer < 0) {
         throw new Error('Max offer must be a number greater than or equal to 0.')
       }
@@ -250,6 +261,7 @@ const ProductManagementPage = () => {
           category_id: categoryId,
           stock_quantity: stockQuantity,
           reorder_level: reorderLevel,
+          selling_price: sellingPrice,
           is_active: payload.isActive,
           is_on_offer: payload.isOnOffer,
           max_offer: payload.isOnOffer ? maxOffer : 0
@@ -268,46 +280,26 @@ const ProductManagementPage = () => {
         category_id: categoryId,
         stock_quantity: stockQuantity,
         reorder_level: reorderLevel,
+        selling_price: sellingPrice,
         is_active: payload.isActive,
         is_on_offer: payload.isOnOffer,
         max_offer: payload.isOnOffer ? maxOffer : 0
       }
 
-      const createdProduct = await createProductRequest(createPayload)
-      await uploadProductImagesRequest(createdProduct.id, payload.imageFiles)
-      const product = await getProductRequest(createdProduct.id)
+      const product = await createProductRequest(createPayload, payload.imageFiles)
       return { product, isEditing }
     },
-    onSuccess: ({ product, isEditing }) => {
+    onSuccess: ({ product }) => {
       queryClient.invalidateQueries({ queryKey: ['products', 'list'] })
+      queryClient.setQueryData(['products', 'details', product.id], product)
       setForm(EMPTY_FORM)
       setEditingProductId(null)
       setShowProductForm(false)
       setFormError(null)
 
-      if (!isEditing) {
-        navigate(workspacePath(`/dashboard/admin/products/${product.id}`), {
-          state: { initialTab: 'variants' }
-        })
-      }
     },
     onError: (error: Error) => {
       setFormError(error.message || 'Could not save product.')
-    }
-  })
-
-  const createCategoryMutation = useMutation({
-    mutationFn: () =>
-      createCategoryRequest({
-        name: categoryName.trim(),
-        description: categoryDescription.trim() || undefined
-      }),
-    onSuccess: (category) => {
-      queryClient.invalidateQueries({ queryKey: ['products', 'categories'] })
-      setForm((prev) => ({ ...prev, categoryId: String(category.id) }))
-      setCategoryName('')
-      setCategoryDescription('')
-      setShowCategoryForm(false)
     }
   })
 
@@ -316,22 +308,6 @@ const ProductManagementPage = () => {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['products', 'list'] })
       setDeleteCandidate(null)
-    }
-  })
-
-  const updatePriceMutation = useMutation({
-    mutationFn: async ({ productId, sellingPrice }: { productId: number; sellingPrice: number }) =>
-      updateProductPriceRequest(productId, { selling_price: sellingPrice }),
-    onSuccess: (updatedProduct) => {
-      queryClient.invalidateQueries({ queryKey: ['products', 'list'] })
-      setSelectedProduct((current) => (current?.id === updatedProduct.id ? updatedProduct : current))
-      setPricingProduct((current) => (current?.id === updatedProduct.id ? updatedProduct : current))
-      setPriceValue('')
-      setPriceError(null)
-      setPricingProduct(null)
-    },
-    onError: (error: Error) => {
-      setPriceError(error.message || 'Could not update product price.')
     }
   })
 
@@ -412,10 +388,38 @@ const ProductManagementPage = () => {
     })
   }, [editingProductId, generatedSkuMeta])
 
-  const openPriceModal = (product: ProductResponse) => {
-    setPricingProduct(product)
-    setPriceValue(String(getBasePrice(product)))
-    setPriceError(null)
+  const closeProductForm = () => {
+    setShowProductForm(false)
+    setEditingProductId(null)
+    setForm(EMPTY_FORM)
+    setFormError(null)
+  }
+
+  const openCreateProduct = () => {
+    setEditingProductId(null)
+    setForm(EMPTY_FORM)
+    setFormError(null)
+    setShowProductForm(true)
+  }
+
+  const openEditProduct = (product: ProductResponse) => {
+    setEditingProductId(product.id)
+    setForm({
+      sku: product.sku,
+      name: product.name,
+      description: product.description ?? '',
+      tags: product.tags ?? '',
+      categoryId: product.category_id ? String(product.category_id) : '',
+      stockQuantity: String(product.stock_quantity),
+      reorderLevel: String(product.reorder_level),
+      sellingPrice: String(getBasePrice(product)),
+      isActive: product.is_active,
+      isOnOffer: Boolean(product.is_on_offer),
+      maxOffer: String(product.max_offer ?? 0),
+      imageFiles: []
+    })
+    setFormError(null)
+    setShowProductForm(true)
   }
 
   const deleteBlockingStocks = useMemo(
@@ -585,16 +589,8 @@ const ProductManagementPage = () => {
           {canEdit && <button
             type="button"
             className="p-2 text-text-secondary hover:text-primary hover:bg-primary/5 rounded-lg transition-all"
-            onClick={() => openPriceModal(row)}
-            title="Update price"
-          >
-            <BanknotesIcon className="h-4 w-4" />
-          </button>}
-          {canEdit && <button
-            type="button"
-            className="p-2 text-text-secondary hover:text-primary hover:bg-primary/5 rounded-lg transition-all"
-            onClick={() => navigate(workspacePath(`/dashboard/admin/products/${row.id}`))}
-            title="Manage product"
+            onClick={() => openEditProduct(row)}
+            title="Edit product"
           >
             <PencilIcon className="h-4 w-4" />
           </button>}
@@ -617,35 +613,6 @@ const ProductManagementPage = () => {
     saveProductMutation.mutate(form)
   }
 
-  const onSubmitCategory = (event: FormEvent) => {
-    event.preventDefault()
-    if (!categoryName.trim()) {
-      return
-    }
-    createCategoryMutation.mutate()
-  }
-
-  const onSubmitPriceUpdate = (event: FormEvent) => {
-    event.preventDefault()
-
-    if (!pricingProduct) {
-      return
-    }
-
-    const nextPrice = Number(priceValue)
-
-    if (Number.isNaN(nextPrice) || nextPrice < 0) {
-      setPriceError('Price must be a number greater than or equal to 0.')
-      return
-    }
-
-    setPriceError(null)
-    updatePriceMutation.mutate({
-      productId: pricingProduct.id,
-      sellingPrice: nextPrice
-    })
-  }
-
   return (
     <div className="min-h-screen bg-gradient-to-br from-background via-white to-background p-6">
       {/* Header */}
@@ -661,30 +628,17 @@ const ProductManagementPage = () => {
               Product Management
             </h1>
             <p className="text-sm text-text-secondary mt-1">
-              Manage your product catalog, stock levels, and categories
+              View, add and update the products sold by your business
             </p>
           </div>
           
           {canCreate && <div className="flex gap-2">
             <Button
-              variant="outline"
-              onClick={() => setShowCategoryForm(!showCategoryForm)}
-              className="flex items-center gap-2"
-            >
-              <TagIcon className="h-4 w-4" />
-              {showCategoryForm ? 'Close Category Form' : 'New Category'}
-            </Button>
-            <Button
-              onClick={() => {
-                setEditingProductId(null)
-                setForm(EMPTY_FORM)
-                setFormError(null)
-                setShowProductForm(!showProductForm)
-              }}
+              onClick={openCreateProduct}
               className="flex items-center gap-2"
             >
               <PlusIcon className="h-4 w-4" />
-              {showProductForm ? 'Close Product Form' : 'New Product'}
+              Add product
             </Button>
           </div>}
         </div>
@@ -807,70 +761,31 @@ const ProductManagementPage = () => {
         </div>
       </motion.section>
 
-      {/* Category Form */}
-      <AnimatePresence>
-        {canCreate && showCategoryForm && (
-          <motion.section
-            initial={{ opacity: 0, y: -20 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -20 }}
-            className="mb-6"
-          >
-            <div className="bg-white rounded-xl border border-border p-4 shadow-sm">
-              <h2 className="text-sm font-semibold text-text mb-4 flex items-center gap-2">
-                <TagIcon className="h-4 w-4 text-primary" />
-                Create New Category
-              </h2>
-              <form onSubmit={onSubmitCategory} className="grid gap-4 md:grid-cols-3">
-                <TextInput
-                  label="Category Name"
-                  value={categoryName}
-                  onChange={(e) => setCategoryName(e.target.value)}
-                  required
-                  placeholder="e.g., Curtains, Furniture"
-                />
-                <TextInput
-                  label="Description (Optional)"
-                  value={categoryDescription}
-                  onChange={(e) => setCategoryDescription(e.target.value)}
-                  placeholder="Brief description of the category"
-                />
-                <div className="flex items-end gap-2">
-                  <Button 
-                    type="submit" 
-                    loading={createCategoryMutation.isPending}
-                    className="flex-1"
-                  >
-                    Save Category
-                  </Button>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    onClick={() => setShowCategoryForm(false)}
-                  >
-                    Cancel
-                  </Button>
-                </div>
-              </form>
-            </div>
-          </motion.section>
-        )}
-      </AnimatePresence>
-
       {/* Product Form */}
       <AnimatePresence>
-        {canCreate && showProductForm && (
-          <motion.section
-            initial={{ opacity: 0, y: -20 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -20 }}
-            className="mb-6"
+        {(canCreate || canEdit) && showProductForm && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[70] flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm"
+            onMouseDown={(event) => {
+              if (event.target === event.currentTarget && !saveProductMutation.isPending) closeProductForm()
+            }}
           >
-            <div className="bg-white rounded-xl border border-border p-4 shadow-sm">
-              <h2 className="text-sm font-semibold text-text mb-4 flex items-center gap-2">
-                <CubeIcon className="h-4 w-4 text-primary" />
-                {editingProductId ? 'Edit Product' : 'Create New Product'}
-              </h2>
+            <motion.section
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="product-form-title"
+              initial={{ opacity: 0, scale: 0.96, y: 16 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.96, y: 16 }}
+              className="max-h-[92vh] w-full max-w-5xl overflow-y-auto rounded-2xl border border-border bg-white p-5 shadow-2xl sm:p-6"
+            >
+              <div className="mb-5 flex items-start justify-between gap-4">
+                <div><p className="text-xs font-bold uppercase tracking-[0.16em] text-primary-dark">{editingProductId ? 'Update item' : 'New item'}</p><h2 id="product-form-title" className="mt-1 flex items-center gap-2 text-xl font-bold text-text"><CubeIcon className="h-5 w-5 text-primary" />{editingProductId ? 'Edit product' : 'Add product'}</h2></div>
+                <button type="button" aria-label="Close product form" onClick={closeProductForm} className="rounded-lg p-2 text-text-tertiary transition hover:bg-background hover:text-text"><XMarkIcon className="h-5 w-5" /></button>
+              </div>
               <form onSubmit={onSubmitProduct} className="space-y-4">
                 <div className="grid gap-4 md:grid-cols-3">
                   <Select
@@ -935,6 +850,15 @@ const ProductManagementPage = () => {
                     required
                   />
                   <TextInput
+                    label="Selling Price"
+                    type="number"
+                    min={0}
+                    step="0.01"
+                    value={form.sellingPrice}
+                    onChange={(e) => setForm({ ...form, sellingPrice: e.target.value })}
+                    required
+                  />
+                  <TextInput
                     label="Max Offer Amount"
                     type="number"
                     min={0}
@@ -965,33 +889,35 @@ const ProductManagementPage = () => {
 
                 <div className="grid gap-4 md:grid-cols-[minmax(0,1fr)_auto]">
                   <div className="space-y-2">
-                    <label className="block text-xs font-medium text-text-secondary">
+                    <label htmlFor="product-images" className="block text-xs font-medium text-text-secondary">
                       Upload Images
                     </label>
                     <input
+                      id="product-images"
                       type="file"
-                      accept="image/*"
+                      accept="image/jpeg,image/png,image/webp,image/gif,.jpg,.jpeg,.png,.webp,.gif"
                       multiple
                       onChange={(e) => {
                         const files = Array.from(e.target.files ?? [])
-                        setForm((previous) => ({
-                          ...previous,
-                          imageFiles: mergeImageFiles(previous.imageFiles, files)
-                        }))
+                        const mergedFiles = mergeImageFiles(form.imageFiles, files)
+                        const existingImageCount = editingProduct?.image_urls?.length ?? 0
+                        const selectionError = productImageSelectionError(
+                          files,
+                          existingImageCount + mergedFiles.length
+                        )
+                        if (selectionError) {
+                          setFormError(selectionError)
+                        } else {
+                          setForm(previous => ({ ...previous, imageFiles: mergedFiles }))
+                          setFormError(null)
+                        }
                         e.target.value = ''
                       }}
                       className="w-full px-3 py-2 bg-background border border-border rounded-lg text-sm"
                     />
                     <p className="text-xs text-text-tertiary">
-                      {editingProductId
-                        ? 'Select images any number of times. New uploads are added to the product.'
-                        : 'Select images any number of times. All selected files will be uploaded when you create the product.'}
+                      JPG, PNG, WEBP or GIF only. Maximum 5 images per product and 5 MB per image.
                     </p>
-                    {!editingProductId && (
-                      <p className="text-xs text-primary">
-                        After saving the base product, you will be taken straight to variant setup.
-                      </p>
-                    )}
                     {form.imageFiles.length > 0 && (
                       <div className="space-y-2">
                         <p className="text-xs text-text-tertiary">
@@ -1084,12 +1010,7 @@ const ProductManagementPage = () => {
                   <Button
                     type="button"
                     variant="outline"
-                    onClick={() => {
-                      setShowProductForm(false)
-                      setEditingProductId(null)
-                      setForm(EMPTY_FORM)
-                      setFormError(null)
-                    }}
+                    onClick={closeProductForm}
                   >
                     Cancel
                   </Button>
@@ -1098,8 +1019,8 @@ const ProductManagementPage = () => {
                   )}
                 </div>
               </form>
-            </div>
-          </motion.section>
+            </motion.section>
+          </motion.div>
         )}
       </AnimatePresence>
 
@@ -1333,16 +1254,13 @@ const ProductManagementPage = () => {
                 </Button>
                 {canEdit && <Button
                   type="button"
-                  variant="outline"
-                  onClick={() => openPriceModal(selectedProduct)}
+                  onClick={() => {
+                    const product = selectedProduct
+                    setSelectedProduct(null)
+                    openEditProduct(product)
+                  }}
                 >
-                  Update Price
-                </Button>}
-                {canEdit && <Button
-                  type="button"
-                  onClick={() => navigate(workspacePath(`/dashboard/admin/products/${selectedProduct.id}`))}
-                >
-                  Manage Product
+                  Edit product
                 </Button>}
               </div>
             </motion.div>
@@ -1508,93 +1426,6 @@ const ProductManagementPage = () => {
                   {deleteBlockingStocks.length > 0 ? 'Stock Exists in Branches' : 'Delete Permanently'}
                 </Button>
               </div>
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-
-      {/* Price Update Modal */}
-      <AnimatePresence>
-        {pricingProduct && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4"
-            onClick={() => {
-              if (!updatePriceMutation.isPending) {
-                setPricingProduct(null)
-                setPriceError(null)
-              }
-            }}
-          >
-            <motion.div
-              initial={{ scale: 0.96, y: 16 }}
-              animate={{ scale: 1, y: 0 }}
-              exit={{ scale: 0.96, y: 16 }}
-              className="w-full max-w-lg rounded-2xl bg-white shadow-2xl"
-              onClick={(event) => event.stopPropagation()}
-            >
-              <form onSubmit={onSubmitPriceUpdate}>
-                <div className="border-b border-border p-6">
-                  <p className="text-xs font-semibold uppercase tracking-[0.18em] text-primary">
-                    Update Product Price
-                  </p>
-                  <h2 className="mt-2 text-2xl font-bold text-text">{pricingProduct.name}</h2>
-                  <p className="mt-1 text-sm text-text-tertiary">SKU: {pricingProduct.sku}</p>
-                </div>
-
-                <div className="space-y-5 p-6">
-                  <div className="rounded-xl border border-border bg-background p-4">
-                    <p className="text-xs text-text-tertiary">Current selling price</p>
-                    <p className="mt-1 text-lg font-semibold text-primary">
-                      {formatCurrency(getBasePrice(pricingProduct))}
-                    </p>
-                    {pricingProduct.is_on_offer ? (
-                      <p className="mt-1 text-xs text-text-tertiary">
-                        Current offer price:{' '}
-                        {formatCurrency(
-                          getOfferPrice(
-                            getBasePrice(pricingProduct),
-                            pricingProduct.is_on_offer,
-                            pricingProduct.max_offer
-                          )
-                        )}
-                      </p>
-                    ) : null}
-                  </div>
-
-                  <TextInput
-                    label="New Selling Price"
-                    type="number"
-                    min="0"
-                    step="0.01"
-                    value={priceValue}
-                    onChange={(event) => setPriceValue(event.target.value)}
-                    placeholder="Enter new selling price"
-                  />
-
-                  {priceError ? <p className="text-sm text-error">{priceError}</p> : null}
-                </div>
-
-                <div className="flex items-center justify-end gap-3 border-t border-border p-6">
-                  <Button
-                    type="button"
-                    variant="outline"
-                    onClick={() => {
-                      if (!updatePriceMutation.isPending) {
-                        setPricingProduct(null)
-                        setPriceError(null)
-                      }
-                    }}
-                  >
-                    Cancel
-                  </Button>
-                  <Button type="submit" loading={updatePriceMutation.isPending}>
-                    Save Price
-                  </Button>
-                </div>
-              </form>
             </motion.div>
           </motion.div>
         )}

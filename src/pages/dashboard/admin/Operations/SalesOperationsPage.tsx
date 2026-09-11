@@ -25,14 +25,13 @@ import {
   SparklesIcon,
   ChevronDownIcon,
   ChevronUpIcon,
-  DocumentTextIcon,
   ReceiptRefundIcon,
   ClockIcon,
   TagIcon,
   UserIcon,
 } from '@heroicons/react/24/outline'
 import { CheckCircleIcon as CheckCircleSolid } from '@heroicons/react/24/solid'
-import { Button, DataTable, Select, TextInput, type Column } from '@components/common'
+import { Button, DataTable, Select, TextInput, useSiteDialog, type Column } from '@components/common'
 import {
   getBranchOperationsSummaryRequest,
   listBranchesRequest
@@ -104,6 +103,7 @@ const staggerContainer = {
 const SalesOperationsPage = () => {
   const workspacePath = useWorkspacePath()
   const { user, hasPermission } = useAuth()
+  const siteDialog = useSiteDialog()
   const canReport = hasPermission('reports.read')
   const canSell = canAccessWorkspace(user, workspacePath('/dashboard/admin/sales/create'))
   const canMutate = !['suspended', 'closed'].includes(user?.business_status ?? '')
@@ -257,8 +257,16 @@ const SalesOperationsPage = () => {
     onError: (error: Error) => setFeedback({ type: 'error', message: error.message || 'Could not request refund approval.' })
   })
 
-  const onCancelSale = (sale: PosSaleResponse) => {
-    const reasonInput = window.prompt(`Cancel unpaid sale #${sale.id}. Reason (required):`)
+  const onCancelSale = async (sale: PosSaleResponse) => {
+    const reasonInput = await siteDialog.prompt({
+      title: `Cancel sale #${sale.id}`,
+      message: 'This will cancel the unpaid sale and return its items to stock.',
+      inputLabel: 'Cancellation reason',
+      placeholder: 'Explain why this sale is being cancelled',
+      confirmLabel: 'Cancel sale',
+      tone: 'danger',
+      minLength: 3
+    })
     if (reasonInput === null) {
       return
     }
@@ -271,8 +279,15 @@ const SalesOperationsPage = () => {
     })
   }
 
-  const onRefundSale = (sale: PosSaleResponse) => {
-    const reasonInput = window.prompt(`Request approval to refund sale #${sale.id}. Reason (required):`)
+  const onRefundSale = async (sale: PosSaleResponse) => {
+    const reasonInput = await siteDialog.prompt({
+      title: `Request refund approval for sale #${sale.id}`,
+      message: 'Provide the reason a manager or accountant should approve this refund.',
+      inputLabel: 'Refund reason',
+      placeholder: 'Explain why the refund is required',
+      confirmLabel: 'Request approval',
+      minLength: 3
+    })
     if (reasonInput === null) {
       return
     }
@@ -442,6 +457,96 @@ const SalesOperationsPage = () => {
         </div>
       </motion.div>
 
+      {/* Primary POS workspace */}
+      {(canSell || canReport) && (
+        <section
+          className={`mb-6 grid gap-6 ${canSell && canReport ? 'lg:grid-cols-2' : 'grid-cols-1'}`}
+        >
+          {canSell && (
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.05 }}
+              className="flex min-h-48 flex-col justify-between rounded-xl border border-border bg-gradient-to-br from-primary/10 via-white to-secondary/10 p-5 shadow-sm"
+            >
+              <div className="flex items-start gap-3">
+                <div className="rounded-xl bg-primary/20 p-3">
+                  <PlusIcon className="h-6 w-6 text-primary" />
+                </div>
+                <div>
+                  <h2 className="text-lg font-semibold text-text">Create POS Sale</h2>
+                  <p className="mt-1 text-sm text-text-secondary">
+                    Start a new point-of-sale transaction for your selected branch.
+                  </p>
+                </div>
+              </div>
+              <Link className="mt-6 self-start" to={workspacePath('/dashboard/admin/sales/create')}>
+                <Button className="flex items-center gap-2 bg-gradient-to-r from-primary to-secondary text-white">
+                  <PlusIcon className="h-4 w-4" />
+                  Create POS Sale
+                </Button>
+              </Link>
+            </motion.div>
+          )}
+
+          {canReport && (
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.1 }}
+              className="min-h-48 rounded-xl border border-border bg-white p-5 shadow-sm"
+            >
+              <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
+                <div className="flex items-center gap-2">
+                  <ReceiptRefundIcon className="h-5 w-5 text-primary" />
+                  <div>
+                    <h2 className="text-lg font-semibold text-text">POS Daily Snapshot</h2>
+                    <p className="text-xs text-text-tertiary">Performance for the selected day</p>
+                  </div>
+                </div>
+                <TextInput
+                  className="w-40"
+                  type="date"
+                  value={dailySummaryDate}
+                  onChange={(event) => setDailySummaryDate(event.target.value)}
+                />
+              </div>
+
+              {dailyPosSummaryQuery.isLoading ? (
+                <div className="flex justify-center py-6">
+                  <ArrowPathIcon className="h-6 w-6 animate-spin text-primary/30" />
+                </div>
+              ) : dailyPosSummaryQuery.data ? (
+                <div className="grid grid-cols-2 gap-3 sm:grid-cols-5">
+                  <div className="rounded-lg bg-background p-3 text-center">
+                    <p className="text-xs text-text-tertiary">Transactions</p>
+                    <p className="mt-1 text-lg font-bold text-primary">{dailyPosSummaryQuery.data.total_transactions}</p>
+                  </div>
+                  <div className="rounded-lg bg-background p-3 text-center">
+                    <p className="text-xs text-text-tertiary">Items Sold</p>
+                    <p className="mt-1 text-lg font-bold text-secondary">{dailyPosSummaryQuery.data.total_items_sold}</p>
+                  </div>
+                  <div className="rounded-lg bg-background p-3 text-center">
+                    <p className="text-xs text-text-tertiary">Gross Sales</p>
+                    <p className="mt-1 font-semibold text-text">{formatCurrency(dailyPosSummaryQuery.data.gross_sales)}</p>
+                  </div>
+                  <div className="rounded-lg bg-background p-3 text-center">
+                    <p className="text-xs text-text-tertiary">Refunds</p>
+                    <p className="mt-1 font-semibold text-error">{formatCurrency(dailyPosSummaryQuery.data.refunds)}</p>
+                  </div>
+                  <div className="col-span-2 rounded-lg bg-success/10 p-3 text-center sm:col-span-1">
+                    <p className="text-xs text-text-tertiary">Net Sales</p>
+                    <p className="mt-1 font-bold text-success">{formatCurrency(dailyPosSummaryQuery.data.net_sales)}</p>
+                  </div>
+                </div>
+              ) : (
+                <p className="py-6 text-center text-sm text-text-tertiary">No POS summary data available</p>
+              )}
+            </motion.div>
+          )}
+        </section>
+      )}
+
       {/* Filters Section */}
       <motion.section
         initial={{ opacity: 0, y: 20 }}
@@ -610,12 +715,6 @@ const SalesOperationsPage = () => {
               </p>
             </div>
           </div>
-          <TextInput
-            className="mt-2"
-            type="date"
-            value={dailySummaryDate}
-            onChange={(event) => setDailySummaryDate(event.target.value)}
-          />
         </motion.div>
       </motion.section>
 
@@ -685,7 +784,7 @@ const SalesOperationsPage = () => {
           </div>
         </motion.section>
 
-        {/* Right Column - Branch & POS Summary */}
+        {/* Right Column - Branch Summary */}
         <motion.section
           initial={{ opacity: 0, x: 20 }}
           animate={{ opacity: 1, x: 0 }}
@@ -733,82 +832,10 @@ const SalesOperationsPage = () => {
             )}
           </div>
 
-          {/* POS Daily Snapshot */}
-          <div className="bg-white rounded-xl border border-border p-4 shadow-sm">
-            <div className="flex items-center gap-2 mb-3">
-              <ReceiptRefundIcon className="h-5 w-5 text-primary" />
-              <h2 className="text-sm font-semibold text-text">POS Daily Snapshot</h2>
-            </div>
-
-            {dailyPosSummaryQuery.isLoading ? (
-              <div className="flex justify-center py-4">
-                <ArrowPathIcon className="h-6 w-6 text-primary/30 animate-spin" />
-              </div>
-            ) : dailyPosSummaryQuery.data ? (
-              <div className="space-y-3">
-                <div className="grid grid-cols-2 gap-2">
-                  <div className="bg-background rounded-lg p-2 text-center">
-                    <p className="text-xs text-text-tertiary">Transactions</p>
-                    <p className="text-lg font-bold text-primary">{dailyPosSummaryQuery.data.total_transactions}</p>
-                  </div>
-                  <div className="bg-background rounded-lg p-2 text-center">
-                    <p className="text-xs text-text-tertiary">Items Sold</p>
-                    <p className="text-lg font-bold text-secondary">{dailyPosSummaryQuery.data.total_items_sold}</p>
-                  </div>
-                </div>
-                <div className="space-y-2 border-t border-border pt-2">
-                  <div className="flex justify-between items-center">
-                    <span className="text-sm text-text-secondary">Gross Sales</span>
-                    <span className="font-semibold">{formatCurrency(dailyPosSummaryQuery.data.gross_sales)}</span>
-                  </div>
-                  <div className="flex justify-between items-center">
-                    <span className="text-sm text-text-secondary">Refunds</span>
-                    <span className="font-semibold text-error">{formatCurrency(dailyPosSummaryQuery.data.refunds)}</span>
-                  </div>
-                  <div className="flex justify-between items-center pt-1 border-t border-border">
-                    <span className="text-sm font-medium text-text">Net Sales</span>
-                    <span className="text-lg font-bold text-success">{formatCurrency(dailyPosSummaryQuery.data.net_sales)}</span>
-                  </div>
-                </div>
-              </div>
-            ) : (
-              <p className="text-xs text-text-tertiary text-center py-2">No POS summary data available</p>
-            )}
-          </div>
         </motion.section>
       </div>
 
       </>}
-      {/* Create POS Sale CTA */}
-      {canSell && <motion.section
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.3 }}
-        className="mb-6"
-      >
-        <div className="bg-gradient-to-r from-primary/10 via-white to-secondary/10 rounded-xl border border-border p-4 shadow-sm">
-          <div className="flex flex-wrap items-center justify-between gap-4">
-            <div className="flex items-center gap-3">
-              <div className="p-3 bg-primary/20 rounded-xl">
-                <PlusIcon className="h-6 w-6 text-primary" />
-              </div>
-              <div>
-                <h2 className="text-sm font-semibold text-text">Create POS Sale</h2>
-                <p className="text-xs text-text-secondary">
-                  Create a new point-of-sale transaction with branch-specific payment modes
-                </p>
-              </div>
-            </div>
-            <Link to={workspacePath('/dashboard/admin/sales/create')}>
-              <Button className="flex items-center gap-2 bg-gradient-to-r from-primary to-secondary text-white">
-                <PlusIcon className="h-4 w-4" />
-                Create POS Sale
-              </Button>
-            </Link>
-          </div>
-        </div>
-      </motion.section>}
-
       {/* POS Sales Table */}
       <motion.section
         initial={{ opacity: 0, y: 20 }}
@@ -1019,16 +1046,6 @@ const SalesOperationsPage = () => {
         )}
       </AnimatePresence>
 
-      {/* API Info */}
-      <section className="bg-background rounded-lg p-3 text-xs text-text-tertiary border border-border">
-        <div className="flex items-center gap-2">
-          <DocumentTextIcon className="h-4 w-4 text-primary" />
-          <span>
-            Reports use `/api/v1/reports/*`; POS management uses `/api/v1/pos/sales*`,
-            `/api/v1/pos/summary/daily`, and `/api/v1/payments/modes*`.
-          </span>
-        </div>
-      </section>
     </div>
   )
 }

@@ -130,20 +130,6 @@ const extractApiErrorMessage = (error: unknown, fallback: string): string => {
   return error.message || fallback
 }
 
-const fadeInUp = {
-  initial: { opacity: 0, y: 20 },
-  animate: { opacity: 1, y: 0 },
-  exit: { opacity: 0, y: -20 }
-}
-
-const staggerContainer = {
-  animate: {
-    transition: {
-      staggerChildren: 0.05
-    }
-  }
-}
-
 const BranchesManagementPage = () => {
   const queryClient = useQueryClient()
   const [search, setSearch] = useState('')
@@ -203,18 +189,6 @@ const BranchesManagementPage = () => {
       )
     })
   }, [branchesQuery.data, search])
-
-  const stats = useMemo(() => {
-    const branches = branchesQuery.data ?? []
-
-    return {
-      total: branches.length,
-      active: branches.filter((branch) => branch.is_active !== false).length,
-      inactive: branches.filter((branch) => branch.is_active === false).length,
-      onlineSources: branches.filter((branch) => branch.is_online_shop_source).length,
-      managed: branches.filter((branch) => Boolean(branch.manager_user_id)).length
-    }
-  }, [branchesQuery.data])
 
   const saveBranchMutation = useMutation({
     mutationFn: async (payload: BranchFormState) => {
@@ -323,6 +297,20 @@ const BranchesManagementPage = () => {
     setFeedback(null)
   }
 
+  const closeBranchForm = () => {
+    if (saveBranchMutation.isPending) return
+    setIsFormVisible(false)
+    setEditingBranchId(null)
+    setBranchForm(createEmptyBranchForm())
+  }
+
+  const openCreateBranchForm = () => {
+    setEditingBranchId(null)
+    setBranchForm(createEmptyBranchForm())
+    setIsFormVisible(true)
+    setFeedback(null)
+  }
+
   const openDeleteModal = (branch: BranchResponse) => {
     setDeleteErrorMessage(null)
     setDeleteCandidate(branch)
@@ -420,6 +408,7 @@ const BranchesManagementPage = () => {
             type="button"
             variant="outline"
             className="!px-3 !py-2"
+            aria-label={`Edit ${branch.name}`}
             onClick={() => onEditBranch(branch)}
           >
             <PencilIcon className="h-4 w-4" />
@@ -428,6 +417,7 @@ const BranchesManagementPage = () => {
             type="button"
             variant="outline"
             className="!border-error/20 !px-3 !py-2 !text-error hover:!bg-error/5"
+            aria-label={`Delete ${branch.name}`}
             onClick={() => openDeleteModal(branch)}
           >
             <TrashIcon className="h-4 w-4" />
@@ -455,83 +445,13 @@ const BranchesManagementPage = () => {
         </div>
 
         <Button
-          onClick={() => {
-            setEditingBranchId(null)
-            setBranchForm(createEmptyBranchForm())
-            setIsFormVisible((current) => !current)
-            setFeedback(null)
-          }}
+          onClick={openCreateBranchForm}
           className="flex items-center gap-2 bg-gradient-to-r from-primary to-secondary text-white"
         >
           <PlusIcon className="h-4 w-4" />
-          {isFormVisible ? 'Close Branch Form' : 'New Branch'}
+          New Branch
         </Button>
       </motion.div>
-
-      <motion.section
-        variants={staggerContainer}
-        initial="initial"
-        animate="animate"
-        className="mb-6 grid grid-cols-2 gap-4 md:grid-cols-3 xl:grid-cols-5"
-      >
-        {[
-          {
-            label: 'Total Branches',
-            value: stats.total,
-            color: 'text-primary',
-            bg: 'bg-primary/10',
-            icon: BuildingStorefrontIcon
-          },
-          {
-            label: 'Active',
-            value: stats.active,
-            color: 'text-success',
-            bg: 'bg-success/10',
-            icon: CheckCircleIcon
-          },
-          {
-            label: 'Inactive',
-            value: stats.inactive,
-            color: 'text-error',
-            bg: 'bg-error/10',
-            icon: XCircleIcon
-          },
-          {
-            label: 'Online Sources',
-            value: stats.onlineSources,
-            color: 'text-secondary',
-            bg: 'bg-secondary/10',
-            icon: GlobeAltIcon
-          },
-          {
-            label: 'With Managers',
-            value: stats.managed,
-            color: 'text-accent',
-            bg: 'bg-accent/10',
-            icon: UserIcon
-          }
-        ].map((stat) => {
-          const Icon = stat.icon
-
-          return (
-            <motion.div
-              key={stat.label}
-              variants={fadeInUp}
-              className="rounded-xl border border-border bg-white p-4 shadow-sm"
-            >
-              <div className="flex items-center gap-3">
-                <div className={`rounded-lg p-2 ${stat.bg}`}>
-                  <Icon className={`h-5 w-5 ${stat.color}`} />
-                </div>
-                <div>
-                  <p className="text-xs text-text-tertiary">{stat.label}</p>
-                  <p className={`text-lg font-bold ${stat.color}`}>{stat.value}</p>
-                </div>
-              </div>
-            </motion.div>
-          )
-        })}
-      </motion.section>
 
       <AnimatePresence>
         {feedback && (
@@ -559,30 +479,38 @@ const BranchesManagementPage = () => {
 
       <AnimatePresence>
         {isFormVisible && (
-          <motion.section
-            initial={{ opacity: 0, height: 0 }}
-            animate={{ opacity: 1, height: 'auto' }}
-            exit={{ opacity: 0, height: 0 }}
-            className="mb-6 overflow-hidden"
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm"
+            onClick={closeBranchForm}
           >
-            <div className="rounded-xl border border-border bg-white p-6 shadow-sm">
+            <motion.div
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="branch-form-title"
+              initial={{ scale: 0.96, y: 18 }}
+              animate={{ scale: 1, y: 0 }}
+              exit={{ scale: 0.96, y: 18 }}
+              className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-3xl border border-border bg-white p-6 shadow-2xl"
+              onClick={(event) => event.stopPropagation()}
+            >
               <div className="mb-6 flex items-start justify-between gap-4">
                 <div>
-                  <h2 className="text-lg font-semibold text-text">
+                  <h2 id="branch-form-title" className="text-lg font-semibold text-text">
                     {editingBranchId !== null ? 'Edit Branch' : 'Create Branch'}
                   </h2>
                   <p className="mt-1 text-sm text-text-secondary">
-                    Keep branch details and manager assignment aligned with your backend
+                    Enter the branch details and optionally assign a manager.
                   </p>
                 </div>
                 <button
                   type="button"
+                  aria-label="Close branch form"
                   className="rounded-lg p-2 text-text-tertiary transition hover:bg-background hover:text-text"
-                  onClick={() => {
-                    setIsFormVisible(false)
-                    setEditingBranchId(null)
-                    setBranchForm(createEmptyBranchForm())
-                  }}
+                  onClick={closeBranchForm}
+                  disabled={saveBranchMutation.isPending}
                 >
                   <XMarkIcon className="h-5 w-5" />
                 </button>
@@ -597,6 +525,7 @@ const BranchesManagementPage = () => {
                       setBranchForm((prev) => ({ ...prev, name: event.target.value }))
                     }
                     placeholder="Main Branch"
+                    required
                   />
                   <TextInput
                     label="Code"
@@ -605,6 +534,7 @@ const BranchesManagementPage = () => {
                       setBranchForm((prev) => ({ ...prev, code: event.target.value.toUpperCase() }))
                     }
                     placeholder="MAIN"
+                    required
                   />
                 </div>
 
@@ -659,18 +589,15 @@ const BranchesManagementPage = () => {
                   <Button
                     type="button"
                     variant="outline"
-                    onClick={() => {
-                      setIsFormVisible(false)
-                      setEditingBranchId(null)
-                      setBranchForm(createEmptyBranchForm())
-                    }}
+                    onClick={closeBranchForm}
+                    disabled={saveBranchMutation.isPending}
                   >
                     Cancel
                   </Button>
                 </div>
               </form>
-            </div>
-          </motion.section>
+            </motion.div>
+          </motion.div>
         )}
       </AnimatePresence>
 

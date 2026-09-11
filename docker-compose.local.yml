@@ -10,3 +10,11 @@ services:
       - "3000:3000"
     volumes:
       - ./nginx.local.conf:/etc/nginx/conf.d/default.conf:ro
+    networks:
+      - default
+      - mtaamall_api
+
+networks:
+  mtaamall_api:
+    external: true
+    name: mtaamallapi_default

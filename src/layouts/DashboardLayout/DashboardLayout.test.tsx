@@ -14,9 +14,42 @@ it('renders an employee menu without owner or platform functions', () => {
   state.user = { username: 'sales', context: 'business:a', roles: ['sales_staff'], permissions: ['products.read', 'pos.sell', 'orders.read'], business_status: 'active', allowed_branch_ids: [1] }
   render(<MemoryRouter><DashboardLayout /></MemoryRouter>)
   const menu = screen.getByRole('navigation', { name: 'Employee workspace' })
-  expect(menu.textContent).toContain('New POS sale')
+  expect(menu.textContent).toContain('Sales & Payments')
+  expect(menu.textContent).not.toContain('New POS sale')
   expect(menu.textContent).not.toMatch(/Platform team|Business profile|Settings|New product/)
+  fireEvent.click(screen.getByRole('button', { name: 'Catalog & Inventory' }))
   expect(screen.getByRole('link', { name: 'Products' }).getAttribute('href')).toBe('/employee/products')
+  expect(screen.getByRole('link', { name: 'Product categories' }).getAttribute('href')).toBe('/employee/product-categories')
+  fireEvent.click(screen.getByRole('button', { name: 'Sales & Payments' }))
+  expect(screen.getByRole('link', { name: 'New POS sale' }).getAttribute('href')).toBe('/employee/sales/create')
+})
+it('orders the business menu by operational workflow', () => {
+  state.user = {
+    username: 'owner',
+    context: 'business:a',
+    roles: ['business_owner'],
+    permissions: [
+      'orders.read', 'pos.sell', 'payments.manage',
+      'products.read', 'products.update', 'inventory.read',
+      'business.members.read', 'customers.read', 'branches.read', 'projects.read', 'content.manage',
+      'reports.read', 'business.audit.read', 'approvals.request'
+    ],
+    business_status: 'active',
+    allowed_branch_ids: [1]
+  }
+  render(<MemoryRouter><DashboardLayout /></MemoryRouter>)
+  const menuText = screen.getByRole('navigation', { name: 'Business workspace' }).textContent ?? ''
+  const labels = ['Business overview', 'Sales & Payments', 'Catalog & Inventory', 'Business Operations', 'HR', 'CRM', 'Reports', 'Audit & approval']
+  labels.reduce((previousIndex, label) => {
+    const currentIndex = menuText.indexOf(label)
+    expect(currentIndex).toBeGreaterThan(previousIndex)
+    return currentIndex
+  }, -1)
+
+  fireEvent.click(screen.getByRole('button', { name: 'HR' }))
+  expect(screen.getByRole('link', { name: 'Team' }).getAttribute('href')).toBe('/business/members')
+  fireEvent.click(screen.getByRole('button', { name: 'CRM' }))
+  expect(screen.getByRole('link', { name: 'Customers' }).getAttribute('href')).toBe('/business/customers')
 })
 it('keeps a business owner’s profile separate from the overview', () => {
   state.user = { username: 'owner', context: 'business:a', roles: ['business_owner'], permissions: ['business.settings.read'], business_status: 'active' }

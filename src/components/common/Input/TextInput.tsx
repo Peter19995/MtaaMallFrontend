@@ -1,4 +1,4 @@
-import { InputHTMLAttributes } from 'react'
+import { InputHTMLAttributes, useId } from 'react'
 import clsx from 'clsx'
 
 export interface TextInputProps extends InputHTMLAttributes<HTMLInputElement> {
@@ -8,7 +8,8 @@ export interface TextInputProps extends InputHTMLAttributes<HTMLInputElement> {
 }
 
 export const TextInput = ({ label, error, helperText, className, id, ...rest }: TextInputProps) => {
-  const inputId = id ?? rest.name
+  const generatedId = useId()
+  const inputId = id ?? rest.name ?? generatedId
 
   return (
     <div className="space-y-1.5 text-xs sm:text-sm">
@@ -46,4 +47,3 @@ export const TextInput = ({ label, error, helperText, className, id, ...rest }: 
 }
 
 export default TextInput
-

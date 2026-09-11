@@ -14,6 +14,7 @@ import { useAuth } from '@hooks/useAuth'
 import { CartContext } from '@contexts/CartContext'
 import { accountGet, accountPost, accountPut, accountDelete, AccountAddress, AccountOrder, AccountPayment, ReturnRequest } from '@api/modules/account.api'
 import type { UserResponse } from '@api/modules/auth.api'
+import { useSiteDialog } from '@components/common'
 
 const panel = 'rounded-2xl border border-border/80 bg-surface p-5 shadow-[0_12px_36px_rgba(30,43,50,0.06)]'
 const input = 'mt-1.5 w-full rounded-xl border border-border bg-white px-3.5 py-2.5 text-text outline-none transition placeholder:text-text-tertiary focus:border-primary focus:ring-4 focus:ring-primary/10'
@@ -96,6 +97,7 @@ export function AccountProfile() {
 }
 
 export function AccountAddresses() {
+  const siteDialog = useSiteDialog()
   const q = useAccount<AccountAddress[]>('/addresses'); const [editing, setEditing] = useState<AccountAddress | null>(null)
   const [notice, setNotice] = useState(''); const [busy, setBusy] = useState(false); const [version, setVersion] = useState(0)
   const submit = async (e: FormEvent<HTMLFormElement>) => {
@@ -103,7 +105,7 @@ export function AccountAddresses() {
     try { if (editing) await accountPut('/addresses/' + editing.id, fields); else await accountPost('/addresses', fields); setEditing(null); setVersion(v => v + 1); await q.refetch() }
     catch (e) { setNotice(errorText(e)) } finally { setBusy(false) }
   }
-  const remove = async (id: string) => { if (!window.confirm('Remove this saved address? Existing order addresses will stay unchanged.')) return; setBusy(true); try { await accountDelete('/addresses/' + id); await q.refetch() } catch (e) { setNotice(errorText(e)) } finally { setBusy(false) } }
+  const remove = async (id: string) => { if (!await siteDialog.confirm({ title: 'Remove saved address?', message: 'Existing order addresses will stay unchanged.', confirmLabel: 'Remove address', tone: 'danger' })) return; setBusy(true); try { await accountDelete('/addresses/' + id); await q.refetch() } catch (e) { setNotice(errorText(e)) } finally { setBusy(false) } }
   return <><h2 className="text-xl font-semibold">Address book</h2><QueryState query={q} /><div className="grid gap-3 sm:grid-cols-2">{q.data?.map(a => <article key={a.id} className={panel}><h3 className="font-semibold">{a.label}</h3><p>{a.recipient} · {a.phone}</p><p className="text-slate-500">{a.address}, {a.city}, {a.country}</p><div className="mt-3 flex gap-4"><button className="underline" onClick={() => setEditing(a)}>Edit</button><button className="underline" disabled={busy} onClick={() => remove(a.id)}>Remove</button></div></article>)}</div>
     {q.data?.length === 0 && <p>No saved addresses yet.</p>}<form key={(editing?.id ?? 'new') + version} onSubmit={submit} className={panel + ' space-y-3'}><h3 className="font-semibold">{editing ? 'Edit address' : 'Add an address'}</h3><div className="grid gap-3 sm:grid-cols-2">{(['label', 'recipient', 'phone', 'address', 'city', 'country'] as const).map(key => <label key={key} className="block capitalize">{key === 'country' ? 'Country code (e.g. KE)' : key}<input className={input} name={key} defaultValue={editing?.[key] ?? (key === 'country' ? 'KE' : '')} required maxLength={key === 'country' ? 2 : key === 'address' ? 500 : key === 'phone' ? 30 : key === 'label' ? 60 : 100} /></label>)}</div><button className={button} disabled={busy}>Save address</button>{editing && <button type="button" className="ml-3 underline" onClick={() => setEditing(null)}>Cancel</button>}<p role="status">{notice}</p></form></>
 }

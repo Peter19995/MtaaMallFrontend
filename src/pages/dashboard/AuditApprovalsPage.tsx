@@ -2,11 +2,13 @@ import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useAuth } from '@hooks/useAuth'
 import { listAudit, listApprovals, decideApproval, type Approval } from '@api/modules/audit.api'
+import { useSiteDialog } from '@components/common'
 
 const labels = { discount: 'Discounted POS sale', refund: 'POS refund', stock_writeoff: 'Stock write-off' }
 const pretty = (value: unknown) => JSON.stringify(value, null, 2)
 function Decision({ row }: { row: Approval }) {
   const { user } = useAuth()
+  const siteDialog = useSiteDialog()
   const client = useQueryClient()
   const [reason, setReason] = useState('')
   const mutation = useMutation({ mutationFn: (decision: 'approve' | 'reject') => decideApproval(row.id, decision, reason.trim()),
@@ -18,7 +20,7 @@ function Decision({ row }: { row: Approval }) {
   return <div className="mt-5 space-y-3 rounded-xl bg-slate-50 p-4">
     <label className="block text-sm font-medium">Decision reason<textarea aria-label={`Decision reason ${row.id}`} className="mt-2 w-full rounded-lg border p-3" value={reason} onChange={e => setReason(e.target.value)} maxLength={1000} /></label>
     <p className="text-xs text-slate-600">Approval immediately executes this exact request. Review the branch, amounts and stock/payment snapshot first. Refunds record the POS ledger adjustment; external payment-provider payouts are not issued by this screen.</p>
-    <div className="flex gap-3"><button className="rounded-lg bg-slate-900 px-4 py-2 text-white disabled:opacity-40" disabled={mutation.isPending || reason.trim().length < 3} onClick={() => { if (window.confirm(`Approve and execute ${labels[row.kind].toLowerCase()}?`)) mutation.mutate('approve') }}>Approve & execute</button><button className="rounded-lg border px-4 py-2 disabled:opacity-40" disabled={mutation.isPending || reason.trim().length < 3} onClick={() => mutation.mutate('reject')}>Reject</button></div>
+    <div className="flex gap-3"><button className="rounded-lg bg-slate-900 px-4 py-2 text-white disabled:opacity-40" disabled={mutation.isPending || reason.trim().length < 3} onClick={async () => { if (await siteDialog.confirm({ title: 'Approve and execute request?', message: `This will immediately execute the ${labels[row.kind].toLowerCase()}.`, confirmLabel: 'Approve & execute', tone: 'danger' })) mutation.mutate('approve') }}>Approve & execute</button><button className="rounded-lg border px-4 py-2 disabled:opacity-40" disabled={mutation.isPending || reason.trim().length < 3} onClick={() => mutation.mutate('reject')}>Reject</button></div>
     {mutation.isError && <p role="alert" className="text-red-700">{mutation.error.message}</p>}
   </div>
 }

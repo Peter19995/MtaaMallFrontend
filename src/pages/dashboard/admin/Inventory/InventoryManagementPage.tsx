@@ -29,7 +29,7 @@ import {
   ShoppingCartIcon,
   ArrowsRightLeftIcon,
 } from '@heroicons/react/24/outline'
-import { Button, DataTable, Select, TextArea, TextInput, type Column } from '@components/common'
+import { Button, DataTable, Select, TextArea, TextInput, useSiteDialog, type Column } from '@components/common'
 import { getProductRequest, listProductsRequest } from '@api/modules/products.api'
 import { listBranchesRequest, type BranchResponse } from '@api/modules/branches.api'
 import {
@@ -295,13 +295,47 @@ const staggerContainer = {
   }
 }
 
-const InventoryManagementPage = () => {
+export type InventoryView = 'status' | 'restocks' | 'stock-counts' | 'alerts'
+
+type InventoryManagementPageProps = {
+  view?: InventoryView
+}
+
+const inventoryViewCopy: Record<InventoryView, { title: string; description: string }> = {
+  status: {
+    title: 'Stock Status',
+    description: 'Review live stock balances by branch and transfer stock between locations.'
+  },
+  restocks: {
+    title: 'Restocks',
+    description: 'Record incoming stock and review recent restocking activity.'
+  },
+  'stock-counts': {
+    title: 'Stock Counts',
+    description: 'Record physical counts and review recent inventory variances.'
+  },
+  alerts: {
+    title: 'Inventory Alerts',
+    description: 'Review low-stock, out-of-stock, and other inventory warnings.'
+  }
+}
+
+const InventoryManagementPage = ({ view = 'status' }: InventoryManagementPageProps) => {
+  const siteDialog = useSiteDialog()
   const [approvalNotice, setApprovalNotice] = useState('')
   const createStockCountOrRequestApproval = async (payload: Parameters<typeof createStockCountRequest>[0]) => {
     try { return await createStockCountRequest(payload) }
     catch (error) {
       if (!extractApiErrorMessage(error, '').includes('stock_writeoff requires')) throw error
-      const reason = window.prompt('This stock reduction requires business-admin approval. Reason:', payload.notes ?? '')
+      const reason = await siteDialog.prompt({
+        title: 'Request stock write-off approval',
+        message: 'This stock reduction requires approval from a business administrator.',
+        inputLabel: 'Write-off reason',
+        placeholder: 'Explain the stock discrepancy or loss',
+        defaultValue: payload.notes ?? '',
+        confirmLabel: 'Request approval',
+        minLength: 3
+      })
       if (!reason || reason.trim().length < 3) throw new Error('Write-off was not applied. A reason is required to request approval.')
       const request = await requestApproval('stock_writeoff', reason.trim(), payload)
       setApprovalNotice('Stock write-off submitted for approval. No stock was written off. Follow the request in Approvals.')
@@ -1356,6 +1390,14 @@ const InventoryManagementPage = () => {
     createRestockMutation.mutate(restockForm)
   }
 
+  const closeRestockForm = () => {
+    if (createRestockMutation.isPending) return
+
+    setShowRestockForm(false)
+    setRestockForm(createEmptyRestockForm(defaultInventoryBranchId))
+    setRestockError(null)
+  }
+
   const onSubmitStockCount = (event: FormEvent) => {
     event.preventDefault()
     setStockCountError(null)
@@ -1368,6 +1410,8 @@ const InventoryManagementPage = () => {
     setStockTransferSuccess(null)
     createStockTransferMutation.mutate(stockTransferForm)
   }
+
+  const viewCopy = inventoryViewCopy[view]
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-background via-white to-background p-6">
@@ -1382,23 +1426,23 @@ const InventoryManagementPage = () => {
           <div>
             <h1 className="text-2xl font-bold text-text flex items-center gap-2">
               <ServerStackIcon className="h-6 w-6 text-primary" />
-              Inventory Operations
+              {viewCopy.title}
             </h1>
             <p className="text-sm text-text-secondary mt-1">
-              Manage restocks, stock transfers, stock counts, and monitor live inventory status
+              {viewCopy.description}
             </p>
           </div>
           
-          <div className="flex gap-2">
-            <Button
+          <div className="flex flex-wrap gap-2">
+            {view === 'stock-counts' && <Button
               variant="outline"
               onClick={() => setShowStockCountForm(!showStockCountForm)}
               className="flex items-center gap-2"
             >
               <ScaleIcon className="h-4 w-4" />
               {showStockCountForm ? 'Close Stock Count' : 'New Stock Count'}
-            </Button>
-            <Button
+            </Button>}
+            {view === 'status' && <Button
               variant="outline"
               onClick={() => {
                 setShowStockTransferForm(!showStockTransferForm)
@@ -1409,20 +1453,20 @@ const InventoryManagementPage = () => {
             >
               <ArrowsRightLeftIcon className="h-4 w-4" />
               {showStockTransferForm ? 'Close Transfer' : 'New Transfer'}
-            </Button>
-            <Button
+            </Button>}
+            {view === 'restocks' && <Button
               onClick={() => setShowRestockForm(!showRestockForm)}
               className="flex items-center gap-2 bg-gradient-to-r from-primary to-secondary text-white"
             >
               <PlusIcon className="h-4 w-4" />
               {showRestockForm ? 'Close Restock' : 'New Restock'}
-            </Button>
+            </Button>}
           </div>
         </div>
       </motion.div>
 
       {/* Summary Cards */}
-      <motion.section
+      {view === 'status' && <motion.section
         variants={staggerContainer}
         initial="initial"
         animate="animate"
@@ -1503,26 +1547,52 @@ const InventoryManagementPage = () => {
             </div>
           </div>
         </motion.div>
-      </motion.section>
+      </motion.section>}
 
       {/* Restock Form */}
       <AnimatePresence>
-        {showRestockForm && (
-          <motion.section
-            initial={{ opacity: 0, y: -20 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -20 }}
-            className="mb-6"
+        {view === 'restocks' && showRestockForm && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm"
+            onClick={closeRestockForm}
           >
-            <div className="bg-white rounded-xl border border-border p-4 shadow-sm">
-              <div className="flex items-center gap-2 mb-4">
-                <ShoppingCartIcon className="h-5 w-5 text-primary" />
-                <div>
-                  <h2 className="text-sm font-semibold text-text">Create New Restock</h2>
-                  <p className="mt-1 text-xs text-text-tertiary">
-                    Choose the branch you are restocking for. Main branch is selected by default.
-                  </p>
+            <motion.div
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="restock-form-title"
+              initial={{ opacity: 0, y: 18, scale: 0.97 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: 18, scale: 0.97 }}
+              transition={{ duration: 0.18 }}
+              className="max-h-[90vh] w-full max-w-5xl overflow-y-auto rounded-2xl border border-border bg-white p-4 shadow-2xl sm:p-6"
+              onClick={(event) => event.stopPropagation()}
+            >
+              <div className="mb-5 flex items-start justify-between gap-4">
+                <div className="flex items-start gap-3">
+                  <div className="rounded-xl bg-primary/10 p-2.5 text-primary">
+                    <ShoppingCartIcon className="h-5 w-5" />
+                  </div>
+                  <div>
+                    <h2 id="restock-form-title" className="text-lg font-semibold text-text">
+                      Create New Restock
+                    </h2>
+                    <p className="mt-1 text-sm text-text-tertiary">
+                      Choose the branch you are restocking for. Main branch is selected by default.
+                    </p>
+                  </div>
                 </div>
+                <button
+                  type="button"
+                  aria-label="Close restock form"
+                  onClick={closeRestockForm}
+                  disabled={createRestockMutation.isPending}
+                  className="rounded-lg p-2 text-text-tertiary transition-colors hover:bg-background hover:text-text disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  <XMarkIcon className="h-5 w-5" />
+                </button>
               </div>
 
               <form onSubmit={onSubmitRestock} className="space-y-4">
@@ -1843,11 +1913,8 @@ const InventoryManagementPage = () => {
                   <Button
                     type="button"
                     variant="outline"
-                    onClick={() => {
-                      setShowRestockForm(false)
-                      setRestockForm(createEmptyRestockForm(defaultInventoryBranchId))
-                      setRestockError(null)
-                    }}
+                    onClick={closeRestockForm}
+                    disabled={createRestockMutation.isPending}
                   >
                     Cancel
                   </Button>
@@ -1859,14 +1926,14 @@ const InventoryManagementPage = () => {
                   )}
                 </div>
               </form>
-            </div>
-          </motion.section>
+            </motion.div>
+          </motion.div>
         )}
       </AnimatePresence>
 
       {/* Stock Transfer Form */}
       <AnimatePresence>
-        {showStockTransferForm && (
+        {view === 'status' && showStockTransferForm && (
           <motion.section
             initial={{ opacity: 0, y: -20 }}
             animate={{ opacity: 1, y: 0 }}
@@ -2118,7 +2185,7 @@ const InventoryManagementPage = () => {
 
       {/* Stock Count Form */}
       <AnimatePresence>
-        {showStockCountForm && (
+        {view === 'stock-counts' && showStockCountForm && (
           <motion.section
             initial={{ opacity: 0, y: -20 }}
             animate={{ opacity: 1, y: 0 }}
@@ -2428,7 +2495,7 @@ const InventoryManagementPage = () => {
       </AnimatePresence>
 
       {/* Stock Status Table */}
-      <motion.section
+      {view === 'status' && <motion.section
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 0.2 }}
@@ -2517,11 +2584,10 @@ const InventoryManagementPage = () => {
             }
           />
         </div>
-      </motion.section>
+      </motion.section>}
 
-      {/* Recent Activity Grid */}
-      <div className="grid gap-6 lg:grid-cols-2 mb-6">
-        {/* Recent Restocks */}
+      {/* Recent Restocks */}
+      {view === 'restocks' && (
         <motion.section
           initial={{ opacity: 0, x: -20 }}
           animate={{ opacity: 1, x: 0 }}
@@ -2552,8 +2618,10 @@ const InventoryManagementPage = () => {
             />
           </div>
         </motion.section>
+      )}
 
-        {/* Recent Stock Counts */}
+      {/* Recent Stock Counts */}
+      {view === 'stock-counts' && (
         <motion.section
           initial={{ opacity: 0, x: 20 }}
           animate={{ opacity: 1, x: 0 }}
@@ -2584,10 +2652,10 @@ const InventoryManagementPage = () => {
             />
           </div>
         </motion.section>
-      </div>
+      )}
 
       {/* Alerts Section */}
-      <motion.section
+      {view === 'alerts' && <motion.section
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 0.4 }}
@@ -2618,7 +2686,7 @@ const InventoryManagementPage = () => {
             }
           />
         </div>
-      </motion.section>
+      </motion.section>}
     </div>
   )
 }
