@@ -32,6 +32,8 @@ import {
 import { Button, DataTable, Select, TextArea, TextInput, useSiteDialog, type Column } from '@components/common'
 import { listProductsRequest } from '@api/modules/products.api'
 import { listBranchesRequest } from '@api/modules/branches.api'
+import { listCustomersRequest } from '@api/modules/customers.api'
+import { listBusinessMembers } from '@api/modules/memberships.api'
 import {
   addProjectExpenseRequest,
   addProjectLabourRequest,
@@ -130,6 +132,14 @@ const PROJECT_STATUS_OPTIONS: Array<{ value: ProjectStatus; label: string; color
   { value: 'on_hold', label: 'On Hold', color: 'bg-yellow-100 text-yellow-700' },
   { value: 'completed', label: 'Completed', color: 'bg-success/10 text-success' },
   { value: 'cancelled', label: 'Cancelled', color: 'bg-error/10 text-error' }
+]
+
+const TASK_STATUS_OPTIONS = [
+  { value: 'pending', label: 'Pending' },
+  { value: 'in_progress', label: 'In Progress' },
+  { value: 'on_hold', label: 'On Hold' },
+  { value: 'completed', label: 'Completed' },
+  { value: 'cancelled', label: 'Cancelled' }
 ]
 
 const EMPTY_PROJECT_FORM: ProjectFormState = {
@@ -247,6 +257,7 @@ const ProjectsOperationsPage = () => {
   const [projectSearch, setProjectSearch] = useState('')
   const [projectStatusFilter, setProjectStatusFilter] = useState<string>('all')
   const [activeTab, setActiveTab] = useState<'details' | 'tasks' | 'materials' | 'labour' | 'expenses'>('details')
+  const [projectFormMode, setProjectFormMode] = useState<'create' | 'edit' | null>(null)
 
   const [createProjectForm, setCreateProjectForm] = useState<ProjectFormState>(EMPTY_PROJECT_FORM)
   const [updateProjectForm, setUpdateProjectForm] = useState<ProjectFormState>(EMPTY_PROJECT_FORM)
@@ -283,6 +294,16 @@ const ProjectsOperationsPage = () => {
   const productsQuery = useQuery({
     queryKey: ['products', 'projects-materials-select'],
     queryFn: () => listProductsRequest({ limit: 200 })
+  })
+
+  const customersQuery = useQuery({
+    queryKey: ['customers', 'projects-select'],
+    queryFn: () => listCustomersRequest({ limit: 500 })
+  })
+
+  const projectManagersQuery = useQuery({
+    queryKey: ['business-members', 'projects-select'],
+    queryFn: listBusinessMembers
   })
 
   const selectedProject = useMemo(
@@ -371,6 +392,67 @@ const ProjectsOperationsPage = () => {
     [productsQuery.data]
   )
 
+  const customerOptions = useMemo(
+    () => [
+      { label: 'No client selected', value: '' },
+      ...(customersQuery.data ?? [])
+        .filter((customer) => customer.is_active && !customer.is_cash_customer)
+        .map((customer) => ({
+          label: customer.full_name?.trim() || customer.username,
+          value: String(customer.id)
+        }))
+    ],
+    [customersQuery.data]
+  )
+
+  const projectManagerOptions = useMemo(
+    () => [
+      { label: 'No project manager selected', value: '' },
+      ...(projectManagersQuery.data ?? [])
+        .filter((membership) => membership.status === 'active')
+        .map((membership) => ({
+          label: membership.full_name?.trim() || membership.username,
+          value: String(membership.user_id)
+        }))
+    ],
+    [projectManagersQuery.data]
+  )
+
+  const taskAssigneeOptions = useMemo(
+    () => [
+      { label: 'Unassigned', value: '' },
+      ...(projectManagersQuery.data ?? [])
+        .filter((membership) => membership.status === 'active')
+        .map((membership) => ({
+          label: membership.full_name?.trim() || membership.username,
+          value: String(membership.user_id)
+        }))
+    ],
+    [projectManagersQuery.data]
+  )
+
+  const taskAssigneeNames = useMemo(
+    () =>
+      new Map(
+        (projectManagersQuery.data ?? []).map((membership) => [
+          membership.user_id,
+          membership.full_name?.trim() || membership.username
+        ])
+      ),
+    [projectManagersQuery.data]
+  )
+
+  const parentTaskOptions = useMemo(
+    () => [
+      { label: 'No parent task', value: '' },
+      ...(tasksQuery.data ?? []).map((task) => ({
+        label: task.title,
+        value: String(task.id)
+      }))
+    ],
+    [tasksQuery.data]
+  )
+
   const filteredProjects = useMemo(() => {
     return (projectsQuery.data ?? []).filter((project) => {
       const matchesStatus =
@@ -404,7 +486,7 @@ const ProjectsOperationsPage = () => {
 
   const createProjectMutation = useMutation({
     mutationFn: async (form: ProjectFormState) => {
-      const clientId = parseRequiredNumber(form.clientId, 'Client ID')
+      const clientId = parseOptionalNumber(form.clientId)
       const branchId = parseOptionalNumber(form.branchId)
       const projectManagerId = parseOptionalNumber(form.projectManagerId)
       const budget = parseRequiredNumber(form.budget, 'Budget')
@@ -435,6 +517,7 @@ const ProjectsOperationsPage = () => {
     onSuccess: (project) => {
       setProjectError(null)
       setCreateProjectForm(EMPTY_PROJECT_FORM)
+      setProjectFormMode(null)
       setSelectedProjectId(project.id)
       setActiveTab('details')
       queryClient.invalidateQueries({ queryKey: ['projects', 'admin', 'list'] })
@@ -450,7 +533,6 @@ const ProjectsOperationsPage = () => {
         throw new Error('Select a project first.')
       }
 
-      const clientId = parseRequiredNumber(form.clientId, 'Client ID')
       const payload: ProjectUpdatePayload = {
         name: form.name.trim() || undefined,
         description: form.description.trim() || undefined,
@@ -461,15 +543,15 @@ const ProjectsOperationsPage = () => {
         budget: parseRequiredNumber(form.budget, 'Budget'),
         quoted_amount: parseRequiredNumber(form.quotedAmount, 'Quoted amount'),
         deposit_amount: parseRequiredNumber(form.depositAmount, 'Deposit amount'),
-        project_manager_id: parseOptionalNumber(form.projectManagerId)
+        client_id: parseOptionalNumber(form.clientId) ?? null,
+        project_manager_id: parseOptionalNumber(form.projectManagerId) ?? null
       }
-
-      void clientId
 
       return updateProjectRequest(selectedProjectId, payload)
     },
     onSuccess: () => {
       setProjectError(null)
+      setProjectFormMode(null)
       queryClient.invalidateQueries({ queryKey: ['projects', 'admin', 'list'] })
       queryClient.invalidateQueries({ queryKey: ['projects', 'admin', 'details', selectedProjectId] })
       queryClient.invalidateQueries({ queryKey: ['projects', 'admin', 'financial', selectedProjectId] })
@@ -759,7 +841,21 @@ const ProjectsOperationsPage = () => {
               setEditTaskForm(EMPTY_TASK_FORM)
               setActiveTab('details')
             }}
-            title="Manage project"
+            title="View project"
+            aria-label={`View ${row.name}`}
+          >
+            <EyeIcon className="h-4 w-4" />
+          </button>
+          <button
+            type="button"
+            className="p-2 rounded-lg text-text-secondary transition-all hover:bg-primary/5 hover:text-primary"
+            onClick={() => {
+              setSelectedProjectId(row.id)
+              setProjectError(null)
+              setProjectFormMode('edit')
+            }}
+            title="Edit project"
+            aria-label={`Edit ${row.name}`}
           >
             <PencilIcon className="h-4 w-4" />
           </button>
@@ -777,6 +873,7 @@ const ProjectsOperationsPage = () => {
               }
             }}
             title="Delete project"
+            aria-label={`Delete ${row.name}`}
           >
             <TrashIcon className="h-4 w-4" />
           </button>
@@ -829,7 +926,9 @@ const ProjectsOperationsPage = () => {
       key: 'assigned_to',
       header: 'Assigned To',
       render: (row) => (
-        <span className="text-sm text-text-secondary">User {row.assigned_to_id || '--'}</span>
+        <span className="text-sm text-text-secondary">
+          {row.assigned_to_id ? taskAssigneeNames.get(row.assigned_to_id) ?? 'Unknown team member' : 'Unassigned'}
+        </span>
       )
     },
     {
@@ -914,6 +1013,23 @@ const ProjectsOperationsPage = () => {
     addExpenseMutation.mutate(expenseForm)
   }
 
+  const activeProjectForm = projectFormMode === 'edit' ? updateProjectForm : createProjectForm
+  const updateActiveProjectForm = <K extends keyof ProjectFormState>(
+    key: K,
+    value: ProjectFormState[K]
+  ) => {
+    const update = (previous: ProjectFormState) => ({ ...previous, [key]: value })
+    if (projectFormMode === 'edit') setUpdateProjectForm(update)
+    else setCreateProjectForm(update)
+    setProjectError(null)
+  }
+
+  const closeProjectForm = () => {
+    if (createProjectMutation.isPending || updateProjectMutation.isPending) return
+    setProjectFormMode(null)
+    setProjectError(null)
+  }
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-background via-white to-background p-6">
       {/* Header */}
@@ -932,127 +1048,19 @@ const ProjectsOperationsPage = () => {
               Create and manage projects, track tasks, and monitor costs
             </p>
           </div>
+          <Button
+            type="button"
+            onClick={() => {
+              setCreateProjectForm({ ...EMPTY_PROJECT_FORM })
+              setProjectError(null)
+              setProjectFormMode('create')
+            }}
+          >
+            <PlusIcon className="h-4 w-4" />
+            Add Project
+          </Button>
         </div>
       </motion.div>
-
-      {/* Create Project Form */}
-      <motion.section
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.1 }}
-        className="mb-6"
-      >
-        <div className="bg-white rounded-xl border border-border p-4 shadow-sm">
-          <div className="flex items-center gap-2 mb-4">
-            <PlusIcon className="h-5 w-5 text-primary" />
-            <h2 className="text-sm font-semibold text-text">Create New Project</h2>
-          </div>
-
-          <form onSubmit={onCreateProject} className="space-y-4">
-            <div className="grid gap-4 md:grid-cols-3">
-              <TextInput
-                label="Project Name"
-                value={createProjectForm.name}
-                onChange={(e) => setCreateProjectForm({ ...createProjectForm, name: e.target.value })}
-                required
-                placeholder="e.g., Luxury Apartment Renovation"
-              />
-              <TextInput
-                label="Client ID"
-                type="number"
-                min={1}
-                value={createProjectForm.clientId}
-                onChange={(e) => setCreateProjectForm({ ...createProjectForm, clientId: e.target.value })}
-                required
-                placeholder="Client ID"
-              />
-              <Select
-                label="Project Type"
-                options={projectTypeOptions}
-                value={createProjectForm.projectType}
-                onChange={(e) => setCreateProjectForm({ ...createProjectForm, projectType: e.target.value as ProjectType })}
-              />
-              <Select
-                label="Status"
-                options={projectStatusOptions}
-                value={createProjectForm.status}
-                onChange={(e) => setCreateProjectForm({ ...createProjectForm, status: e.target.value as ProjectStatus })}
-              />
-              <Select
-                label="Branch"
-                options={branchOptions}
-                value={createProjectForm.branchId}
-                onChange={(e) => setCreateProjectForm({ ...createProjectForm, branchId: String(e.target.value) })}
-              />
-              <TextInput
-                label="Project Manager ID"
-                type="number"
-                min={1}
-                value={createProjectForm.projectManagerId}
-                onChange={(e) => setCreateProjectForm({ ...createProjectForm, projectManagerId: e.target.value })}
-                placeholder="Manager ID"
-              />
-              <TextInput
-                label="Start Date"
-                type="date"
-                value={createProjectForm.startDate}
-                onChange={(e) => setCreateProjectForm({ ...createProjectForm, startDate: e.target.value })}
-              />
-              <TextInput
-                label="Expected End Date"
-                type="date"
-                value={createProjectForm.expectedEndDate}
-                onChange={(e) => setCreateProjectForm({ ...createProjectForm, expectedEndDate: e.target.value })}
-              />
-              <TextInput
-                label="Budget (KES)"
-                type="number"
-                min={0}
-                step="0.01"
-                value={createProjectForm.budget}
-                onChange={(e) => setCreateProjectForm({ ...createProjectForm, budget: e.target.value })}
-              />
-              <TextInput
-                label="Quoted Amount (KES)"
-                type="number"
-                min={0}
-                step="0.01"
-                value={createProjectForm.quotedAmount}
-                onChange={(e) => setCreateProjectForm({ ...createProjectForm, quotedAmount: e.target.value })}
-              />
-              <TextInput
-                label="Deposit Amount (KES)"
-                type="number"
-                min={0}
-                step="0.01"
-                value={createProjectForm.depositAmount}
-                onChange={(e) => setCreateProjectForm({ ...createProjectForm, depositAmount: e.target.value })}
-              />
-              <div className="md:col-span-3">
-                <TextArea
-                  label="Description"
-                  value={createProjectForm.description}
-                  onChange={(e) => setCreateProjectForm({ ...createProjectForm, description: e.target.value })}
-                  placeholder="Project description..."
-                  rows={3}
-                />
-              </div>
-            </div>
-
-            <div className="flex items-center gap-2">
-              <Button type="submit" loading={createProjectMutation.isPending}>
-                Create Project
-              </Button>
-              {projectError && (
-                <span className="text-xs text-error flex items-center gap-1">
-                  <XCircleIcon className="h-4 w-4" />
-                  {projectError}
-                </span>
-              )}
-            </div>
-          </form>
-        </div>
-      </motion.section>
 
       {/* Projects List */}
       <motion.section
@@ -1137,12 +1145,23 @@ const ProjectsOperationsPage = () => {
       <AnimatePresence>
         {selectedProjectId && selectedProject && (
           <motion.section
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -20 }}
-            className="mb-6"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="project-details-title"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-40 flex items-center justify-center bg-text/55 p-4 backdrop-blur-sm"
+            onMouseDown={(event) => {
+              if (event.target === event.currentTarget) setSelectedProjectId(null)
+            }}
           >
-            <div className="bg-white rounded-xl border-2 border-primary/20 shadow-lg overflow-hidden">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.97, y: 16 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.97, y: 16 }}
+              className="max-h-[92vh] w-full max-w-6xl overflow-y-auto rounded-2xl border border-primary/20 bg-white shadow-2xl"
+            >
               {/* Project Header */}
               <div className="bg-gradient-to-r from-primary/5 to-secondary/5 p-4 border-b border-border">
                 <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
@@ -1151,7 +1170,7 @@ const ProjectsOperationsPage = () => {
                       {selectedProject.name.charAt(0)}
                     </div>
                     <div>
-                      <h2 className="text-lg font-bold text-text">{selectedProject.name}</h2>
+                      <h2 id="project-details-title" className="text-lg font-bold text-text">{selectedProject.name}</h2>
                       <div className="flex items-center gap-2 mt-1">
                         <span className="text-xs text-text-tertiary">ID: {selectedProject.id}</span>
                         <span className="text-xs text-text-tertiary">•</span>
@@ -1254,100 +1273,18 @@ const ProjectsOperationsPage = () => {
                 {/* Details Tab */}
                 {activeTab === 'details' && (
                   <div className="space-y-4">
-                    {/* Update Project Form */}
-                    <form onSubmit={onUpdateProject} className="space-y-4">
-                      <div className="grid gap-4 md:grid-cols-3">
-                        <TextInput
-                          label="Project Name"
-                          value={updateProjectForm.name}
-                          onChange={(e) => setUpdateProjectForm({ ...updateProjectForm, name: e.target.value })}
-                          required
-                        />
-                        <TextInput
-                          label="Client ID"
-                          type="number"
-                          min={1}
-                          value={updateProjectForm.clientId}
-                          onChange={(e) => setUpdateProjectForm({ ...updateProjectForm, clientId: e.target.value })}
-                          required
-                        />
-                        <Select
-                          label="Status"
-                          options={projectStatusOptions}
-                          value={updateProjectForm.status}
-                          onChange={(e) => setUpdateProjectForm({ ...updateProjectForm, status: e.target.value as ProjectStatus })}
-                        />
-                        <Select
-                          label="Branch"
-                          options={branchOptions}
-                          value={updateProjectForm.branchId}
-                          onChange={(e) => setUpdateProjectForm({ ...updateProjectForm, branchId: String(e.target.value) })}
-                        />
-                        <TextInput
-                          label="Project Manager ID"
-                          type="number"
-                          min={1}
-                          value={updateProjectForm.projectManagerId}
-                          onChange={(e) => setUpdateProjectForm({ ...updateProjectForm, projectManagerId: e.target.value })}
-                        />
-                        <TextInput
-                          label="Start Date"
-                          type="date"
-                          value={updateProjectForm.startDate}
-                          onChange={(e) => setUpdateProjectForm({ ...updateProjectForm, startDate: e.target.value })}
-                        />
-                        <TextInput
-                          label="Expected End Date"
-                          type="date"
-                          value={updateProjectForm.expectedEndDate}
-                          onChange={(e) => setUpdateProjectForm({ ...updateProjectForm, expectedEndDate: e.target.value })}
-                        />
-                        <TextInput
-                          label="Actual End Date"
-                          type="date"
-                          value={updateProjectForm.actualEndDate}
-                          onChange={(e) => setUpdateProjectForm({ ...updateProjectForm, actualEndDate: e.target.value })}
-                        />
-                        <TextInput
-                          label="Budget (KES)"
-                          type="number"
-                          min={0}
-                          step="0.01"
-                          value={updateProjectForm.budget}
-                          onChange={(e) => setUpdateProjectForm({ ...updateProjectForm, budget: e.target.value })}
-                        />
-                        <TextInput
-                          label="Quoted Amount (KES)"
-                          type="number"
-                          min={0}
-                          step="0.01"
-                          value={updateProjectForm.quotedAmount}
-                          onChange={(e) => setUpdateProjectForm({ ...updateProjectForm, quotedAmount: e.target.value })}
-                        />
-                        <TextInput
-                          label="Deposit Amount (KES)"
-                          type="number"
-                          min={0}
-                          step="0.01"
-                          value={updateProjectForm.depositAmount}
-                          onChange={(e) => setUpdateProjectForm({ ...updateProjectForm, depositAmount: e.target.value })}
-                        />
-                        <div className="md:col-span-3">
-                          <TextArea
-                            label="Description"
-                            value={updateProjectForm.description}
-                            onChange={(e) => setUpdateProjectForm({ ...updateProjectForm, description: e.target.value })}
-                            rows={3}
-                          />
-                        </div>
+                    <div className="flex flex-col gap-3 rounded-xl border border-border bg-background p-4 sm:flex-row sm:items-start sm:justify-between">
+                      <div>
+                        <h3 className="text-sm font-semibold text-text">Project details</h3>
+                        <p className="mt-1 text-sm text-text-secondary">
+                          {projectDetailsQuery.data?.description?.trim() || 'No project description has been added.'}
+                        </p>
                       </div>
-
-                      <div className="flex items-center gap-2">
-                        <Button type="submit" loading={updateProjectMutation.isPending}>
-                          Update Project
-                        </Button>
-                      </div>
-                    </form>
+                      <Button type="button" variant="outline" onClick={() => setProjectFormMode('edit')}>
+                        <PencilIcon className="h-4 w-4" />
+                        Edit Project
+                      </Button>
+                    </div>
 
                     {/* Image Upload */}
                     <div className="mt-6 border-t border-border pt-4">
@@ -1425,27 +1362,23 @@ const ProjectsOperationsPage = () => {
                           required
                           placeholder="e.g., Site Survey"
                         />
-                        <TextInput
-                          label="Assigned To ID"
-                          type="number"
-                          min={1}
+                        <Select
+                          label="Assigned To (optional)"
+                          options={taskAssigneeOptions}
                           value={newTaskForm.assignedToId}
-                          onChange={(e) => setNewTaskForm({ ...newTaskForm, assignedToId: e.target.value })}
-                          placeholder="Employee ID"
+                          onChange={(e) => setNewTaskForm({ ...newTaskForm, assignedToId: String(e.target.value) })}
                         />
-                        <TextInput
-                          label="Parent Task ID"
-                          type="number"
-                          min={1}
+                        <Select
+                          label="Parent Task (optional)"
+                          options={parentTaskOptions}
                           value={newTaskForm.parentTaskId}
-                          onChange={(e) => setNewTaskForm({ ...newTaskForm, parentTaskId: e.target.value })}
-                          placeholder="Parent Task ID"
+                          onChange={(e) => setNewTaskForm({ ...newTaskForm, parentTaskId: String(e.target.value) })}
                         />
-                        <TextInput
+                        <Select
                           label="Status"
+                          options={TASK_STATUS_OPTIONS}
                           value={newTaskForm.status}
                           onChange={(e) => setNewTaskForm({ ...newTaskForm, status: e.target.value })}
-                          placeholder="pending"
                         />
                         <TextInput
                           label="Start Date"
@@ -1508,17 +1441,17 @@ const ProjectsOperationsPage = () => {
                             onChange={(e) => setEditTaskForm({ ...editTaskForm, title: e.target.value })}
                             required
                           />
-                          <TextInput
+                          <Select
                             label="Status"
+                            options={TASK_STATUS_OPTIONS}
                             value={editTaskForm.status}
                             onChange={(e) => setEditTaskForm({ ...editTaskForm, status: e.target.value })}
                           />
-                          <TextInput
-                            label="Assigned To ID"
-                            type="number"
-                            min={1}
+                          <Select
+                            label="Assigned To (optional)"
+                            options={taskAssigneeOptions}
                             value={editTaskForm.assignedToId}
-                            onChange={(e) => setEditTaskForm({ ...editTaskForm, assignedToId: e.target.value })}
+                            onChange={(e) => setEditTaskForm({ ...editTaskForm, assignedToId: String(e.target.value) })}
                           />
                           <TextInput
                             label="Start Date"
@@ -1796,8 +1729,96 @@ const ProjectsOperationsPage = () => {
                   </p>
                 </div>
               )}
-            </div>
+            </motion.div>
           </motion.section>
+        )}
+      </AnimatePresence>
+
+      {/* Create / Edit Project Modal */}
+      <AnimatePresence>
+        {projectFormMode && (
+          <motion.div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="project-form-title"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 flex items-center justify-center bg-text/55 p-4 backdrop-blur-sm"
+            onMouseDown={(event) => {
+              if (event.target === event.currentTarget) closeProjectForm()
+            }}
+          >
+            <motion.div
+              initial={{ opacity: 0, scale: 0.96, y: 16 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.96, y: 16 }}
+              className="max-h-[92vh] w-full max-w-4xl overflow-y-auto rounded-2xl border border-border bg-white shadow-2xl"
+            >
+              <div className="sticky top-0 z-10 flex items-center justify-between border-b border-border bg-white/95 px-5 py-4 backdrop-blur">
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-[0.16em] text-primary">Projects</p>
+                  <h2 id="project-form-title" className="mt-1 text-xl font-bold text-text">
+                    {projectFormMode === 'create' ? 'Create Project' : 'Edit Project'}
+                  </h2>
+                </div>
+                <button
+                  type="button"
+                  onClick={closeProjectForm}
+                  className="rounded-xl p-2 text-text-secondary transition hover:bg-background hover:text-text"
+                  aria-label="Close project form"
+                >
+                  <XMarkIcon className="h-5 w-5" />
+                </button>
+              </div>
+
+              {projectFormMode === 'edit' && projectDetailsQuery.isLoading ? (
+                <div className="grid min-h-64 place-items-center p-6 text-sm text-text-secondary">
+                  <span className="inline-flex items-center gap-2">
+                    <ArrowPathIcon className="h-5 w-5 animate-spin text-primary" />
+                    Loading project details...
+                  </span>
+                </div>
+              ) : (
+                <form
+                  onSubmit={projectFormMode === 'create' ? onCreateProject : onUpdateProject}
+                  className="space-y-5 p-5"
+                >
+                  <div className="grid gap-4 md:grid-cols-3">
+                    <TextInput label="Project Name" value={activeProjectForm.name} onChange={(event) => updateActiveProjectForm('name', event.target.value)} required placeholder="e.g., Shop refurbishment" />
+                    <Select label="Client (optional)" options={customerOptions} value={activeProjectForm.clientId} onChange={(event) => updateActiveProjectForm('clientId', String(event.target.value))} />
+                    <Select label="Project Type" options={projectTypeOptions} value={activeProjectForm.projectType} onChange={(event) => updateActiveProjectForm('projectType', event.target.value as ProjectType)} />
+                    <Select label="Status" options={projectStatusOptions} value={activeProjectForm.status} onChange={(event) => updateActiveProjectForm('status', event.target.value as ProjectStatus)} />
+                    <Select label="Branch" options={branchOptions} value={activeProjectForm.branchId} onChange={(event) => updateActiveProjectForm('branchId', String(event.target.value))} />
+                    <Select label="Project Manager (optional)" options={projectManagerOptions} value={activeProjectForm.projectManagerId} onChange={(event) => updateActiveProjectForm('projectManagerId', String(event.target.value))} />
+                    <TextInput label="Start Date" type="date" value={activeProjectForm.startDate} onChange={(event) => updateActiveProjectForm('startDate', event.target.value)} />
+                    <TextInput label="Expected End Date" type="date" value={activeProjectForm.expectedEndDate} onChange={(event) => updateActiveProjectForm('expectedEndDate', event.target.value)} />
+                    {projectFormMode === 'edit' && <TextInput label="Actual End Date" type="date" value={activeProjectForm.actualEndDate} onChange={(event) => updateActiveProjectForm('actualEndDate', event.target.value)} />}
+                    <TextInput label="Budget (KES)" type="number" min={0} step="0.01" value={activeProjectForm.budget} onChange={(event) => updateActiveProjectForm('budget', event.target.value)} />
+                    <TextInput label="Quoted Amount (KES)" type="number" min={0} step="0.01" value={activeProjectForm.quotedAmount} onChange={(event) => updateActiveProjectForm('quotedAmount', event.target.value)} />
+                    <TextInput label="Deposit Amount (KES)" type="number" min={0} step="0.01" value={activeProjectForm.depositAmount} onChange={(event) => updateActiveProjectForm('depositAmount', event.target.value)} />
+                    <div className="md:col-span-3">
+                      <TextArea label="Description" value={activeProjectForm.description} onChange={(event) => updateActiveProjectForm('description', event.target.value)} placeholder="Project description..." rows={3} />
+                    </div>
+                  </div>
+
+                  {projectError && (
+                    <p className="flex items-center gap-2 rounded-xl bg-error/10 px-4 py-3 text-sm text-error">
+                      <XCircleIcon className="h-5 w-5 shrink-0" />
+                      {projectError}
+                    </p>
+                  )}
+
+                  <div className="flex justify-end gap-3 border-t border-border pt-4">
+                    <Button type="button" variant="outline" onClick={closeProjectForm}>Cancel</Button>
+                    <Button type="submit" loading={projectFormMode === 'create' ? createProjectMutation.isPending : updateProjectMutation.isPending}>
+                      {projectFormMode === 'create' ? 'Create Project' : 'Save Changes'}
+                    </Button>
+                  </div>
+                </form>
+              )}
+            </motion.div>
+          </motion.div>
         )}
       </AnimatePresence>
 

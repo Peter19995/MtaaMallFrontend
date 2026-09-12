@@ -359,6 +359,7 @@ const InventoryManagementPage = ({ view = 'status' }: InventoryManagementPagePro
   const [stockTransferSuccess, setStockTransferSuccess] = useState<string | null>(null)
   const [stockStatusBranchFilter, setStockStatusBranchFilter] = useState('all')
   const [stockStatusProductFilter, setStockStatusProductFilter] = useState('all')
+  const [stockStatusSearch, setStockStatusSearch] = useState('')
 
   const productsQuery = useQuery({
     queryKey: ['products', 'inventory-select'],
@@ -1143,15 +1144,36 @@ const InventoryManagementPage = ({ view = 'status' }: InventoryManagementPagePro
     }
   }, [inventoryDashboardQuery.data?.summary])
 
+  const filteredStockStatusRows = useMemo(() => {
+    const term = stockStatusSearch.trim().toLocaleLowerCase()
+    if (!term) return stockStatusQuery.data ?? []
+
+    return (stockStatusQuery.data ?? []).filter((row) =>
+      [
+        row.product_name,
+        row.sku,
+        row.variant_sku,
+        row.branch_name,
+        row.category_name,
+        ...Object.values(row.variant_options ?? {}),
+        row.stock_quantity,
+        row.business_stock_quantity,
+        row.selling_price,
+        row.in_stock_value
+      ].some((value) => String(value ?? '').toLocaleLowerCase().includes(term))
+    )
+  }, [stockStatusQuery.data, stockStatusSearch])
+
   const stockStatusTotalValue = useMemo(
-    () => (stockStatusQuery.data ?? []).reduce((total, row) => total + row.in_stock_value, 0),
-    [stockStatusQuery.data]
+    () => filteredStockStatusRows.reduce((total, row) => total + row.in_stock_value, 0),
+    [filteredStockStatusRows]
   )
 
   const stockStatusColumns: Column<ProductStockStatusResponse>[] = [
     {
       key: 'product_name',
       header: 'Product',
+      sortable: true,
       render: (row) => {
         const variantSummary = formatVariantOptionsSummary(row.variant_options)
         const displaySku = row.variant_sku ?? row.sku
@@ -1175,6 +1197,8 @@ const InventoryManagementPage = ({ view = 'status' }: InventoryManagementPagePro
     {
       key: 'branch_name',
       header: 'Branch',
+      sortable: true,
+      sortValue: (row) => row.branch_name ?? '',
       render: (row) => (
         <span className="inline-flex items-center gap-1 rounded-full bg-secondary/10 px-3 py-1 text-xs font-medium text-secondary">
           <BuildingStorefrontIcon className="h-3 w-3" />
@@ -1185,6 +1209,8 @@ const InventoryManagementPage = ({ view = 'status' }: InventoryManagementPagePro
     {
       key: 'category_name',
       header: 'Category',
+      sortable: true,
+      sortValue: (row) => row.category_name ?? '',
       render: (row) => (
         <span className="inline-flex items-center gap-1 rounded-full bg-primary/10 px-3 py-1 text-xs font-medium text-primary">
           <TagIcon className="h-3 w-3" />
@@ -1195,6 +1221,7 @@ const InventoryManagementPage = ({ view = 'status' }: InventoryManagementPagePro
     {
       key: 'stock_quantity',
       header: 'Stock',
+      sortable: true,
       render: (row) => {
         const lowStock = isLowStockStatus(row)
 
@@ -1230,6 +1257,7 @@ const InventoryManagementPage = ({ view = 'status' }: InventoryManagementPagePro
     {
       key: 'selling_price',
       header: 'Sell price',
+      sortable: true,
       render: (row) => (
         <span className="font-medium text-primary">{formatCurrency(row.selling_price)}</span>
       ),
@@ -1239,6 +1267,7 @@ const InventoryManagementPage = ({ view = 'status' }: InventoryManagementPagePro
     {
       key: 'in_stock_value',
       header: 'Stock value',
+      sortable: true,
       render: (row) => (
         <span className="font-medium text-text">{formatCurrency(row.in_stock_value)}</span>
       ),
@@ -2514,7 +2543,14 @@ const InventoryManagementPage = ({ view = 'status' }: InventoryManagementPagePro
                 </p>
               </div>
 
-              <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
+              <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-end lg:justify-end">
+                <TextInput
+                  label="Search"
+                  value={stockStatusSearch}
+                  onChange={(event) => setStockStatusSearch(event.target.value)}
+                  placeholder="Product, SKU, branch, category..."
+                  className="min-w-[260px]"
+                />
                 <Select
                   label="Branch"
                   value={stockStatusBranchFilter}
@@ -2535,9 +2571,12 @@ const InventoryManagementPage = ({ view = 'status' }: InventoryManagementPagePro
                   onClick={() => {
                     setStockStatusBranchFilter('all')
                     setStockStatusProductFilter('all')
+                    setStockStatusSearch('')
                   }}
                   disabled={
-                    stockStatusBranchFilter === 'all' && stockStatusProductFilter === 'all'
+                    stockStatusBranchFilter === 'all' &&
+                    stockStatusProductFilter === 'all' &&
+                    !stockStatusSearch
                   }
                   className="sm:self-end"
                 >
@@ -2557,7 +2596,7 @@ const InventoryManagementPage = ({ view = 'status' }: InventoryManagementPagePro
           </div>
           <DataTable
             columns={stockStatusColumns}
-            data={stockStatusQuery.data ?? []}
+            data={filteredStockStatusRows}
             getRowKey={(row) =>
               `${row.branch_id ?? 'all'}-${row.product_id}-${row.product_variant_id ?? 'base'}`
             }
@@ -2575,9 +2614,11 @@ const InventoryManagementPage = ({ view = 'status' }: InventoryManagementPagePro
               ) : (
                 <div className="p-8 text-center">
                   <CubeIcon className="h-12 w-12 mx-auto text-text-tertiary/30 mb-3" />
-                  <p className="text-sm text-text-secondary">No stock records found</p>
+                  <p className="text-sm text-text-secondary">
+                    {stockStatusSearch ? 'No stock records match your search' : 'No stock records found'}
+                  </p>
                   <p className="mt-1 text-xs text-text-tertiary">
-                    Try another branch or product filter, or switch back to View All.
+                    Try another search or filter, or switch back to View All.
                   </p>
                 </div>
               )

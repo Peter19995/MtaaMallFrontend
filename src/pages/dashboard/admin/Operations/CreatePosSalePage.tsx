@@ -12,15 +12,15 @@ import {
   PlusIcon,
   XMarkIcon,
   ShoppingBagIcon,
-  CurrencyDollarIcon,
   TagIcon,
   PhoneIcon,
-  ReceiptRefundIcon,
   CheckCircleIcon,
   XCircleIcon,
   SparklesIcon,
   CalculatorIcon,
   MinusCircleIcon,
+  PencilIcon,
+  TrashIcon,
 } from '@heroicons/react/24/outline'
 import { CheckCircleIcon as CheckCircleSolid } from '@heroicons/react/24/solid'
 import { Button, Select, TextInput, useSiteDialog } from '@components/common'
@@ -98,7 +98,7 @@ const createEmptySaleForm = (branchId = ''): CreatePosSaleFormState => ({
   paymentModeId: '',
   paymentPhoneNumber: '',
   discountAmount: '0',
-  items: [createSaleItemRow()]
+  items: []
 })
 
 const extractApiErrorMessage = (error: unknown): string => {
@@ -315,6 +315,11 @@ const CreatePosSalePage = () => {
     null
   )
   const [showSuccessModal, setShowSuccessModal] = useState(false)
+  const [itemEditor, setItemEditor] = useState<{
+    mode: 'add' | 'edit'
+    draft: SaleItemRowState
+  } | null>(null)
+  const [itemEditorError, setItemEditorError] = useState<string | null>(null)
 
   const selectedBranchId = useMemo(
     () => parseOptionalNumber(createSaleForm.branchId),
@@ -349,6 +354,28 @@ const CreatePosSalePage = () => {
         limit: 200
       }),
     enabled: selectedBranchId !== undefined
+  })
+
+  const editorProductId = Number(itemEditor?.draft.productId)
+  const itemEditorProductQuery = useQuery({
+    queryKey: [
+      'products',
+      'details',
+      'pos-item-editor',
+      selectedBranchId ?? 'none',
+      Number.isFinite(editorProductId) ? editorProductId : 'none'
+    ],
+    queryFn: () =>
+      getProductRequest(editorProductId, {
+        branch_id: selectedBranchId
+      }),
+    enabled:
+      Boolean(itemEditor) &&
+      Number.isFinite(editorProductId) &&
+      editorProductId > 0 &&
+      typeof selectedBranchId === 'number' &&
+      selectedBranchId > 0,
+    staleTime: 30_000
   })
 
   const saleItemProductQueries = useQueries({
@@ -902,33 +929,118 @@ const CreatePosSalePage = () => {
     createPosSaleMutation.mutate(createSaleForm)
   }
 
-  const updateSaleRow = (rowId: string, updater: (row: SaleItemRowState) => SaleItemRowState) => {
-    setCreateSaleForm((previous) => ({
-      ...previous,
-      items: previous.items.map((row) => (row.id === rowId ? updater(row) : row))
-    }))
+  const openAddItem = () => {
+    setItemEditorError(null)
+    setItemEditor({ mode: 'add', draft: createSaleItemRow() })
   }
 
-  const addSaleRow = () => {
+  const openEditItem = (item: SaleItemRowState) => {
+    setItemEditorError(null)
+    setItemEditor({
+      mode: 'edit',
+      draft: {
+        ...item,
+        selectedVariantOptions: { ...item.selectedVariantOptions }
+      }
+    })
+  }
+
+  const updateItemDraft = (updater: (draft: SaleItemRowState) => SaleItemRowState) => {
+    setItemEditor((current) =>
+      current
+        ? {
+            ...current,
+            draft: updater(current.draft)
+          }
+        : current
+    )
+    setItemEditorError(null)
+  }
+
+  const setSaleRowQuantity = (
+    rowId: string,
+    nextQuantity: number,
+    availableStock: number | undefined
+  ) => {
+    if (availableStock === undefined || availableStock < 1) return
+
+    const quantity = Math.max(1, Math.min(Math.trunc(nextQuantity), availableStock))
     setCreateSaleForm((previous) => ({
       ...previous,
-      items: [...previous.items, createSaleItemRow()]
+      items: previous.items.map((item) =>
+        item.id === rowId ? { ...item, quantity: String(quantity) } : item
+      )
     }))
   }
 
   const removeSaleRow = (rowId: string) => {
     setCreateSaleForm((previous) => ({
       ...previous,
-      items:
-        previous.items.length > 1 ? previous.items.filter((item) => item.id !== rowId) : previous.items
+      items: previous.items.filter((item) => item.id !== rowId)
     }))
   }
 
   const clearAllItems = () => {
     setCreateSaleForm((previous) => ({
       ...previous,
-      items: [createSaleItemRow()]
+      items: []
     }))
+  }
+
+  const editorProduct = itemEditorProductQuery.data
+  const editorVariants = editorProduct?.variants ?? []
+  const editorInStockVariants = getInStockVariants(editorVariants)
+  const editorHasVariants = editorVariants.length > 0
+  const editorOptionNames = getOrderedVariantOptionNames(
+    editorProduct?.variant_options,
+    editorInStockVariants
+  )
+  const editorOptionSortMap = getVariantOptionSortMap(editorProduct?.variant_options)
+  const editorSelectedVariant = editorInStockVariants.find(
+    (variant) => String(variant.id) === itemEditor?.draft.productVariantId
+  )
+  const editorUnitPrice =
+    editorSelectedVariant?.price ?? productPriceById[itemEditor?.draft.productId ?? ''] ?? 0
+  const editorAvailableStock = editorHasVariants
+    ? editorSelectedVariant?.stock_quantity
+    : productStockById[itemEditor?.draft.productId ?? '']
+  const editorQuantity = Number(itemEditor?.draft.quantity ?? 0)
+  const editorLineTotal =
+    Number.isFinite(editorQuantity) && editorQuantity > 0 ? editorUnitPrice * editorQuantity : 0
+
+  const saveItemDraft = () => {
+    if (!itemEditor?.draft.productId) {
+      setItemEditorError('Choose a product.')
+      return
+    }
+    if (!editorProduct) {
+      setItemEditorError('Product details are still loading. Try again.')
+      return
+    }
+    if (editorHasVariants && !itemEditor.draft.productVariantId) {
+      setItemEditorError('Choose all required product options.')
+      return
+    }
+    if (!Number.isInteger(editorQuantity) || editorQuantity < 1) {
+      setItemEditorError('Quantity must be a whole number greater than zero.')
+      return
+    }
+    if (editorAvailableStock === undefined || editorQuantity > editorAvailableStock) {
+      setItemEditorError(`Only ${editorAvailableStock ?? 0} item(s) are available in this branch.`)
+      return
+    }
+
+    setCreateSaleForm((previous) => ({
+      ...previous,
+      items:
+        itemEditor.mode === 'add'
+          ? [...previous.items, itemEditor.draft]
+          : previous.items.map((row) =>
+              row.id === itemEditor.draft.id ? itemEditor.draft : row
+            )
+    }))
+    setItemEditor(null)
+    setItemEditorError(null)
   }
 
   return (
@@ -1037,7 +1149,7 @@ const CreatePosSalePage = () => {
                       ...previous,
                       branchId: String(event.target.value),
                       paymentModeId: '',
-                      items: [createSaleItemRow()]
+                      items: []
                     }))
                   }
                   disabled={branchesQuery.isLoading}
@@ -1115,299 +1227,182 @@ const CreatePosSalePage = () => {
 
             {/* Items Section */}
             <div className="space-y-4">
-              <div className="flex items-center justify-between">
-                <h3 className="text-sm font-semibold text-text flex items-center gap-2">
-                  <ShoppingBagIcon className="h-4 w-4 text-primary" />
-                  Sale Items
-                </h3>
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <h3 className="flex items-center gap-2 text-sm font-semibold text-text">
+                    <ShoppingBagIcon className="h-4 w-4 text-primary" />
+                    Sale Items
+                    <span className="rounded-full bg-primary/10 px-2 py-0.5 text-xs text-primary">
+                      {createSaleForm.items.length}
+                    </span>
+                  </h3>
+                  <p className="mt-1 text-xs text-text-tertiary">
+                    Add products one at a time, then edit them directly from the list.
+                  </p>
+                </div>
                 <div className="flex gap-2">
-                  <Button 
-                    type="button" 
-                    size="sm" 
-                    variant="outline" 
-                    onClick={clearAllItems}
-                    disabled={createSaleForm.items.length === 1 && !createSaleForm.items[0].productId}
-                  >
-                    <MinusCircleIcon className="h-4 w-4 mr-1" />
-                    Clear All
-                  </Button>
-                  <Button 
-                    type="button" 
-                    size="sm" 
-                    onClick={addSaleRow}
+                  {createSaleForm.items.length > 0 && (
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="ghost"
+                      onClick={clearAllItems}
+                      className="text-error hover:bg-error/5"
+                    >
+                      <MinusCircleIcon className="mr-1 h-4 w-4" />
+                      Clear All
+                    </Button>
+                  )}
+                  <Button
+                    type="button"
+                    size="sm"
+                    onClick={openAddItem}
+                    disabled={!selectedBranchId || productsQuery.isLoading || !hasSelectableProducts}
                     className="bg-gradient-to-r from-primary to-secondary text-white"
                   >
-                    <PlusIcon className="h-4 w-4 mr-1" />
+                    <PlusIcon className="mr-1 h-4 w-4" />
                     Add Item
                   </Button>
                 </div>
               </div>
 
-              <AnimatePresence>
-                {createSaleForm.items.map((item, index) => {
-                  const rowProduct = saleItemProductQueries[index]?.data
-                  const variants = rowProduct?.variants ?? []
-                  const inStockVariants = getInStockVariants(variants)
-                  const hasVariants = variants.length > 0
-                  const selectedVariant = inStockVariants.find(
-                    (variant) => String(variant.id) === item.productVariantId
-                  )
-                  const orderedOptionNames = getOrderedVariantOptionNames(
-                    rowProduct?.variant_options,
-                    inStockVariants
-                  )
-                  const optionSortMap = getVariantOptionSortMap(rowProduct?.variant_options)
-                  const unitPrice = selectedVariant?.price ?? productPriceById[item.productId] ?? 0
-                  const quantity = Number(item.quantity)
-                  const safeQuantity = Number.isFinite(quantity) && quantity > 0 ? quantity : 0
-                  const lineTotal = unitPrice * safeQuantity
-                  const availableStock = hasVariants
-                    ? selectedVariant?.stock_quantity
-                    : productStockById[item.productId]
-                  const quantityHelper = hasVariants
-                    ? item.productVariantId
-                      ? `${availableStock ?? 0} in stock`
-                      : inStockVariants.length > 0
-                      ? 'Choose the exact in-stock options first'
-                      : 'No in-stock variants available'
-                    : availableStock !== undefined
-                    ? `${availableStock} in stock`
-                    : 'Choose a product'
-                  const variantSummary = selectedVariant
-                    ? formatVariantLabel(selectedVariant)
-                    : hasVariants
-                    ? 'Choose the exact option combination'
-                    : 'Base product'
+              {createSaleForm.items.length === 0 ? (
+                <button
+                  type="button"
+                  onClick={openAddItem}
+                  disabled={!selectedBranchId || productsQuery.isLoading || !hasSelectableProducts}
+                  className="flex w-full flex-col items-center justify-center rounded-xl border-2 border-dashed border-border bg-background/50 px-6 py-10 text-center transition hover:border-primary/50 hover:bg-primary/5 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  <span className="grid h-12 w-12 place-items-center rounded-xl bg-primary/10 text-primary">
+                    <ShoppingBagIcon className="h-6 w-6" />
+                  </span>
+                  <span className="mt-3 font-semibold text-text">
+                    {selectedBranchId ? 'Add the first sale item' : 'Select a branch first'}
+                  </span>
+                  <span className="mt-1 text-sm text-text-secondary">
+                    {selectedBranchId
+                      ? 'Choose a product, its options, and quantity in a simple popup.'
+                      : 'Products and stock are loaded for the selected branch.'}
+                  </span>
+                </button>
+              ) : (
+                <div className="overflow-hidden rounded-xl border border-border">
+                  <div className="hidden grid-cols-[minmax(0,2fr)_minmax(140px,1fr)_128px_120px_120px] gap-3 bg-background px-4 py-3 text-xs font-semibold uppercase tracking-wide text-text-tertiary md:grid">
+                    <span>Product</span>
+                    <span>Variant</span>
+                    <span className="text-right">Quantity</span>
+                    <span className="text-right">Total</span>
+                    <span className="text-right">Actions</span>
+                  </div>
+                  <AnimatePresence initial={false}>
+                    {createSaleForm.items.map((item, index) => {
+                      const rowProduct = saleItemProductQueries[index]?.data
+                      const selectedVariant = getInStockVariants(rowProduct?.variants ?? []).find(
+                        (variant) => String(variant.id) === item.productVariantId
+                      )
+                      const productOption = (productsQuery.data ?? []).find(
+                        (product) => String(product.id) === item.productId
+                      )
+                      const productName = rowProduct?.name ?? productOption?.name ?? 'Loading product…'
+                      const productSku = selectedVariant?.sku ?? rowProduct?.sku ?? productOption?.sku
+                      const variantSummary = selectedVariant
+                        ? formatVariantLabel(selectedVariant)
+                        : (rowProduct?.variants?.length ?? 0) > 0
+                          ? 'Variant loading…'
+                          : 'Base product'
+                      const unitPrice = selectedVariant?.price ?? productPriceById[item.productId] ?? 0
+                      const quantity = Number(item.quantity)
+                      const safeQuantity = Number.isFinite(quantity) && quantity >= 1 ? quantity : 1
+                      const availableStock = (rowProduct?.variants?.length ?? 0) > 0
+                        ? selectedVariant?.stock_quantity
+                        : productStockById[item.productId]
+                      const lineTotal =
+                        Number.isFinite(quantity) && quantity > 0 ? unitPrice * quantity : 0
 
-                  return (
-                    <motion.div
-                      key={item.id}
-                      initial={{ opacity: 0, x: -20 }}
-                      animate={{ opacity: 1, x: 0 }}
-                      exit={{ opacity: 0, x: 20 }}
-                      className="relative bg-background rounded-lg border border-border p-4"
-                    >
-                      <div className="absolute -top-2 -left-2 bg-primary text-white text-xs px-2 py-1 rounded-full">
-                        Item {index + 1}
-                      </div>
-                      
-                      <div className="grid gap-3 md:grid-cols-12 mt-4">
-                        <div className="md:col-span-4">
-                          <Select
-                            label="Product"
-                            options={productOptions}
-                            value={item.productId}
-                            onChange={(event) =>
-                              updateSaleRow(item.id, (current) => ({
-                                ...current,
-                                productId: String(event.target.value),
-                                productVariantId: '',
-                                selectedVariantOptions: {},
-                                quantity: '1'
-                              }))
-                            }
-                            disabled={!selectedBranchId || productsQuery.isLoading || !hasSelectableProducts}
-                            required
-                          />
-                        </div>
-
-                        {hasVariants
-                          ? orderedOptionNames.map((optionName) => {
-                              const matchingVariantsForOption = getMatchingVariants(
-                                inStockVariants,
-                                item.selectedVariantOptions,
-                                optionName
-                              )
-                              const valueOptions = Array.from(
-                                new Set(
-                                  matchingVariantsForOption
-                                    .map((variant) => variant.options?.[optionName])
-                                    .filter((value): value is string => Boolean(value))
-                                )
-                              ).sort((left, right) => {
-                                const leftSortOrder = optionSortMap[optionName]?.[left] ?? Number.MAX_SAFE_INTEGER
-                                const rightSortOrder =
-                                  optionSortMap[optionName]?.[right] ?? Number.MAX_SAFE_INTEGER
-
-                                if (leftSortOrder !== rightSortOrder) {
-                                  return leftSortOrder - rightSortOrder
-                                }
-
-                                return left.localeCompare(right)
-                              })
-
-                              return (
-                                <div
-                                  key={`${item.id}-${optionName}`}
-                                  className="md:col-span-2"
-                                >
-                                  <Select
-                                    label={optionName}
-                                    options={[
-                                      {
-                                        label:
-                                          valueOptions.length > 0
-                                            ? `Select ${optionName}`
-                                            : `No in-stock ${optionName} values`,
-                                        value: ''
-                                      },
-                                      ...valueOptions.map((value) => ({
-                                        label: value,
-                                        value
-                                      }))
-                                    ]}
-                                    value={item.selectedVariantOptions[optionName] ?? ''}
-                                    onChange={(event) =>
-                                      updateSaleRow(item.id, (current) => {
-                                        const nextOptionValue = String(event.target.value)
-                                        const nextSelectedOptions = nextOptionValue
-                                          ? {
-                                              ...current.selectedVariantOptions,
-                                              [optionName]: nextOptionValue
-                                            }
-                                          : (() => {
-                                              const nextOptions: Record<string, string> = {}
-                                              Object.entries(current.selectedVariantOptions).forEach(
-                                                ([name, value]) => {
-                                                  if (name !== optionName) {
-                                                    nextOptions[name] = value
-                                                  }
-                                                }
-                                              )
-                                              return nextOptions
-                                            })()
-                                        const matches = getMatchingVariants(
-                                          inStockVariants,
-                                          nextSelectedOptions
-                                        )
-                                        const hasFullSelection = orderedOptionNames.every(
-                                          (name) => Boolean(nextSelectedOptions[name])
-                                        )
-                                        const resolvedVariant =
-                                          hasFullSelection && matches.length === 1 ? matches[0] : null
-
-                                        return {
-                                          ...current,
-                                          productVariantId: resolvedVariant
-                                            ? String(resolvedVariant.id)
-                                            : '',
-                                          selectedVariantOptions: resolvedVariant?.options ?? nextSelectedOptions,
-                                          quantity: '1'
-                                        }
-                                      })
-                                    }
-                                    disabled={
-                                      !item.productId ||
-                                      saleItemProductQueries[index]?.isLoading ||
-                                      inStockVariants.length === 0
-                                    }
-                                    helperText={
-                                      valueOptions.length > 0
-                                        ? `${valueOptions.length} in-stock option${
-                                            valueOptions.length === 1 ? '' : 's'
-                                          }`
-                                        : 'No available values for the current selection'
-                                    }
-                                  />
-                                </div>
-                              )
-                            })
-                          : null}
-                      </div>
-
-                      <div className="grid gap-3 md:grid-cols-12 mt-3">
-                        <div className="md:col-span-3">
-                          <TextInput
-                            label="Quantity"
-                            type="number"
-                            min={1}
-                            max={availableStock !== undefined ? availableStock : undefined}
-                            value={item.quantity}
-                            onChange={(event) =>
-                              updateSaleRow(item.id, (current) => ({
-                                ...current,
-                                quantity: event.target.value
-                              }))
-                            }
-                            helperText={quantityHelper}
-                            required
-                          />
-                        </div>
-
-                        <div className="md:col-span-3">
-                          <TextInput
-                            label="Unit Price"
-                            value={formatCurrency(unitPrice)}
-                            readOnly
-                            disabled
-                            className="bg-white"
-                          />
-                        </div>
-
-                        <div className="md:col-span-3">
-                          <TextInput
-                            label="Line Total"
-                            value={formatCurrency(lineTotal)}
-                            readOnly
-                            disabled
-                            className="bg-white font-bold text-primary"
-                          />
-                        </div>
-
-                        <div className="md:col-span-3">
-                          <div className="flex h-full items-end">
-                            <Button
-                              type="button"
-                              size="sm"
-                              variant="ghost"
-                              onClick={() => removeSaleRow(item.id)}
-                              disabled={createSaleForm.items.length === 1}
-                              className="w-full text-error hover:bg-error/5"
-                            >
-                              <XMarkIcon className="h-4 w-4 mr-1" />
-                              Remove Item
-                            </Button>
+                      return (
+                        <motion.div
+                          key={item.id}
+                          initial={{ opacity: 0, y: 8 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          exit={{ opacity: 0, x: 20 }}
+                          className="grid gap-3 border-t border-border px-4 py-4 first:border-t-0 md:grid-cols-[minmax(0,2fr)_minmax(140px,1fr)_128px_120px_120px] md:items-center"
+                        >
+                          <div className="min-w-0">
+                            <p className="truncate font-semibold text-text">{productName}</p>
+                            <p className="mt-0.5 truncate text-xs text-text-tertiary">
+                              {productSku || 'Product'} · {formatCurrency(unitPrice)} each
+                            </p>
                           </div>
-                        </div>
-                      </div>
+                          <div>
+                            <span className="text-xs text-text-tertiary md:hidden">Variant: </span>
+                            <span className="text-sm text-text-secondary">{variantSummary}</span>
+                          </div>
+                          <div className="flex items-center justify-between gap-3 md:justify-end">
+                            <span className="text-xs text-text-tertiary md:hidden">Quantity</span>
+                            <div className="inline-flex h-9 items-center overflow-hidden rounded-lg border border-border bg-white shadow-sm">
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  setSaleRowQuantity(item.id, safeQuantity - 1, availableStock)
+                                }
+                                disabled={availableStock === undefined || safeQuantity <= 1}
+                                className="grid h-full w-9 place-items-center text-text-secondary transition hover:bg-primary/10 hover:text-primary disabled:cursor-not-allowed disabled:opacity-35"
+                                title="Reduce quantity"
+                                aria-label={`Reduce quantity of ${productName}`}
+                              >
+                                <MinusCircleIcon className="h-4 w-4" />
+                              </button>
+                              <span className="w-9 text-center text-sm font-semibold text-text">
+                                {item.quantity}
+                              </span>
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  setSaleRowQuantity(item.id, safeQuantity + 1, availableStock)
+                                }
+                                disabled={
+                                  availableStock === undefined || safeQuantity >= availableStock
+                                }
+                                className="grid h-full w-9 place-items-center text-text-secondary transition hover:bg-primary/10 hover:text-primary disabled:cursor-not-allowed disabled:opacity-35"
+                                title="Increase quantity"
+                                aria-label={`Increase quantity of ${productName}`}
+                              >
+                                <PlusIcon className="h-4 w-4" />
+                              </button>
+                            </div>
+                          </div>
+                          <div className="flex items-center justify-between md:block md:text-right">
+                            <span className="text-xs text-text-tertiary md:hidden">Line total</span>
+                            <span className="font-bold text-primary">{formatCurrency(lineTotal)}</span>
+                          </div>
+                          <div className="flex justify-end gap-1">
+                            <button
+                              type="button"
+                              onClick={() => openEditItem(item)}
+                              className="rounded-lg p-2 text-text-secondary transition hover:bg-primary/10 hover:text-primary"
+                              title="Edit item"
+                              aria-label={`Edit ${productName}`}
+                            >
+                              <PencilIcon className="h-4 w-4" />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => removeSaleRow(item.id)}
+                              className="rounded-lg p-2 text-text-secondary transition hover:bg-error/10 hover:text-error"
+                              title="Remove item"
+                              aria-label={`Remove ${productName}`}
+                            >
+                              <TrashIcon className="h-4 w-4" />
+                            </button>
+                          </div>
+                        </motion.div>
+                      )
+                    })}
+                  </AnimatePresence>
+                </div>
+              )}
+            </div>
 
-                      {item.productId ? (
-                        <div className="mt-3 rounded-lg border border-border bg-white px-3 py-2 text-xs text-text-secondary">
-                          {saleItemProductQueries[index]?.isLoading ? (
-                            <div className="flex items-center gap-2">
-                              <XCircleIcon className="h-3.5 w-3.5 text-text-tertiary" />
-                              Loading product details...
-                            </div>
-                          ) : (saleItemProductQueries[index]?.data?.variants?.length ?? 0) > 0 &&
-                            inStockVariants.length === 0 ? (
-                            <p>No in-stock variants are available for this product in the selected branch.</p>
-                          ) : (saleItemProductQueries[index]?.data?.variants?.length ?? 0) > 0 &&
-                            !item.productVariantId ? (
-                            <p>Select the exact in-stock option combination before processing this sale item.</p>
-                          ) : (
-                            <div className="flex flex-col gap-1 sm:flex-row sm:flex-wrap sm:items-center sm:gap-4">
-                              <span>
-                                Selling:
-                                <strong className="ml-1 text-text">{variantSummary}</strong>
-                              </span>
-                              {selectedVariant ? (
-                                <span>
-                                  SKU:
-                                  <strong className="ml-1 text-text">{selectedVariant.sku}</strong>
-                                </span>
-                              ) : null}
-                              <span>
-                                Available stock:
-                                <strong className="ml-1 text-text">{availableStock ?? 0}</strong>
-                              </span>
-                            </div>
-                          )}
-                        </div>
-                      ) : null}
-                    </motion.div>
-                  )
-                })}
-              </AnimatePresence>
 
               {/* Sale Summary */}
               <motion.div
@@ -1437,8 +1432,6 @@ const CreatePosSalePage = () => {
                   </div>
                 </div>
               </motion.div>
-            </div>
-
             {/* Form Actions */}
             <div className="flex justify-end gap-3 pt-4 border-t border-border">
               <Link to={workspacePath('/dashboard/admin/sales')}>
@@ -1465,6 +1458,289 @@ const CreatePosSalePage = () => {
           </form>
         </div>
       </motion.section>
+
+      {/* Add/Edit Sale Item Modal */}
+      <AnimatePresence>
+        {itemEditor && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 flex items-center justify-center bg-text/55 p-4 backdrop-blur-sm"
+            onMouseDown={(event) => {
+              if (event.currentTarget === event.target) {
+                setItemEditor(null)
+                setItemEditorError(null)
+              }
+            }}
+          >
+            <motion.div
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="pos-item-editor-title"
+              initial={{ opacity: 0, scale: 0.96, y: 16 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.96, y: 16 }}
+              className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-2xl border border-border bg-white shadow-2xl"
+            >
+              <div className="sticky top-0 z-10 flex items-start justify-between gap-4 border-b border-border bg-gradient-to-r from-primary/10 via-white to-secondary/10 p-5">
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-wide text-primary">
+                    Sale item
+                  </p>
+                  <h2 id="pos-item-editor-title" className="mt-1 text-xl font-bold text-text">
+                    {itemEditor.mode === 'add' ? 'Add an item' : 'Edit item'}
+                  </h2>
+                  <p className="mt-1 text-sm text-text-secondary">
+                    Choose the product and quantity, then save it to the sale.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  aria-label="Close item form"
+                  className="rounded-lg p-2 text-text-tertiary transition hover:bg-white hover:text-text"
+                  onClick={() => {
+                    setItemEditor(null)
+                    setItemEditorError(null)
+                  }}
+                >
+                  <XMarkIcon className="h-5 w-5" />
+                </button>
+              </div>
+
+              <div className="space-y-5 p-5">
+                <Select
+                  label="Product *"
+                  options={productOptions}
+                  value={itemEditor.draft.productId}
+                  onChange={(event) =>
+                    updateItemDraft((draft) => ({
+                      ...draft,
+                      productId: String(event.target.value),
+                      productVariantId: '',
+                      selectedVariantOptions: {},
+                      quantity: '1'
+                    }))
+                  }
+                  disabled={productsQuery.isLoading || !hasSelectableProducts}
+                  required
+                />
+
+                {itemEditor.draft.productId && itemEditorProductQuery.isLoading && (
+                  <div className="flex items-center gap-2 rounded-lg bg-background p-3 text-sm text-text-secondary">
+                    <span className="h-4 w-4 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+                    Loading product options…
+                  </div>
+                )}
+
+                {editorProduct && editorHasVariants && (
+                  <div className="grid gap-4 sm:grid-cols-2">
+                    {editorOptionNames.map((optionName) => {
+                      const matchingVariants = getMatchingVariants(
+                        editorInStockVariants,
+                        itemEditor.draft.selectedVariantOptions,
+                        optionName
+                      )
+                      const values = Array.from(
+                        new Set(
+                          matchingVariants
+                            .map((variant) => variant.options?.[optionName])
+                            .filter((value): value is string => Boolean(value))
+                        )
+                      ).sort((left, right) => {
+                        const leftOrder =
+                          editorOptionSortMap[optionName]?.[left] ?? Number.MAX_SAFE_INTEGER
+                        const rightOrder =
+                          editorOptionSortMap[optionName]?.[right] ?? Number.MAX_SAFE_INTEGER
+                        return leftOrder === rightOrder
+                          ? left.localeCompare(right)
+                          : leftOrder - rightOrder
+                      })
+
+                      return (
+                        <Select
+                          key={optionName}
+                          label={`${optionName} *`}
+                          options={[
+                            {
+                              label: values.length
+                                ? `Select ${optionName}`
+                                : `No in-stock ${optionName} values`,
+                              value: ''
+                            },
+                            ...values.map((value) => ({ label: value, value }))
+                          ]}
+                          value={itemEditor.draft.selectedVariantOptions[optionName] ?? ''}
+                          onChange={(event) =>
+                            updateItemDraft((draft) => {
+                              const value = String(event.target.value)
+                              const selectedOptions = { ...draft.selectedVariantOptions }
+                              if (value) selectedOptions[optionName] = value
+                              else delete selectedOptions[optionName]
+
+                              const matches = getMatchingVariants(
+                                editorInStockVariants,
+                                selectedOptions
+                              )
+                              const isComplete = editorOptionNames.every(
+                                (name) => Boolean(selectedOptions[name])
+                              )
+                              const resolvedVariant =
+                                isComplete && matches.length === 1 ? matches[0] : null
+
+                              return {
+                                ...draft,
+                                productVariantId: resolvedVariant
+                                  ? String(resolvedVariant.id)
+                                  : '',
+                                selectedVariantOptions:
+                                  resolvedVariant?.options ?? selectedOptions,
+                                quantity: '1'
+                              }
+                            })
+                          }
+                          disabled={editorInStockVariants.length === 0}
+                        />
+                      )
+                    })}
+                  </div>
+                )}
+
+                {editorProduct && editorHasVariants && editorInStockVariants.length === 0 && (
+                  <p className="rounded-lg border border-warning/20 bg-warning/10 p-3 text-sm text-warning-dark">
+                    This product has no in-stock variants in the selected branch.
+                  </p>
+                )}
+                <div className="grid gap-4 sm:grid-cols-3">
+                  <div className="space-y-1.5 text-xs sm:text-sm">
+                    <label htmlFor="pos-item-quantity" className="block font-medium text-text-secondary">
+                      Quantity *
+                    </label>
+                    <div className="flex h-10 overflow-hidden rounded-md border border-border bg-white shadow-sm">
+                      <button
+                        type="button"
+                        aria-label="Reduce item quantity"
+                        onClick={() =>
+                          updateItemDraft((draft) => ({
+                            ...draft,
+                            quantity: String(Math.max(1, editorQuantity - 1))
+                          }))
+                        }
+                        disabled={
+                          !editorProduct ||
+                          (editorHasVariants && !editorSelectedVariant) ||
+                          editorQuantity <= 1
+                        }
+                        className="grid w-10 place-items-center border-r border-border text-text-secondary transition hover:bg-primary/5 hover:text-primary disabled:cursor-not-allowed disabled:opacity-35"
+                      >
+                        <MinusCircleIcon className="h-4 w-4" />
+                      </button>
+                      <input
+                        id="pos-item-quantity"
+                        aria-label="Item quantity"
+                        type="number"
+                        min={1}
+                        max={editorAvailableStock}
+                        step={1}
+                        value={itemEditor.draft.quantity}
+                        onChange={(event) =>
+                          updateItemDraft((draft) => ({ ...draft, quantity: event.target.value }))
+                        }
+                        disabled={
+                          !editorProduct ||
+                          (editorHasVariants && !editorSelectedVariant) ||
+                          editorAvailableStock === 0
+                        }
+                        className="min-w-0 flex-1 bg-white px-2 text-center font-semibold text-text outline-none [appearance:textfield] focus:bg-primary/5 [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+                        required
+                      />
+                      <button
+                        type="button"
+                        aria-label="Increase item quantity"
+                        onClick={() =>
+                          updateItemDraft((draft) => ({
+                            ...draft,
+                            quantity: String(
+                              Math.min(editorAvailableStock ?? 1, Math.max(1, editorQuantity) + 1)
+                            )
+                          }))
+                        }
+                        disabled={
+                          !editorProduct ||
+                          (editorHasVariants && !editorSelectedVariant) ||
+                          editorAvailableStock === undefined ||
+                          editorQuantity >= editorAvailableStock
+                        }
+                        className="grid w-10 place-items-center border-l border-border text-text-secondary transition hover:bg-primary/5 hover:text-primary disabled:cursor-not-allowed disabled:opacity-35"
+                      >
+                        <PlusIcon className="h-4 w-4" />
+                      </button>
+                    </div>
+                    <p className="text-[11px] text-text-tertiary">
+                      {itemEditor.draft.productId
+                        ? editorHasVariants && !editorSelectedVariant
+                          ? 'Choose all product options first.'
+                          : `${editorAvailableStock ?? 0} available`
+                        : 'Choose a product first.'}
+                    </p>
+                  </div>
+                  <TextInput
+                    label="Unit Price"
+                    value={formatCurrency(editorUnitPrice)}
+                    readOnly
+                    disabled
+                    className="bg-background"
+                  />
+                  <TextInput
+                    label="Line Total"
+                    value={formatCurrency(editorLineTotal)}
+                    readOnly
+                    disabled
+                    className="bg-primary/5 font-bold text-primary"
+                  />
+                </div>
+
+                {editorSelectedVariant && (
+                  <div className="rounded-lg border border-border bg-background px-4 py-3 text-sm text-text-secondary">
+                    <span className="font-semibold text-text">
+                      {formatVariantLabel(editorSelectedVariant)}
+                    </span>
+                    <span className="mx-2 text-text-tertiary">·</span>
+                    SKU {editorSelectedVariant.sku}
+                  </div>
+                )}
+
+                {itemEditorError && (
+                  <p role="alert" className="rounded-lg border border-error/20 bg-error/10 p-3 text-sm text-error">
+                    {itemEditorError}
+                  </p>
+                )}
+
+                <div className="flex flex-wrap justify-end gap-3 border-t border-border pt-5">
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    onClick={() => {
+                      setItemEditor(null)
+                      setItemEditorError(null)
+                    }}
+                  >
+                    Cancel
+                  </Button>
+                  <Button
+                    type="button"
+                    onClick={saveItemDraft}
+                    disabled={itemEditorProductQuery.isLoading}
+                    className="min-w-28 bg-gradient-to-r from-primary to-secondary text-white"
+                  >
+                    {itemEditor.mode === 'add' ? 'Add to Sale' : 'Save Changes'}
+                  </Button>
+                </div>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* Feedback Toast */}
       <AnimatePresence>

@@ -66,8 +66,8 @@ export type ProjectCreatePayload = {
   budget?: number
   quoted_amount?: number
   deposit_amount?: number
-  client_id: number
-  project_manager_id?: number
+  client_id?: number | null
+  project_manager_id?: number | null
   branch_id?: number
 }
 
@@ -82,7 +82,7 @@ export type ProjectResponse = {
   budget?: number
   quoted_amount?: number
   deposit_amount?: number
-  client_id: number
+  client_id?: number | null
   project_manager_id?: number | null
   branch_id?: number | null
   actual_cost?: number
@@ -220,7 +220,8 @@ export type ProjectUpdatePayload = {
   budget?: number
   quoted_amount?: number
   deposit_amount?: number
-  project_manager_id?: number
+  client_id?: number | null
+  project_manager_id?: number | null
 }
 
 export const listPublicProjectsRequest = async (

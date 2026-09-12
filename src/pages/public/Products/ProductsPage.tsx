@@ -13,7 +13,9 @@ import {
   ChevronDownIcon,
   SparklesIcon,
   FireIcon,
-  ArrowPathIcon
+  ArrowPathIcon,
+  MinusIcon,
+  PlusIcon
 } from '@heroicons/react/24/outline'
 import { HeartIcon as HeartIconSolid } from '@heroicons/react/24/solid'
 import { Button, TextInput } from '@components/common'
@@ -72,7 +74,11 @@ const sortOptions = [
 ]
 
 const ProductsPage = () => {
-  const [variantChoice, setVariantChoice] = useState<{ product: ProductResponse; variants: ProductVariantResponse[] } | null>(null)
+  const [variantChoice, setVariantChoice] = useState<{
+    product: ProductResponse
+    variants: ProductVariantResponse[]
+    quantity: number
+  } | null>(null)
   const cart = useContext(CartContext)
   const [searchParams] = useSearchParams()
   const [search, setSearch] = useState(searchParams.get('search') ?? '')
@@ -84,6 +90,7 @@ const ProductsPage = () => {
   const [inStockOnly, setInStockOnly] = useState(false)
   const [onOfferOnly, setOnOfferOnly] = useState(false)
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid')
+  const [productQuantities, setProductQuantities] = useState<Record<number, number>>({})
   useEffect(() => {
     setSearch(searchParams.get('search') ?? '')
     setSelectedCategory(searchParams.get('category') ?? 'all')
@@ -170,7 +177,59 @@ const ProductsPage = () => {
     return filtered
   }, [products, search, selectedCategory, sortBy, priceRange, inStockOnly, onOfferOnly])
 
-  const addProductToCart = async (product: ProductResponse, variant?: ProductVariantResponse) => {
+  const getProductQuantity = (product: ProductResponse): number =>
+    Math.max(1, Math.min(productQuantities[product.id] ?? 1, Math.max(1, product.stock_quantity)))
+
+  const setProductQuantity = (product: ProductResponse, quantity: number) => {
+    const maximum = Math.max(1, product.stock_quantity)
+    const nextQuantity = Math.max(1, Math.min(Number.isFinite(quantity) ? quantity : 1, maximum))
+    setProductQuantities((previous) => ({ ...previous, [product.id]: nextQuantity }))
+  }
+
+  const quantityControl = (product: ProductResponse) => {
+    const quantity = getProductQuantity(product)
+    const outOfStock = product.stock_quantity <= 0
+
+    return (
+      <div className="inline-flex h-9 items-center overflow-hidden rounded-lg border border-border bg-white shadow-sm">
+        <button
+          type="button"
+          aria-label={`Reduce quantity of ${product.name}`}
+          onClick={() => setProductQuantity(product, quantity - 1)}
+          disabled={outOfStock || quantity <= 1}
+          className="grid h-full w-9 place-items-center text-text-secondary transition hover:bg-primary/5 hover:text-primary disabled:cursor-not-allowed disabled:opacity-35"
+        >
+          <MinusIcon className="h-4 w-4" />
+        </button>
+        <input
+          aria-label={`Quantity of ${product.name}`}
+          type="number"
+          min={1}
+          max={Math.max(1, product.stock_quantity)}
+          step={1}
+          value={quantity}
+          disabled={outOfStock}
+          onChange={(event) => setProductQuantity(product, Number(event.target.value))}
+          className="h-full w-12 border-x border-border bg-white text-center text-sm font-semibold text-text outline-none [appearance:textfield] focus:bg-primary/5 [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+        />
+        <button
+          type="button"
+          aria-label={`Increase quantity of ${product.name}`}
+          onClick={() => setProductQuantity(product, quantity + 1)}
+          disabled={outOfStock || quantity >= product.stock_quantity}
+          className="grid h-full w-9 place-items-center text-text-secondary transition hover:bg-primary/5 hover:text-primary disabled:cursor-not-allowed disabled:opacity-35"
+        >
+          <PlusIcon className="h-4 w-4" />
+        </button>
+      </div>
+    )
+  }
+
+  const addProductToCart = async (
+    product: ProductResponse,
+    variant?: ProductVariantResponse,
+    requestedQuantity = getProductQuantity(product)
+  ) => {
     if (product.stock_quantity <= 0) {
       toast.error(`${product.name} is currently out of stock`, {
         icon: '😞',
@@ -186,17 +245,20 @@ const ProductsPage = () => {
     try {
     if (!variant) {
       const variants = await listProductVariantsRequest(product.id)
-      if (variants.length) { setVariantChoice({ product, variants }); return }
+      if (variants.length) { setVariantChoice({ product, variants, quantity: requestedQuantity }); return }
     }
+    const availableStock = variant?.stock_quantity ?? product.stock_quantity
+    const quantity = Math.max(1, Math.min(requestedQuantity, availableStock))
     await cart.addItem({
       id: String(product.id),
       product_id: product.id,
       product_variant_id: variant?.id,
       name: product.name + (variant ? ' · ' + variant.sku : ''),
       price: variant?.price_override ?? product.price,
-      quantity: 1
+      quantity
     })
     setVariantChoice(null)
+    setProductQuantities((previous) => ({ ...previous, [product.id]: 1 }))
 
     toast.success(`${product.name} added to your cart`, {
       icon: '🛒',
@@ -248,7 +310,7 @@ const ProductsPage = () => {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-background via-white to-background">
-      {variantChoice && <div role="dialog" aria-modal="true" aria-label="Choose product variant" className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"><div className="max-h-[80vh] w-full max-w-lg overflow-auto rounded-2xl bg-white p-6"><h2 className="mb-4 text-xl font-semibold">Choose {variantChoice.product.name}</h2>{variantChoice.variants.map(v => <button key={v.id} disabled={cart.isBusy || !v.is_active || v.stock_quantity <= 0} className="mb-2 block w-full rounded-lg border p-3 text-left disabled:opacity-40" onClick={() => addProductToCart(variantChoice.product, v)}>{Object.entries(v.options).map(([k, value]) => `${k}: ${value}`).join(' · ') || v.sku}<span className="block text-sm">{formatCurrency(v.price_override ?? variantChoice.product.price)}</span></button>)}<button className="mt-3 underline" onClick={() => setVariantChoice(null)}>Cancel</button></div></div>}
+      {variantChoice && <div role="dialog" aria-modal="true" aria-label="Choose product variant" className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"><div className="max-h-[80vh] w-full max-w-lg overflow-auto rounded-2xl bg-white p-6"><h2 className="mb-1 text-xl font-semibold">Choose {variantChoice.product.name}</h2><p className="mb-4 text-sm text-text-secondary">Selected quantity: {variantChoice.quantity}</p>{variantChoice.variants.map(v => <button key={v.id} disabled={cart.isBusy || !v.is_active || v.stock_quantity <= 0} className="mb-2 block w-full rounded-lg border p-3 text-left disabled:opacity-40" onClick={() => addProductToCart(variantChoice.product, v, variantChoice.quantity)}>{Object.entries(v.options).map(([k, value]) => `${k}: ${value}`).join(' · ') || v.sku}<span className="block text-sm">{formatCurrency(v.price_override ?? variantChoice.product.price)} · {v.stock_quantity} in stock</span></button>)}<button className="mt-3 underline" onClick={() => setVariantChoice(null)}>Cancel</button></div></div>}
       {/* Hero Section */}
       <section className="relative overflow-hidden bg-gradient-to-br from-primary/5 via-transparent to-secondary/5 py-12">
         <div className="absolute inset-0 bg-grid-pattern opacity-5" />
@@ -638,6 +700,7 @@ const ProductsPage = () => {
                               }`}>
                                 {outOfStock ? 'Out of Stock' : `${product.stock_quantity} left`}
                               </div>
+                              {!outOfStock && quantityControl(product)}
                               <Button
                                 onClick={() => addProductToCart(product)}
                                 disabled={outOfStock}
@@ -753,6 +816,13 @@ const ProductsPage = () => {
                         {imageUrls.length > 1 ? (
                           <p className="mb-3 text-[11px] text-text-tertiary">{imageUrls.length} images</p>
                         ) : null}
+
+                        {!outOfStock && (
+                          <div className="mb-3 flex items-center justify-between gap-3">
+                            <span className="text-xs font-medium text-text-secondary">Quantity</span>
+                            {quantityControl(product)}
+                          </div>
+                        )}
 
                         {/* Add to Cart Button */}
                         <Button

@@ -47,7 +47,7 @@ const ProductCategoriesPage = lazy(
 const ManageProductPage = lazy(
   () => import('@pages/dashboard/admin/Products/ManageProductPage')
 )
-const ProductSettingsPage = lazy(
+const VariantOptionsPage = lazy(
   () => import('@pages/dashboard/admin/Products/ProductSettingsPage')
 )
 const ServiceManagementPage = lazy(
@@ -169,7 +169,7 @@ export const AppRoutes = () => {
                 <Route path={`/${experience}/products`} element={<ProductManagementPage />} />
                 <Route path={`/${experience}/product-categories`} element={<ProductCategoriesPage />} />
                 <Route path={`/${experience}/products/new`} element={<Navigate to={`/${experience}/products`} state={{ openProductForm: true }} replace />} />
-                <Route path={`/${experience}/products/settings`} element={<ProductSettingsPage />} />
+                <Route path={`/${experience}/variant-options`} element={<VariantOptionsPage />} />
                 <Route path={`/${experience}/products/:productId`} element={<ManageProductPage />} />
                 <Route path={`/${experience}/services`} element={<ServiceManagementPage />} />
                 <Route path={`/${experience}/branches`} element={<BranchesManagementPage />} />

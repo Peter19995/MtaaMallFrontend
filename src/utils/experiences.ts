@@ -50,7 +50,7 @@ export const businessModules: WorkspaceModule[] = [
   { path: 'overview', label: 'Reports', permission: 'reports.read' },
   { path: 'products', label: 'Products', permission: 'products.read' },
   { path: 'product-categories', label: 'Product categories', permission: 'products.read' },
-  { path: 'products/settings', label: 'Product settings', permission: 'products.update', mutation: true },
+  { path: 'variant-options', label: 'Variant options', permission: 'products.update', mutation: true },
   { path: 'branches', label: 'Branches', permission: 'branches.read' },
   { path: 'inventory', label: 'Stock status', permission: 'inventory.read' },
   { path: 'inventory/restocks', label: 'Restocks', permission: 'inventory.read' },

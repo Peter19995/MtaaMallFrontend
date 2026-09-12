@@ -1041,7 +1041,7 @@ const ManageProductPage = () => {
                           <Button
                             type="button"
                             variant="ghost"
-                            onClick={() => navigate(workspacePath('/dashboard/admin/products/settings'))}
+                            onClick={() => navigate(workspacePath('/dashboard/admin/variant-options'))}
                           >
                             Manage Options
                           </Button>
@@ -1059,16 +1059,16 @@ const ManageProductPage = () => {
                             <div className="rounded-xl border border-dashed border-border bg-background px-4 py-8 text-center">
                               <TagIcon className="mx-auto h-10 w-10 text-text-tertiary/40" />
                               <p className="mt-3 text-sm text-text-secondary">
-                                Create reusable variant options in Product Settings before attaching
+                                Create reusable variant options on the Variant Options page before attaching
                                 them to this product.
                               </p>
                               <div className="mt-4">
                                 <Button
                                   type="button"
                                   variant="outline"
-                                  onClick={() => navigate(workspacePath('/dashboard/admin/products/settings'))}
+                                  onClick={() => navigate(workspacePath('/dashboard/admin/variant-options'))}
                                 >
-                                  Open Product Settings
+                                  Open Variant Options
                                 </Button>
                               </div>
                             </div>

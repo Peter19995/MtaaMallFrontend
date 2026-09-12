@@ -6,18 +6,15 @@ import {
   CubeIcon,
   PencilIcon,
   PlusIcon,
-  TagIcon,
   TrashIcon,
   XCircleIcon
 } from '@heroicons/react/24/outline'
 import { Button, Select, TextInput, useSiteDialog } from '@components/common'
 import {
-  createCategoryRequest,
   createVariantOptionRequest,
   createVariantOptionValueRequest,
   deleteVariantOptionRequest,
   deleteVariantOptionValueRequest,
-  listCategoriesRequest,
   listVariantOptionsRequest,
   updateVariantOptionRequest,
   updateVariantOptionValueRequest
@@ -32,7 +29,7 @@ type VariantOptionValueFormState = {
 const EMPTY_VARIANT_OPTION_VALUE: VariantOptionValueFormState = {
   value: '',
   displayValue: '',
-  sortOrder: '0'
+  sortOrder: ''
 }
 
 type VariantOptionEditState = {
@@ -93,12 +90,9 @@ const buildVariantOptionValuePayload = (
   }
 }
 
-const ProductSettingsPage = () => {
+const VariantOptionsPage = () => {
   const siteDialog = useSiteDialog()
   const queryClient = useQueryClient()
-  const [categoryName, setCategoryName] = useState('')
-  const [categoryDescription, setCategoryDescription] = useState('')
-  const [categoryError, setCategoryError] = useState<string | null>(null)
   const [variantOptionName, setVariantOptionName] = useState('')
   const [variantOptionType, setVariantOptionType] = useState('select')
   const [variantOptionValues, setVariantOptionValues] = useState<VariantOptionValueFormState[]>([
@@ -115,11 +109,6 @@ const ProductSettingsPage = () => {
     {}
   )
   const [newValueErrors, setNewValueErrors] = useState<Record<number, string | null>>({})
-
-  const categoriesQuery = useQuery({
-    queryKey: ['products', 'categories'],
-    queryFn: listCategoriesRequest
-  })
 
   const variantOptionsQuery = useQuery({
     queryKey: ['products', 'variant-options'],
@@ -139,28 +128,6 @@ const ProductSettingsPage = () => {
   const invalidateVariantOptionQueries = () => {
     queryClient.invalidateQueries({ queryKey: ['products', 'variant-options'] })
   }
-
-  const createCategoryMutation = useMutation({
-    mutationFn: async () => {
-      if (!categoryName.trim()) {
-        throw new Error('Category name is required.')
-      }
-
-      return createCategoryRequest({
-        name: categoryName.trim(),
-        description: categoryDescription.trim() || undefined
-      })
-    },
-    onSuccess: () => {
-      setCategoryError(null)
-      setCategoryName('')
-      setCategoryDescription('')
-      queryClient.invalidateQueries({ queryKey: ['products', 'categories'] })
-    },
-    onError: (error: Error) => {
-      setCategoryError(error.message || 'Could not create category.')
-    }
-  })
 
   const createVariantOptionMutation = useMutation({
     mutationFn: async () => {
@@ -408,12 +375,6 @@ const ProductSettingsPage = () => {
     }))
   }
 
-  const onSubmitCategory = (event: FormEvent) => {
-    event.preventDefault()
-    setCategoryError(null)
-    createCategoryMutation.mutate()
-  }
-
   const onSubmitVariantOption = (event: FormEvent) => {
     event.preventDefault()
     setVariantOptionError(null)
@@ -429,20 +390,14 @@ const ProductSettingsPage = () => {
         >
           <h1 className="flex items-center gap-2 text-2xl font-bold text-text">
             <CubeIcon className="h-6 w-6 text-primary" />
-            Product Settings
+            Variant Options
           </h1>
           <p className="mt-1 text-sm text-text-secondary">
-            Manage reusable product configuration such as categories and variant options.
+            Create and manage reusable choices such as color, size, or material.
           </p>
         </motion.div>
 
-        <div className="grid gap-4 md:grid-cols-3">
-          <div className="rounded-xl border border-border bg-white p-4 shadow-sm">
-            <p className="text-xs text-text-tertiary">Categories</p>
-            <p className="mt-2 text-2xl font-semibold text-text">
-              {categoriesQuery.data?.length ?? 0}
-            </p>
-          </div>
+        <div className="grid gap-4 sm:grid-cols-2">
           <div className="rounded-xl border border-border bg-white p-4 shadow-sm">
             <p className="text-xs text-text-tertiary">Variant Options</p>
             <p className="mt-2 text-2xl font-semibold text-text">
@@ -457,80 +412,10 @@ const ProductSettingsPage = () => {
           </div>
         </div>
 
-        <div className="grid gap-6 xl:grid-cols-2">
+        <div>
           <motion.section
-            initial={{ opacity: 0, x: -20 }}
-            animate={{ opacity: 1, x: 0 }}
-            className="rounded-xl border border-border bg-white p-5 shadow-sm"
-          >
-            <div className="flex items-center gap-2">
-              <TagIcon className="h-5 w-5 text-primary" />
-              <h2 className="text-lg font-semibold text-text">Categories</h2>
-            </div>
-            <p className="mt-1 text-sm text-text-secondary">
-              Create product categories used throughout the catalog.
-            </p>
-
-            <form onSubmit={onSubmitCategory} className="mt-5 space-y-4">
-              <TextInput
-                label="Category Name"
-                value={categoryName}
-                onChange={(event) => setCategoryName(event.target.value)}
-                placeholder="e.g., Curtains, Seats, Furniture"
-                required
-              />
-              <TextInput
-                label="Description"
-                value={categoryDescription}
-                onChange={(event) => setCategoryDescription(event.target.value)}
-                placeholder="Optional category description"
-              />
-              <div className="flex items-center gap-3">
-                <Button type="submit" loading={createCategoryMutation.isPending}>
-                  Create Category
-                </Button>
-                {categoryError && (
-                  <span className="flex items-center gap-1 text-xs text-error">
-                    <XCircleIcon className="h-4 w-4" />
-                    {categoryError}
-                  </span>
-                )}
-              </div>
-            </form>
-
-            <div className="mt-6 space-y-3">
-              <div className="flex items-center justify-between">
-                <h3 className="text-sm font-semibold text-text">Existing Categories</h3>
-                {categoriesQuery.isFetching && (
-                  <span className="text-xs text-text-tertiary">Refreshing...</span>
-                )}
-              </div>
-              {categoriesQuery.isLoading ? (
-                <div className="flex items-center gap-2 rounded-xl border border-border bg-background px-4 py-3 text-sm text-text-secondary">
-                  <ArrowPathIcon className="h-4 w-4 animate-spin text-primary" />
-                  Loading categories...
-                </div>
-              ) : (
-                <div className="grid gap-3">
-                  {(categoriesQuery.data ?? []).map((category) => (
-                    <div
-                      key={category.id}
-                      className="rounded-xl border border-border bg-background px-4 py-3"
-                    >
-                      <p className="font-medium text-text">{category.name}</p>
-                      <p className="mt-1 text-sm text-text-secondary">
-                        {category.description?.trim() || 'No description'}
-                      </p>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          </motion.section>
-
-          <motion.section
-            initial={{ opacity: 0, x: 20 }}
-            animate={{ opacity: 1, x: 0 }}
+            initial={{ opacity: 0, y: 12 }}
+            animate={{ opacity: 1, y: 0 }}
             className="rounded-xl border border-border bg-white p-5 shadow-sm"
           >
             <div className="flex items-center gap-2">
@@ -575,32 +460,17 @@ const ProductSettingsPage = () => {
                 {variantOptionValues.map((optionValue, index) => (
                   <div
                     key={`settings-option-value-${index}`}
-                    className="grid gap-3 rounded-xl border border-border bg-background p-3 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_120px_auto]"
+                    className="flex items-end gap-3 rounded-xl border border-border bg-background p-3"
                   >
-                    <TextInput
-                      label="Value"
-                      value={optionValue.value}
-                      onChange={(event) => updateVariantOptionValue(index, 'value', event.target.value)}
-                      placeholder="e.g., Blue"
-                    />
-                    <TextInput
-                      label="Display Value"
-                      value={optionValue.displayValue}
-                      onChange={(event) =>
-                        updateVariantOptionValue(index, 'displayValue', event.target.value)
-                      }
-                      placeholder="Optional label"
-                    />
-                    <TextInput
-                      label="Sort Order"
-                      type="number"
-                      min={0}
-                      value={optionValue.sortOrder}
-                      onChange={(event) =>
-                        updateVariantOptionValue(index, 'sortOrder', event.target.value)
-                      }
-                    />
-                    <div className="flex items-end">
+                    <div className="min-w-0 flex-1">
+                      <TextInput
+                        label="Value"
+                        value={optionValue.value}
+                        onChange={(event) => updateVariantOptionValue(index, 'value', event.target.value)}
+                        placeholder="e.g., Blue"
+                      />
+                    </div>
+                    <div>
                       <Button
                         type="button"
                         size="sm"
@@ -765,7 +635,7 @@ const ProductSettingsPage = () => {
                             <div key={value.id} className="rounded-xl border border-border bg-white p-3">
                               {isEditingValue ? (
                                 <>
-                                  <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_120px]">
+                                  <div>
                                     <TextInput
                                       label="Value"
                                       value={editingValue.value}
@@ -773,30 +643,6 @@ const ProductSettingsPage = () => {
                                         setEditingValue((previous) => ({
                                           ...previous,
                                           value: event.target.value,
-                                          error: null
-                                        }))
-                                      }
-                                    />
-                                    <TextInput
-                                      label="Display Value"
-                                      value={editingValue.displayValue}
-                                      onChange={(event) =>
-                                        setEditingValue((previous) => ({
-                                          ...previous,
-                                          displayValue: event.target.value,
-                                          error: null
-                                        }))
-                                      }
-                                    />
-                                    <TextInput
-                                      label="Sort Order"
-                                      type="number"
-                                      min={0}
-                                      value={editingValue.sortOrder}
-                                      onChange={(event) =>
-                                        setEditingValue((previous) => ({
-                                          ...previous,
-                                          sortOrder: event.target.value,
                                           error: null
                                         }))
                                       }
@@ -845,14 +691,7 @@ const ProductSettingsPage = () => {
                                 </>
                               ) : (
                                 <div className="flex flex-wrap items-center justify-between gap-3">
-                                  <div>
-                                    <p className="text-sm font-medium text-text">
-                                      {value.display_value || value.value}
-                                    </p>
-                                    <p className="mt-1 text-xs text-text-tertiary">
-                                      Raw value: {value.value} • Sort order: {value.sort_order}
-                                    </p>
-                                  </div>
+                                  <p className="text-sm font-medium text-text">{value.value}</p>
                                   <div className="flex items-center gap-2">
                                     <Button
                                       type="button"
@@ -882,7 +721,7 @@ const ProductSettingsPage = () => {
                                       onClick={async () => {
                                         if (
                                           await siteDialog.confirm({
-                                            title: `Delete “${value.display_value || value.value}”?`,
+                                            title: `Delete “${value.value}”?`,
                                             message: `This value will be removed from ${option.option_name}.`,
                                             confirmLabel: 'Delete value',
                                             tone: 'danger'
@@ -919,7 +758,7 @@ const ProductSettingsPage = () => {
                           </div>
                         </div>
 
-                        <div className="mt-3 grid gap-3 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_120px]">
+                        <div className="mt-3">
                           <TextInput
                             label="Value"
                             value={(newValueDrafts[option.id] ?? EMPTY_VARIANT_OPTION_VALUE).value}
@@ -927,27 +766,6 @@ const ProductSettingsPage = () => {
                               updateNewValueDraft(option.id, 'value', event.target.value)
                             }
                             placeholder="e.g., Navy Blue"
-                          />
-                          <TextInput
-                            label="Display Value"
-                            value={
-                              (newValueDrafts[option.id] ?? EMPTY_VARIANT_OPTION_VALUE).displayValue
-                            }
-                            onChange={(event) =>
-                              updateNewValueDraft(option.id, 'displayValue', event.target.value)
-                            }
-                            placeholder="Optional label"
-                          />
-                          <TextInput
-                            label="Sort Order"
-                            type="number"
-                            min={0}
-                            value={
-                              (newValueDrafts[option.id] ?? EMPTY_VARIANT_OPTION_VALUE).sortOrder
-                            }
-                            onChange={(event) =>
-                              updateNewValueDraft(option.id, 'sortOrder', event.target.value)
-                            }
                           />
                         </div>
 
@@ -990,4 +808,4 @@ const ProductSettingsPage = () => {
   )
 }
 
-export default ProductSettingsPage
+export default VariantOptionsPage
