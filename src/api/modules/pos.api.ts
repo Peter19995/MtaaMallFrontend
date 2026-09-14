@@ -63,14 +63,37 @@ export type MpesaStkPushResponse = {
   status: string
 }
 
+export type PosMpesaAvailabilityResponse = {
+  branch_id: number
+  available: boolean
+  branch_mode_enabled: boolean
+  provider_account_active: boolean
+  message: string
+}
+
+export type PosMpesaIntentResponse = {
+  public_id: string
+  order_id: number
+  state: 'created' | 'initiating' | 'pending_customer' | 'successful' | 'failed' | 'cancelled' | 'timed_out' | 'unknown'
+  amount: string
+  currency: string
+  phone_masked: string
+  attempt_number: number
+  result_code?: string | null
+  result_description?: string | null
+  mpesa_receipt_number?: string | null
+  retry_available: boolean
+}
+
 export type OrderPaymentProcessRequest = {
-  payment_mode_id: number
+  payment_mode_id?: number
   amount?: number
   phone_number?: string
   account_reference?: string
   transaction_desc?: string
   mark_completed?: boolean
   external_reference?: string
+  idempotency_key?: string
 }
 
 export type OrderPaymentProcessResponse = {
@@ -209,10 +232,48 @@ export const processOrderPaymentRequest = async (
   payload: OrderPaymentProcessRequest,
   params?: PaymentProcessBranchParam
 ): Promise<OrderPaymentProcessResponse> => {
+  // Keep the key in both the standard header and payload for clients/proxies
+  // that may not preserve custom headers. Callers may supply a stable key when
+  // replaying the same logical request.
+  const idempotencyKey = payload.idempotency_key ?? crypto.randomUUID()
   const { data } = await api.post<OrderPaymentProcessResponse>(
     `/payments/orders/${orderId}/process`,
-    payload,
-    { params }
+    { ...payload, idempotency_key: idempotencyKey },
+    { params, headers: { 'Idempotency-Key': idempotencyKey } }
+  )
+  return data
+}
+
+export const getPosMpesaAvailabilityRequest = async (
+  branchId: number
+): Promise<PosMpesaAvailabilityResponse> => {
+  const { data } = await api.get<PosMpesaAvailabilityResponse>('/pos/payment-options/mpesa', {
+    params: { branch_id: branchId }
+  })
+  return data
+}
+
+export const initiatePosMpesaPaymentRequest = async (
+  saleId: number,
+  phoneNumber: string,
+  branchId: number,
+  idempotencyKey: string
+): Promise<PosMpesaIntentResponse> => {
+  const { data } = await api.post<PosMpesaIntentResponse>(
+    `/pos/sales/${saleId}/payments/mpesa`,
+    { phone_number: phoneNumber },
+    { params: { branch_id: branchId }, headers: { 'Idempotency-Key': idempotencyKey } }
+  )
+  return data
+}
+
+export const getPosMpesaPaymentStatusRequest = async (
+  saleId: number,
+  branchId: number
+): Promise<PosMpesaIntentResponse> => {
+  const { data } = await api.get<PosMpesaIntentResponse>(
+    `/pos/sales/${saleId}/payments/mpesa`,
+    { params: { branch_id: branchId } }
   )
   return data
 }

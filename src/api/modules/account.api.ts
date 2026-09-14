@@ -7,6 +7,13 @@ export type AccountOrder = { id: number; business_id: string; business_name: str
 export type AccountPayment = { id: number; order_id: number; business_name: string; currency: string; amount: number; method: string; status: string; created_at: string }
 export type ReturnRequest = { id: number; order_id: number; kind: string; reason: string; status: string; created_at: string }
 export type GuestLine = { product_id: number; product_variant_id?: number | null; quantity: number }
+export type OnlinePaymentIntent = {
+  public_id: string; order_id: number; state: 'created' | 'initiating' | 'pending_customer' | 'successful' | 'failed' | 'cancelled' | 'timed_out' | 'unknown'
+  amount: string; currency: string; phone_masked: string; attempt_number: number
+  result_code: string | null; result_description: string | null; mpesa_receipt_number: string | null
+  expires_at: string | null; initiated_at: string | null; completed_at: string | null
+  failed_at: string | null; retry_available: boolean
+}
 
 // Personal endpoints are context-independent on the server as well.
 const config = { headers: { 'X-Context': 'customer' } }
@@ -16,3 +23,10 @@ export const accountPut = async <T,>(path: string, body: unknown): Promise<T> =>
 export const accountDelete = async (path: string) => (await api.delete(`/account${path}`, config)).data
 export const getCart = () => accountGet<{ carts: SellerCart[] }>('/cart')
 export const mergeCart = (merge_id: string, items: GuestLine[]) => accountPost<{ carts: SellerCart[] }>('/cart/merge', { merge_id, items })
+export const initiateOnlineMpesa = async (orderId: number, phoneNumber: string, idempotencyKey: string) =>
+  (await api.post<OnlinePaymentIntent>(`/orders/${orderId}/payments/mpesa`,
+    phoneNumber.trim() ? { phone_number: phoneNumber.trim() } : {},
+    { headers: { 'X-Context': 'customer', 'Idempotency-Key': idempotencyKey } })).data
+export const getOnlineMpesaIntent = async (publicId: string) =>
+  (await api.get<OnlinePaymentIntent>(`/payments/mpesa/intents/${encodeURIComponent(publicId)}`,
+    { headers: { 'X-Context': 'customer' } })).data

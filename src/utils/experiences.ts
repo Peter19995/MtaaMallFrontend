@@ -14,7 +14,7 @@ export type Experience = 'platform' | 'business' | 'employee' | 'account' | 'una
 // effective permissions may enable a module; no cross-membership union is used.
 export function experienceFor(user: WorkspacePrincipal): Experience {
   const permissions = user.permissions ?? []
-  const platformGrants = ['platform.admins.manage', 'platform.businesses.read', 'platform.businesses.create', 'platform.businesses.close', 'platform.businesses.review', 'platform.businesses.activate', 'platform.businesses.suspend', 'platform.support.manage', 'platform.audit.read']
+  const platformGrants = ['platform.admins.manage', 'platform.businesses.read', 'platform.businesses.create', 'platform.businesses.close', 'platform.businesses.review', 'platform.businesses.activate', 'platform.businesses.suspend', 'platform.support.manage', 'platform.audit.read', 'platform.payments.read', 'platform.payments.configure', 'platform.payments.test', 'platform.payments.activate', 'platform.payments.suspend', 'platform.payments.rotate_credentials', 'platform.payments.reconcile']
   if ((!user.context || user.context === 'platform') && permissions.some(p => platformGrants.includes(p))) return 'platform'
   const businessGrants = user.business_permissions ?? businessModules.map(m => m.permission).concat(['finance.read', 'finance.manage', 'payments.read', 'content.read'])
   if ((!user.context || user.context.startsWith('business:')) && permissions.some(p => p !== '*' && businessGrants.includes(p))) {
@@ -39,6 +39,11 @@ export type WorkspaceModule = { path: string; label: string; permission: string;
 export const platformModules: WorkspaceModule[] = [
   { path: 'audit', label: 'Audit history', permission: 'platform.audit.read' },
   { path: 'businesses', label: 'Businesses', permission: 'platform.businesses.read' },
+  { path: 'payments', label: 'Payment overview', permission: 'platform.payments.read' },
+  { path: 'payments/mpesa', label: 'M-Pesa accounts', permission: 'platform.payments.read' },
+  { path: 'payments/transactions', label: 'Transactions', permission: 'platform.payments.read' },
+  { path: 'payments/reconciliation', label: 'Reconciliation', permission: 'platform.payments.reconcile' },
+  { path: 'settlements', label: 'Settlements', permission: 'platform.settlements.read' },
   { path: 'admins', label: 'Platform team', permission: 'platform.admins.manage' },
 ]
 export const businessModules: WorkspaceModule[] = [
@@ -75,7 +80,9 @@ export function canAccessWorkspace(user: WorkspacePrincipal | null, path: string
   const suffix = path.slice(root.length + 1)
   if (['onboarding', 'suspended'].includes(suffix)) return workspaceLanding(user) === path
   const modules = experience === 'platform' ? platformModules : businessModules
-  const module = /^products\/\d+$/.test(suffix)
+  const module = experience === 'platform' && /^businesses\/[^/]+\/payments$/.test(suffix)
+    ? { path: suffix, label: 'Business POS payments', permission: 'platform.payments.read' }
+    : /^products\/\d+$/.test(suffix)
     ? { path: suffix, label: 'Manage product', permission: 'products.update', mutation: true }
     : [...modules].sort((a, b) => b.path.length - a.path.length)
     .find(m => suffix === m.path)

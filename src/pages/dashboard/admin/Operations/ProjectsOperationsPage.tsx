@@ -431,6 +431,30 @@ const ProjectsOperationsPage = () => {
     [projectManagersQuery.data]
   )
 
+  const labourEmployeeOptions = useMemo(
+    () => [
+      { label: 'No employee selected', value: '' },
+      ...(projectManagersQuery.data ?? [])
+        .filter((membership) => membership.status === 'active')
+        .map((membership) => ({
+          label: membership.full_name?.trim() || membership.username,
+          value: String(membership.user_id)
+        }))
+    ],
+    [projectManagersQuery.data]
+  )
+
+  const labourTaskOptions = useMemo(
+    () => [
+      { label: 'No task selected', value: '' },
+      ...(tasksQuery.data ?? []).map((task) => ({
+        label: task.title,
+        value: String(task.id)
+      }))
+    ],
+    [tasksQuery.data]
+  )
+
   const taskAssigneeNames = useMemo(
     () =>
       new Map(
@@ -697,7 +721,6 @@ const ProjectsOperationsPage = () => {
         throw new Error('Select a project first.')
       }
 
-      const employeeId = parseRequiredNumber(form.employeeId, 'Employee ID')
       const hoursWorked = parseRequiredNumber(form.hoursWorked, 'Hours worked')
       const ratePerHour = parseRequiredNumber(form.ratePerHour, 'Rate per hour')
 
@@ -712,7 +735,7 @@ const ProjectsOperationsPage = () => {
       }
 
       return addProjectLabourRequest(selectedProjectId, {
-        employee_id: employeeId,
+        employee_user_id: parseOptionalNumber(form.employeeId),
         task_id: parseOptionalNumber(form.taskId),
         hours_worked: hoursWorked,
         rate_per_hour: ratePerHour,
@@ -1572,18 +1595,15 @@ const ProjectsOperationsPage = () => {
                     <div className="bg-background rounded-lg p-4 border border-border">
                       <h3 className="text-sm font-semibold text-text mb-3">Add Labour</h3>
                       <form onSubmit={onAddLabour} className="space-y-3">
-                        <TextInput
-                          label="Employee ID"
-                          type="number"
-                          min={1}
+                        <Select
+                          label="Employee (optional)"
+                          options={labourEmployeeOptions}
                           value={labourForm.employeeId}
                           onChange={(e) => setLabourForm({ ...labourForm, employeeId: e.target.value })}
-                          required
                         />
-                        <TextInput
-                          label="Task ID"
-                          type="number"
-                          min={1}
+                        <Select
+                          label="Task (optional)"
+                          options={labourTaskOptions}
                           value={labourForm.taskId}
                           onChange={(e) => setLabourForm({ ...labourForm, taskId: e.target.value })}
                         />

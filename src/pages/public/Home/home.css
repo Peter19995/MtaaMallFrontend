@@ -1,6 +1,7 @@
 .mall-home {
   --ink: #1e2b32;
   --muted: #4a5b66;
+  font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   background: #f8fafc;
   color: var(--ink);
   padding-bottom: 20px;
@@ -58,7 +59,7 @@
 }
 .mall-eyebrow {
   font-size: 10px;
-  font-weight: 750;
+  font-weight: 700;
   letter-spacing: 0.16em;
   display: flex;
   align-items: center;
@@ -74,13 +75,14 @@
 .mall-hero h1 {
   font-size: clamp(38px, 4.3vw, 61px);
   letter-spacing: -0.055em;
-  font-weight: 750;
+  font-weight: 700;
   line-height: 1.09;
   margin: 0;
 }
 .mall-hero h1 em {
-  font-family: Georgia, serif;
-  font-weight: 400;
+  font-family: inherit;
+  font-style: normal;
+  font-weight: 700;
   color: #e66a3a;
 }
 .mall-hero-description {
@@ -123,7 +125,7 @@
   padding: 14px 19px;
   border-radius: 7px;
   font-size: 12px;
-  font-weight: 650;
+  font-weight: 600;
 }
 .mall-search button:hover,
 .mall-button:hover {
@@ -233,7 +235,7 @@
 }
 .mall-benefits strong {
   font-size: 12px;
-  font-weight: 650;
+  font-weight: 600;
 }
 .mall-benefits small {
   font-size: 10px;
@@ -260,14 +262,14 @@
   font-size: 28px;
   letter-spacing: -0.04em;
   line-height: 1.2;
-  font-weight: 650;
+  font-weight: 700;
 }
 .mall-section-heading > a {
   display: flex;
   align-items: center;
   gap: 9px;
   font-size: 11px;
-  font-weight: 650;
+  font-weight: 600;
   white-space: nowrap;
 }
 .mall-section-heading > a > svg {
@@ -398,7 +400,7 @@
 .mall-product-copy h3 {
   font-size: 13px;
   line-height: 1.5;
-  font-weight: 650;
+  font-weight: 600;
   min-height: 39px;
   margin: 0 0 15px;
 }
@@ -480,7 +482,7 @@
   font-size: 33px;
   letter-spacing: -0.04em;
   line-height: 1.15;
-  font-weight: 650;
+  font-weight: 700;
   margin-bottom: 16px;
   position: relative;
   z-index: 1;
@@ -511,7 +513,7 @@
   color: white;
   border-radius: 6px;
   font-size: 11px;
-  font-weight: 650;
+  font-weight: 600;
   position: relative;
   z-index: 1;
 }
@@ -555,14 +557,14 @@
 }
 .mall-closing > strong {
   font-size: 15px;
-  font-weight: 550;
+  font-weight: 500;
 }
 .mall-closing > a {
   display: flex;
   align-items: center;
   gap: 9px;
   font-size: 11px;
-  font-weight: 650;
+  font-weight: 600;
 }
 .mall-closing svg {
   width: 15px;

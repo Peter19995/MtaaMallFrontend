@@ -1,4 +1,4 @@
-import { FormEvent, useContext, useState } from 'react'
+import { FormEvent, useContext, useEffect, useState } from 'react'
 import { Link, NavLink, Navigate, Outlet, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import {
@@ -12,7 +12,7 @@ import {
 } from '@heroicons/react/24/outline'
 import { useAuth } from '@hooks/useAuth'
 import { CartContext } from '@contexts/CartContext'
-import { accountGet, accountPost, accountPut, accountDelete, AccountAddress, AccountOrder, AccountPayment, ReturnRequest } from '@api/modules/account.api'
+import { accountGet, accountPost, accountPut, accountDelete, getOnlineMpesaIntent, initiateOnlineMpesa, AccountAddress, AccountOrder, AccountPayment, ReturnRequest, type OnlinePaymentIntent } from '@api/modules/account.api'
 import type { UserResponse } from '@api/modules/auth.api'
 import { useSiteDialog } from '@components/common'
 
@@ -146,12 +146,52 @@ export function AccountLoyalty() {
 
 export function AccountCheckout() {
   const { user } = useAuth(); const cart = useContext(CartContext)!; const [params] = useSearchParams(); const navigate = useNavigate(); const cache = useQueryClient()
-  const addresses = useAccount<AccountAddress[]>('/addresses'); const [address, setAddress] = useState(''); const [busy, setBusy] = useState(false); const [notice, setNotice] = useState('')
+  type PaymentFlow = { orderId: number; businessName: string; total: number; currency: string; idempotencyKey: string; intentId?: string; phase: 'initiating' | 'error' }
+  const storageKey = `mtaamall:online-mpesa:${user?.id ?? 'anonymous'}`
+  const addresses = useAccount<AccountAddress[]>('/addresses'); const [address, setAddress] = useState(''); const [phone, setPhone] = useState(user?.phone ?? ''); const [busy, setBusy] = useState(false); const [notice, setNotice] = useState('')
+  const [paymentFlow, setPaymentFlow] = useState<PaymentFlow | null>(() => { try { const raw = sessionStorage.getItem(storageKey); return raw ? JSON.parse(raw) as PaymentFlow : null } catch { return null } })
   const selected = cart.carts.find(c => c.business_id === params.get('business')) ?? (cart.carts.length === 1 ? cart.carts[0] : undefined)
+  const intent = useQuery({
+    queryKey: ['online-mpesa-intent', paymentFlow?.intentId],
+    queryFn: () => getOnlineMpesaIntent(paymentFlow!.intentId!),
+    enabled: Boolean(paymentFlow?.intentId),
+    refetchInterval: query => ['successful', 'failed', 'cancelled', 'timed_out'].includes((query.state.data as OnlinePaymentIntent | undefined)?.state ?? '') ? false : 3000,
+  })
+  useEffect(() => {
+    if (!paymentFlow) sessionStorage.removeItem(storageKey)
+    else sessionStorage.setItem(storageKey, JSON.stringify(paymentFlow))
+  }, [paymentFlow, storageKey])
+  useEffect(() => {
+    if (intent.data?.state === 'successful') void cache.invalidateQueries({ queryKey: ['customer-account'] })
+  }, [intent.data?.state, cache])
+  useEffect(() => {
+    if (paymentFlow?.phase === 'initiating' && !paymentFlow.intentId && !busy) {
+      setPaymentFlow(current => current ? { ...current, phase: 'error' } : null)
+      setNotice('This checkout was restored without repeating the STK Push. Choose Retry payment only if you want a new prompt.')
+    }
+  }, [paymentFlow?.phase, paymentFlow?.intentId, busy])
   if (!user) return <Navigate to="/login" replace />
+  const newKey = () => window.crypto.randomUUID()
+  const startIntent = async (flow: PaymentFlow) => {
+    setBusy(true); setNotice(''); setPaymentFlow({ ...flow, phase: 'initiating', intentId: undefined })
+    try {
+      const result = await initiateOnlineMpesa(flow.orderId, phone, flow.idempotencyKey)
+      setPaymentFlow({ ...flow, phase: 'initiating', intentId: result.public_id })
+    } catch (e) {
+      setPaymentFlow({ ...flow, phase: 'error', intentId: undefined }); setNotice(errorText(e))
+    } finally { setBusy(false) }
+  }
   const submit = async (e: FormEvent) => { e.preventDefault(); if (!selected) return; setBusy(true); setNotice(''); try {
-    const order = await accountPost<AccountOrder>('/checkout', { business_id: selected.business_id, address_id: address || null, payment_method: 'cash' })
-    await cache.invalidateQueries({ queryKey: ['customer-account'] }); await cart.refresh(); navigate('/account/orders/' + order.id)
-  } catch (e) { setNotice(errorText(e)) } finally { setBusy(false) } }
-  return <div className={panel}><h2 className="text-xl font-semibold">Checkout</h2>{cart.isBusy && <p role="status">Loading cart…</p>}{cart.error && <p role="alert">{cart.error}</p>}{!selected ? <p className="mt-4">Choose a seller’s cart to check out. <Link className="underline" to="/account/cart">View carts</Link></p> : <form onSubmit={submit} className="mt-4 space-y-4"><h3 className="font-semibold">{selected.business_name}</h3>{selected.items.map(i => <div className="flex justify-between gap-4" key={i.id}><span>{i.name} × {i.quantity}</span><span>{money(i.unit_price * i.quantity, selected.currency)}</span></div>)}<p className="border-t pt-3 text-lg font-semibold">Total {money(selected.total_amount, selected.currency)}</p><p className="text-sm text-slate-500">Prices and stock are checked again when you place the order. No online payment will be charged. Payment remains pending until confirmed.</p><QueryState query={addresses} /><label className="block">Fulfilment<select className={input} value={address} onChange={e => setAddress(e.target.value)}><option value="">Collect from seller’s storefront</option>{addresses.data?.map(a => <option value={a.id} key={a.id}>{a.label}: {a.address}, {a.city}</option>)}</select></label><p className="text-sm text-slate-500">For delivery, confirm arrangements with the seller. No delivery fee is added here.</p><Link className="inline-block underline" to="/account/addresses">Manage addresses</Link><label className="flex gap-2"><input type="checkbox" required />I confirm the seller, quantities and fulfilment details.</label><button className={button} disabled={busy || cart.isBusy || Boolean(cart.error) || selected.items.some(i => !i.available)}>Place unpaid order</button><p role="alert">{notice}</p></form>}</div>
+    const order = await accountPost<AccountOrder>('/checkout', { business_id: selected.business_id, address_id: address || null, payment_method: 'mpesa' })
+    const flow: PaymentFlow = { orderId: order.id, businessName: selected.business_name, total: order.total_amount, currency: selected.currency, idempotencyKey: newKey(), phase: 'initiating' }
+    setPaymentFlow(flow); sessionStorage.setItem(storageKey, JSON.stringify(flow))
+    await cache.invalidateQueries({ queryKey: ['customer-account'] }); await cart.refresh(); await startIntent(flow)
+  } catch (e) { setNotice(errorText(e)); setBusy(false) } }
+  const retry = () => { if (!paymentFlow) return; void startIntent({ ...paymentFlow, idempotencyKey: newKey(), phase: 'initiating', intentId: undefined }) }
+  const finish = () => { setPaymentFlow(null); navigate('/account/orders/' + paymentFlow?.orderId) }
+  const state = intent.data?.state
+  const stateTitle = state === 'successful' ? 'Paid' : state === 'cancelled' ? 'Cancelled' : state === 'timed_out' ? 'Timed out' : state === 'failed' ? 'Payment failed' : state === 'pending_customer' ? 'Check your phone' : state === 'unknown' ? 'Awaiting confirmation' : paymentFlow?.phase === 'error' ? 'Retry available' : 'Initiating'
+  const stateText = state === 'successful' ? `Payment confirmed${intent.data?.mpesa_receipt_number ? ` · Receipt ${intent.data.mpesa_receipt_number}` : ''}.` : state === 'cancelled' ? 'You cancelled the M-Pesa request. Your order remains unpaid.' : state === 'timed_out' ? 'The M-Pesa request timed out. Your order remains unpaid.' : state === 'failed' ? (intent.data?.result_description || 'M-Pesa could not complete this payment. Your order remains unpaid.') : state === 'unknown' ? 'The provider result is still being verified. Do not start another payment yet.' : state === 'pending_customer' ? `Approve the request sent to ${intent.data.phone_masked}. We will confirm it automatically.` : paymentFlow?.phase === 'error' ? 'The request could not be started. Review the message below before retrying.' : 'Securely connecting to M-Pesa. Do not refresh or close this page.'
+  if (paymentFlow) return <div className="space-y-5"><section className={panel + ' text-center'}><span className={`mx-auto grid h-16 w-16 place-items-center rounded-2xl ${state === 'successful' ? 'bg-success-light text-success-dark' : ['cancelled','timed_out','failed'].includes(state ?? '') || paymentFlow.phase === 'error' ? 'bg-error-light text-error-dark' : 'bg-primary/10 text-primary-dark'}`}>{state === 'successful' ? <CheckCircleIcon className="h-9 w-9" /> : <CreditCardIcon className={`h-8 w-8 ${!state || ['created','initiating','pending_customer','unknown'].includes(state) ? 'animate-pulse' : ''}`} />}</span><p className="mt-5 text-xs font-bold uppercase tracking-[0.16em] text-primary-dark">Order #{paymentFlow.orderId} · {paymentFlow.businessName}</p><h2 className="mt-2 text-2xl font-bold text-text">{stateTitle}</h2><p className="mx-auto mt-2 max-w-xl text-sm leading-6 text-text-secondary">{stateText}</p>{state === 'pending_customer' && <p className="mt-2 text-xs font-bold uppercase tracking-wider text-primary-dark">Awaiting confirmation</p>}<p className="mt-5 text-xl font-bold text-text">{money(paymentFlow.total, paymentFlow.currency)}</p>{intent.isError && <p role="alert" className="mt-4 text-sm text-error-dark">{errorText(intent.error)}</p>}{notice && <p role="alert" className="mt-4 text-sm text-error-dark">{notice}</p>}<div className="mt-6 flex flex-wrap justify-center gap-3">{state === 'successful' && <button className={button} onClick={finish}>View paid order</button>}{(intent.data?.retry_available || paymentFlow.phase === 'error') && <button className={button} disabled={busy} onClick={retry}>{busy ? 'Initiating…' : 'Retry payment'}</button>}<Link className="rounded-xl border border-border px-5 py-2.5 font-semibold text-text-secondary" to={'/account/orders/' + paymentFlow.orderId}>View order</Link></div>{intent.data?.retry_available && <p className="mt-3 text-xs font-semibold text-text-tertiary">Retry available — a new STK prompt is sent only when you choose Retry payment.</p>}</section></div>
+  return <div className={panel}><h2 className="text-xl font-semibold">Checkout with M-Pesa</h2>{cart.isBusy && <p role="status">Loading cart…</p>}{cart.error && <p role="alert">{cart.error}</p>}{!selected ? <p className="mt-4">Choose a seller’s cart to check out. <Link className="underline" to="/account/cart">View carts</Link></p> : <form onSubmit={submit} className="mt-4 space-y-4"><h3 className="font-semibold">{selected.business_name}</h3>{selected.items.map(i => <div className="flex justify-between gap-4" key={i.id}><span>{i.name} × {i.quantity}</span><span>{money(i.unit_price * i.quantity, selected.currency)}</span></div>)}<p className="border-t pt-3 text-lg font-semibold">Total {money(selected.total_amount, selected.currency)}</p><p className="text-sm text-text-secondary">Prices and stock are checked again when you place the order. MtaaMall’s secure online M-Pesa account processes this payment.</p><label className="block font-semibold text-text">M-Pesa phone number<input className={input} value={phone} onChange={e => setPhone(e.target.value)} required minLength={9} maxLength={20} inputMode="tel" autoComplete="tel" placeholder="07XXXXXXXX" /><span className="mt-1 block text-xs font-normal text-text-tertiary">Your account phone is filled in when available. You may use another valid Kenyan M-Pesa number.</span></label><QueryState query={addresses} /><label className="block">Fulfilment<select className={input} value={address} onChange={e => setAddress(e.target.value)}><option value="">Collect from seller’s storefront</option>{addresses.data?.map(a => <option value={a.id} key={a.id}>{a.label}: {a.address}, {a.city}</option>)}</select></label><p className="text-sm text-slate-500">For delivery, confirm arrangements with the seller. No delivery fee is added here.</p><Link className="inline-block underline" to="/account/addresses">Manage addresses</Link><label className="flex gap-2"><input type="checkbox" required />I confirm the seller, quantities, fulfilment and M-Pesa number.</label><button className={button} disabled={busy || cart.isBusy || Boolean(cart.error) || selected.items.some(i => !i.available)}>{busy ? 'Initiating…' : 'Place order and pay with M-Pesa'}</button><p role="alert">{notice}</p></form>}</div>
 }

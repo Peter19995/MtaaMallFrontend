@@ -55,6 +55,20 @@ describe('separate application experiences', () => {
     expect(canAccessWorkspace(inventoryUser, '/business/inventory/restocks')).toBe(true)
     expect(canAccessWorkspace({ ...inventoryUser, permissions: [] }, '/business/inventory/alerts')).toBe(false)
   })
+  it('protects each platform payment route with its named permission', () => {
+    const reader = {
+      context: 'platform', roles: ['platform_auditor'],
+      permissions: ['platform.payments.read', 'platform.settlements.read']
+    }
+    expect(workspaceMenu(reader).map(module => module.path)).toEqual([
+      '/platform/payments', '/platform/payments/mpesa', '/platform/payments/transactions', '/platform/settlements'
+    ])
+    expect(canAccessWorkspace(reader, '/platform/businesses/tenant-uuid/payments')).toBe(true)
+    expect(canAccessWorkspace({ ...reader, permissions: ['platform.payments.read'] }, '/platform/settlements')).toBe(false)
+    expect(canAccessWorkspace(reader, '/platform/payments/reconciliation')).toBe(false)
+    expect(canAccessWorkspace({ ...reader, permissions: ['platform.payments.reconcile'] }, '/platform/payments/reconciliation')).toBe(true)
+    expect(canAccessWorkspace({ ...reader, permissions: [] }, '/platform/businesses/tenant-uuid/payments')).toBe(false)
+  })
   it('does not combine contexts or use business membership presence as a grant', () => {
     const personal = { ...customer, business_memberships: [{ status: 'active' }, { status: 'active' }] }
     expect(loginLanding(personal)).toBe('/account/workspaces')

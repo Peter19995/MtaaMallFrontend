@@ -43,6 +43,7 @@ const groupDefinition = (path: string) => {
   if (path.endsWith('/customers')) return { id: 'crm', label: 'CRM', icon: UserGroupIcon, order: 50 }
   if (path.endsWith('/overview')) return { id: 'reports', label: 'Reports', icon: ChartBarIcon, order: 60 }
   if (path.endsWith('/audit') || path.endsWith('/approvals')) return { id: 'oversight', label: 'Audit & approval', icon: ClipboardDocumentCheckIcon, order: 70 }
+  if (path.includes('/payments') || path.endsWith('/settlements')) return { id: 'payments', label: 'Platform payments', icon: CreditCardIcon, order: 20 }
   if (path.endsWith('/businesses') || path.endsWith('/admins')) return { id: 'people', label: 'People & access', icon: UserGroupIcon, order: 10 }
   return { id: 'insights', label: 'Insights', icon: ChartBarIcon, order: 60 }
 }
@@ -72,6 +73,7 @@ const iconFor = (path: string) => {
   if (path.endsWith('/sales/create')) return ShoppingBagIcon
   if (path.endsWith('/sales')) return CurrencyDollarIcon
   if (path.endsWith('/payment-modes')) return CreditCardIcon
+  if (path.includes('/payments') || path.endsWith('/settlements')) return CreditCardIcon
   if (path.endsWith('/services')) return SparklesIcon
   if (path.endsWith('/styling')) return SparklesIcon
   if (path.endsWith('/settings')) return Cog6ToothIcon

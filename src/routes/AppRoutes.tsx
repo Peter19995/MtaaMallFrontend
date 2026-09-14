@@ -30,6 +30,11 @@ const RegisterPage = lazy(() => import('@pages/auth/Register/RegisterPage'))
 const AcceptInvitationPage = lazy(() => import('@pages/auth/AcceptInvitation/AcceptInvitationPage'))
 const BusinessInvitationAcceptPage = lazy(() => import('@pages/auth/AcceptInvitation/BusinessInvitationAcceptPage'))
 const PlatformBusinessesPage = lazy(() => import('@pages/dashboard/business/PlatformBusinessesPage'))
+const PlatformMpesaPage = lazy(() => import('@pages/dashboard/admin/PlatformPayments/PlatformMpesaPage'))
+const PlatformPaymentsOverviewPage = lazy(() => import('@pages/dashboard/admin/PlatformPayments/PlatformPaymentPages').then(module => ({ default: module.PlatformPaymentsOverviewPage })))
+const PlatformTransactionsPage = lazy(() => import('@pages/dashboard/admin/PlatformPayments/PlatformPaymentPages').then(module => ({ default: module.PlatformTransactionsPage })))
+const PlatformReconciliationPage = lazy(() => import('@pages/dashboard/admin/PlatformPayments/PlatformPaymentPages').then(module => ({ default: module.PlatformReconciliationPage })))
+const PlatformSettlementsPage = lazy(() => import('@pages/dashboard/admin/PlatformPayments/PlatformPaymentPages').then(module => ({ default: module.PlatformSettlementsPage })))
 const MyBusinessPage = lazy(() => import('@pages/dashboard/business/MyBusinessPage'))
 const WorkspacesPage = lazy(() => import('@pages/customer/WorkspacesPage'))
 const MembershipManagementPage = lazy(() => import('@pages/dashboard/business/MembershipManagementPage'))
@@ -156,6 +161,12 @@ export const AppRoutes = () => {
               <Route path="/platform" element={<WorkspaceHome />} />
               <Route path="/platform/audit" element={<AuditApprovalsPage />} />
               <Route path="/platform/businesses" element={<PlatformBusinessesPage />} />
+              <Route path="/platform/payments" element={<PlatformPaymentsOverviewPage />} />
+              <Route path="/platform/payments/mpesa" element={<PlatformMpesaPage />} />
+              <Route path="/platform/payments/transactions" element={<PlatformTransactionsPage />} />
+              <Route path="/platform/payments/reconciliation" element={<PlatformReconciliationPage />} />
+              <Route path="/platform/settlements" element={<PlatformSettlementsPage />} />
+              <Route path="/platform/businesses/:id/payments" element={<PlatformMpesaPage />} />
               <Route path="/platform/admins" element={<MembershipManagementPage scope="platform" />} />
               {['business', 'employee'].map(experience => <Route key={experience}>
                 <Route path={`/${experience}/audit`} element={<AuditApprovalsPage />} />

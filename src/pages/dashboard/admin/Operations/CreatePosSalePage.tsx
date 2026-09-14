@@ -32,8 +32,10 @@ import {
 import { getProductRequest, listInStockProductsRequest } from '@api/modules/products.api'
 import {
   createPosSaleRequest,
+  getPosMpesaAvailabilityRequest,
+  getPosMpesaPaymentStatusRequest,
+  initiatePosMpesaPaymentRequest,
   listPaymentModesRequest,
-  processOrderPaymentRequest
 } from '@api/modules/pos.api'
 import { AppTheme, withOpacity } from '@constants/theme'
 import { requiresExternalPosPayment } from '@utils/paymentModes'
@@ -64,6 +66,8 @@ type LastCreatedSaleSummary = {
   totalAmount: number
   paymentModeName: string
   paymentStatus: string
+  branchId: number
+  isMpesa: boolean
 }
 
 const formatCurrency = (amount: number): string =>
@@ -408,6 +412,31 @@ const CreatePosSalePage = () => {
     enabled: selectedBranchId !== undefined
   })
 
+  const posMpesaAvailabilityQuery = useQuery({
+    queryKey: ['pos', 'mpesa-availability', selectedBranchId],
+    queryFn: () => getPosMpesaAvailabilityRequest(selectedBranchId as number),
+    enabled: selectedBranchId !== undefined,
+    retry: false
+  })
+
+  const posMpesaStatusQuery = useQuery({
+    queryKey: ['pos', 'mpesa-status', lastCreatedSaleId, lastCreatedSaleSummary?.branchId],
+    queryFn: () =>
+      getPosMpesaPaymentStatusRequest(
+        lastCreatedSaleId as number,
+        lastCreatedSaleSummary?.branchId as number
+      ),
+    enabled:
+      showSuccessModal &&
+      Boolean(lastCreatedSaleId) &&
+      Boolean(lastCreatedSaleSummary?.isMpesa) &&
+      ['created', 'initiating', 'pending_customer', 'unknown'].includes(
+        lastCreatedSaleSummary?.paymentStatus ?? ''
+      ),
+    refetchInterval: 3000,
+    retry: false
+  })
+
   const branchOptions = useMemo(
     () => [
       { label: 'Select branch', value: '' },
@@ -503,6 +532,19 @@ const CreatePosSalePage = () => {
     [paymentModesQuery.data]
   )
 
+  const availablePaymentModes = useMemo(
+    () =>
+      activePaymentModes.filter(
+        (mode) =>
+          !requiresExternalPosPayment(mode.code) ||
+          posMpesaAvailabilityQuery.data?.available === true
+      ),
+    [activePaymentModes, posMpesaAvailabilityQuery.data?.available]
+  )
+  const branchHasMpesaMode = activePaymentModes.some((mode) =>
+    requiresExternalPosPayment(mode.code)
+  )
+
   const paymentModeOptions = useMemo(() => {
     if (!selectedBranchId) {
       return [{ label: 'Select a branch first', value: '' }]
@@ -512,17 +554,17 @@ const CreatePosSalePage = () => {
       return [{ label: 'Loading payment modes...', value: '' }]
     }
 
-    if (activePaymentModes.length === 0) {
+    if (availablePaymentModes.length === 0) {
       return [{ label: 'No active payment modes for this branch', value: '' }]
     }
 
-    return activePaymentModes.map((mode) => ({
+    return availablePaymentModes.map((mode) => ({
       label: `${mode.name} (${mode.code})`,
       value: String(mode.id)
     }))
-  }, [selectedBranchId, paymentModesQuery.isLoading, activePaymentModes])
+  }, [selectedBranchId, paymentModesQuery.isLoading, availablePaymentModes])
 
-  const hasSelectablePaymentModes = activePaymentModes.length > 0
+  const hasSelectablePaymentModes = availablePaymentModes.length > 0
   const hasSelectableProducts = (productsQuery.data ?? []).length > 0
   const selectedCustomer = useMemo(
     () =>
@@ -532,8 +574,8 @@ const CreatePosSalePage = () => {
     [posCustomers, createSaleForm.customerId]
   )
   const selectedPaymentMode = useMemo(
-    () => activePaymentModes.find((mode) => String(mode.id) === createSaleForm.paymentModeId),
-    [activePaymentModes, createSaleForm.paymentModeId]
+    () => availablePaymentModes.find((mode) => String(mode.id) === createSaleForm.paymentModeId),
+    [availablePaymentModes, createSaleForm.paymentModeId]
   )
   const requiresPhoneForPayment = useMemo(() => {
     return requiresExternalPosPayment(selectedPaymentMode?.code)
@@ -581,7 +623,7 @@ const CreatePosSalePage = () => {
       return
     }
 
-    const defaultMode = activePaymentModes.find((mode) => mode.is_default) ?? activePaymentModes[0]
+    const defaultMode = availablePaymentModes.find((mode) => mode.is_default) ?? availablePaymentModes[0]
     if (!defaultMode) {
       setCreateSaleForm((previous) =>
         previous.paymentModeId
@@ -594,7 +636,7 @@ const CreatePosSalePage = () => {
       return
     }
 
-    const hasCurrentValue = activePaymentModes.some(
+    const hasCurrentValue = availablePaymentModes.some(
       (mode) => String(mode.id) === createSaleForm.paymentModeId
     )
     if (!hasCurrentValue) {
@@ -603,7 +645,28 @@ const CreatePosSalePage = () => {
         paymentModeId: String(defaultMode.id)
       }))
     }
-  }, [selectedBranchId, activePaymentModes, createSaleForm.paymentModeId])
+  }, [selectedBranchId, availablePaymentModes, createSaleForm.paymentModeId])
+
+  useEffect(() => {
+    if (!requiresPhoneForPayment) return
+    setCreateSaleForm((previous) => ({
+      ...previous,
+      paymentPhoneNumber: selectedCustomer?.phone ?? ''
+    }))
+  }, [requiresPhoneForPayment, selectedCustomer?.id, selectedCustomer?.phone])
+
+  useEffect(() => {
+    const intent = posMpesaStatusQuery.data
+    if (!intent) return
+    setLastCreatedSaleSummary((previous) =>
+      previous ? { ...previous, paymentStatus: intent.state } : previous
+    )
+    if (intent.state === 'successful') {
+      queryClient.invalidateQueries({ queryKey: ['pos', 'sales'] })
+      queryClient.invalidateQueries({ queryKey: ['pos', 'daily-summary'] })
+      queryClient.invalidateQueries({ queryKey: ['reports'] })
+    }
+  }, [posMpesaStatusQuery.data, queryClient])
 
   useEffect(() => {
     if (!productsQuery.data) {
@@ -811,7 +874,7 @@ const CreatePosSalePage = () => {
         throw new Error('Discount amount must be 0 or more.')
       }
 
-      const selectedMode = activePaymentModes.find((mode) => String(mode.id) === String(paymentModeId))
+      const selectedMode = availablePaymentModes.find((mode) => String(mode.id) === String(paymentModeId))
       if (!selectedMode) {
         throw new Error('Selected payment mode is not available for this branch.')
       }
@@ -851,34 +914,38 @@ const CreatePosSalePage = () => {
         return {
           kind: 'sale' as const,
           sale,
-          paymentStatus: 'completed'
+          paymentStatus: 'completed',
+          isMpesa: false,
+          branchId,
+          paymentError: null
         }
       }
 
       try {
-        const paymentResult = await processOrderPaymentRequest(
+        const intent = await initiatePosMpesaPaymentRequest(
           sale.id,
-          {
-            payment_mode_id: paymentModeId,
-            amount: sale.total_amount,
-            phone_number: phoneNumber || undefined,
-            transaction_desc: `POS sale #${sale.id}`,
-            mark_completed: true
-          },
-          {
-            branch_id: branchId
-          }
+          phoneNumber,
+          branchId,
+          crypto.randomUUID()
         )
 
         return {
           kind: 'sale' as const,
           sale,
-          paymentStatus: paymentResult.result_status
+          paymentStatus: intent.state,
+          isMpesa: true,
+          branchId,
+          paymentError: null
         }
       } catch (paymentError) {
-        throw new Error(
-          `POS sale #${sale.id} was created, but payment failed: ${extractApiErrorMessage(paymentError)}`
-        )
+        return {
+          kind: 'sale' as const,
+          sale,
+          paymentStatus: 'failed',
+          isMpesa: true,
+          branchId,
+          paymentError: extractApiErrorMessage(paymentError)
+        }
       }
     },
     onSuccess: (result, payload) => {
@@ -893,15 +960,21 @@ const CreatePosSalePage = () => {
         activePaymentModes.find((mode) => String(mode.id) === payload.paymentModeId)?.name ??
         `#${payload.paymentModeId}`
 
-      setFeedback({
-        type: 'success',
-        message: `POS sale #${sale.id} created and payment processed (${result.paymentStatus}).`
-      })
+      setFeedback(result.paymentError
+        ? { type: 'error', message: `POS sale #${sale.id} was saved but M-Pesa could not start: ${result.paymentError}` }
+        : {
+            type: 'success',
+            message: result.isMpesa
+              ? `POS sale #${sale.id} saved. M-Pesa confirmation is pending.`
+              : `POS sale #${sale.id} created and paid.`
+          })
       setLastCreatedSaleId(sale.id)
       setLastCreatedSaleSummary({
         totalAmount: sale.total_amount,
         paymentModeName,
-        paymentStatus: result.paymentStatus
+        paymentStatus: result.paymentStatus,
+        branchId: result.branchId,
+        isMpesa: result.isMpesa
       })
       setShowSuccessModal(true)
       setCreateSaleForm(createEmptySaleForm(createSaleForm.branchId))
@@ -918,6 +991,39 @@ const CreatePosSalePage = () => {
         type: 'error',
         message: extractApiErrorMessage(error)
       })
+    }
+  })
+
+  const retryPosMpesaMutation = useMutation({
+    mutationFn: async () => {
+      if (!lastCreatedSaleId || !lastCreatedSaleSummary?.branchId) {
+        throw new Error('The POS sale could not be identified for retry.')
+      }
+      const phoneNumber = await siteDialog.prompt({
+        title: 'Retry M-Pesa payment',
+        message: `Send a new STK Push for POS sale #${lastCreatedSaleId}.`,
+        inputLabel: 'Customer M-Pesa number',
+        placeholder: 'e.g. 0712345678',
+        confirmLabel: 'Send STK Push',
+        minLength: 9
+      })
+      if (!phoneNumber) throw new Error('Retry cancelled.')
+      return initiatePosMpesaPaymentRequest(
+        lastCreatedSaleId,
+        phoneNumber.trim(),
+        lastCreatedSaleSummary.branchId,
+        crypto.randomUUID()
+      )
+    },
+    onSuccess: (intent) => {
+      setLastCreatedSaleSummary((previous) =>
+        previous ? { ...previous, paymentStatus: intent.state } : previous
+      )
+      setFeedback({ type: 'success', message: 'A new M-Pesa STK Push was sent.' })
+    },
+    onError: (error: unknown) => {
+      const message = extractApiErrorMessage(error)
+      if (message !== 'Retry cancelled.') setFeedback({ type: 'error', message })
     }
   })
 
@@ -1189,9 +1295,9 @@ const CreatePosSalePage = () => {
                 />
               </div>
 
-              <div className="md:col-span-1">
+              {requiresPhoneForPayment && <div className="md:col-span-1">
                 <TextInput
-                  label={requiresPhoneForPayment ? 'Phone Number *' : 'Phone Number'}
+                  label="Customer M-Pesa Number *"
                   type="tel"
                   placeholder="e.g. 0712345678"
                   value={createSaleForm.paymentPhoneNumber}
@@ -1201,14 +1307,10 @@ const CreatePosSalePage = () => {
                       paymentPhoneNumber: event.target.value
                     }))
                   }
-                  helperText={
-                    requiresPhoneForPayment
-                      ? 'Required for M-Pesa payment processing.'
-                      : 'Optional. Used when payment mode requires phone.'
-                  }
+                  helperText="Confirm the number that should receive the STK Push."
                   icon={<PhoneIcon className="h-4 w-4 text-text-tertiary" />}
                 />
-              </div>
+              </div>}
               
               <div className="md:col-span-1">
                 <TextInput
@@ -1223,6 +1325,12 @@ const CreatePosSalePage = () => {
                   icon={<TagIcon className="h-4 w-4 text-text-tertiary" />}
                 />
               </div>
+
+              {branchHasMpesaMode && posMpesaAvailabilityQuery.data?.available === false && (
+                <div className="md:col-span-5 rounded-xl border border-warning/30 bg-warning/10 px-4 py-3 text-sm text-text-secondary">
+                  {posMpesaAvailabilityQuery.data.message}
+                </div>
+              )}
             </div>
 
             {/* Items Section */}
@@ -1783,12 +1891,24 @@ const CreatePosSalePage = () => {
               onClick={(e) => e.stopPropagation()}
             >
               <div className="text-center">
-                <div className="mx-auto w-16 h-16 bg-success/10 rounded-full flex items-center justify-center mb-4">
-                  <CheckCircleSolid className="h-10 w-10 text-success" />
+                <div className={`mx-auto w-16 h-16 rounded-full flex items-center justify-center mb-4 ${lastCreatedSaleSummary?.isMpesa && lastCreatedSaleSummary.paymentStatus !== 'successful' ? 'bg-warning/10' : 'bg-success/10'}`}>
+                  {lastCreatedSaleSummary?.isMpesa && lastCreatedSaleSummary.paymentStatus !== 'successful'
+                    ? <CreditCardIcon className="h-10 w-10 text-warning" />
+                    : <CheckCircleSolid className="h-10 w-10 text-success" />}
                 </div>
-                <h3 className="text-xl font-bold text-text mb-2">Sale And Payment Completed</h3>
+                <h3 className="text-xl font-bold text-text mb-2">
+                  {lastCreatedSaleSummary?.isMpesa
+                    ? lastCreatedSaleSummary.paymentStatus === 'successful'
+                      ? 'Sale And Payment Completed'
+                      : ['failed', 'cancelled', 'timed_out'].includes(lastCreatedSaleSummary.paymentStatus)
+                        ? 'M-Pesa Payment Not Completed'
+                        : 'Awaiting M-Pesa Confirmation'
+                    : 'Sale And Payment Completed'}
+                </h3>
                 <p className="text-text-secondary mb-4">
-                  POS sale #{lastCreatedSaleId} has been created and payment recorded successfully.
+                  {lastCreatedSaleSummary?.isMpesa && lastCreatedSaleSummary.paymentStatus !== 'successful'
+                    ? `POS sale #${lastCreatedSaleId} is saved and remains unpaid. Payment is recorded only after M-Pesa verification succeeds.`
+                    : `POS sale #${lastCreatedSaleId} has been created and payment recorded successfully.`}
                 </p>
                 
                 <div className="bg-background rounded-lg p-4 mb-6">
@@ -1813,6 +1933,25 @@ const CreatePosSalePage = () => {
                 </div>
 
                 <div className="flex gap-3">
+                  {lastCreatedSaleSummary?.isMpesa && ['failed', 'cancelled', 'timed_out'].includes(lastCreatedSaleSummary.paymentStatus) && (
+                    <Button
+                      onClick={() => retryPosMpesaMutation.mutate()}
+                      loading={retryPosMpesaMutation.isPending}
+                      className="flex-1"
+                    >
+                      Retry M-Pesa
+                    </Button>
+                  )}
+                  {lastCreatedSaleSummary?.isMpesa && lastCreatedSaleSummary.paymentStatus !== 'successful' && (
+                    <Button
+                      variant="outline"
+                      onClick={() => posMpesaStatusQuery.refetch()}
+                      loading={posMpesaStatusQuery.isFetching}
+                      className="flex-1"
+                    >
+                      Check Status
+                    </Button>
+                  )}
                   <Link to={workspacePath('/dashboard/admin/sales')} className="flex-1">
                     <Button variant="outline" className="w-full">
                       View All Sales

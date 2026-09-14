@@ -153,7 +153,8 @@ export type ProjectMaterialResponse = {
 }
 
 export type ProjectLabourCreatePayload = {
-  employee_id: number
+  employee_id?: number
+  employee_user_id?: number
   task_id?: number
   hours_worked: number
   rate_per_hour: number
@@ -165,7 +166,7 @@ export type ProjectLabourCreatePayload = {
 export type ProjectLabourResponse = {
   id: number
   project_id: number
-  employee_id: number
+  employee_id?: number | null
   task_id?: number | null
   hours_worked: number
   rate_per_hour: number
