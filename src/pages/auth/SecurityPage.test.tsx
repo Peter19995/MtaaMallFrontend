@@ -6,8 +6,9 @@ import { MemoryRouter } from 'react-router-dom'
 import api from '@api/config/axios.config'
 import SecurityPage from './SecurityPage'
 
+const authMocks = vi.hoisted(() => ({ refreshIdentity: vi.fn() }))
 vi.mock('@api/config/axios.config', () => ({ default: { get: vi.fn(), post: vi.fn() } }))
-vi.mock('@hooks/useAuth', () => ({ useAuth: () => ({ refreshIdentity: vi.fn() }) }))
+vi.mock('@hooks/useAuth', () => ({ useAuth: () => ({ refreshIdentity: authMocks.refreshIdentity }) }))
 vi.mock('@api/modules/auth.api', () => ({ changePasswordRequest: vi.fn(), logoutRequest: vi.fn() }))
 afterEach(() => { cleanup(); vi.resetAllMocks() })
 const state = { email: 'owner@example.com', email_required: false, must_change_password: false,
@@ -47,4 +48,28 @@ it('shows recovery codes once and requires saving them before continuing', async
   fireEvent.click(screen.getByText('I saved my recovery codes'))
   expect(screen.getByText('Continue to my account')).toBeInTheDocument()
   expect(screen.queryByText('one-time-recovery')).not.toBeInTheDocument()
+})
+
+it('redirects immediately after an existing MFA code is verified', async () => {
+  show({ ...state, mfa_enabled: true })
+  vi.mocked(api.post).mockResolvedValueOnce({ data: {} })
+  authMocks.refreshIdentity.mockResolvedValueOnce({
+    context: 'platform',
+    roles: ['root_system_admin'],
+    permissions: ['platform.admins.manage'],
+  })
+
+  const input = await screen.findByLabelText('MFA code')
+  fireEvent.change(input, { target: { value: '654321' } })
+  fireEvent.submit(input.closest('form')!)
+
+  await waitFor(() => expect(api.post).toHaveBeenCalledWith('/auth/security/mfa/verify', { code: '654321' }))
+  await waitFor(() => expect(authMocks.refreshIdentity).toHaveBeenCalledOnce())
+  expect(screen.queryByText('Change your password')).not.toBeInTheDocument()
+})
+
+it('does not show an optional password-change card after security is complete', async () => {
+  show({ ...state, mfa_enabled: true, mfa_needed: false, ready: true })
+  expect(await screen.findByText('Security setup complete')).toBeInTheDocument()
+  expect(screen.queryByText('Change your password')).not.toBeInTheDocument()
 })

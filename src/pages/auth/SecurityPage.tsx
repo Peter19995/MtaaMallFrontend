@@ -202,7 +202,12 @@ export default function SecurityPage() {
 
             {needsExistingMfa && (
               <SecurityCard icon={DevicePhoneMobileIcon} title="Two-step verification" description="Enter a current authenticator code or one of your unused recovery codes.">
-                <form onSubmit={e => { e.preventDefault(); void run(async () => { await api.post('/auth/security/mfa/verify', { code: code.trim() }); setCode(''); await reload() }) }}>
+                <form onSubmit={e => { e.preventDefault(); void run(async () => {
+                  await api.post('/auth/security/mfa/verify', { code: code.trim() })
+                  setCode('')
+                  const user = await refreshIdentity()
+                  navigate(loginLanding(user), { replace: true })
+                }) }}>
                   <label className="block text-sm font-semibold text-text-secondary">Authenticator or recovery code<input aria-label="MFA code" className={input} value={code} onChange={e => setCode(e.target.value)} autoComplete="one-time-code" required maxLength={64} /></label>
                   <button className={`${primaryButton} mt-4`} disabled={busy}>Verify code <ArrowRightIcon className="h-4 w-4" /></button>
                   <p className="mt-4 text-xs leading-5 text-text-tertiary">Codes cannot be reused. Wait for the next authenticator code if you just used one. Password reset does not remove MFA.</p>
@@ -224,8 +229,8 @@ export default function SecurityPage() {
                   </SecurityCard>
                 )}
 
-                {(state.must_change_password || state.ready) && (
-                  <SecurityCard icon={KeyIcon} title={state.must_change_password ? 'Replace your bootstrap password' : 'Change your password'} description={state.must_change_password ? 'Your initial administrator password cannot be used for normal operations.' : 'Changing your password signs out all devices.'}>
+                {state.must_change_password && (
+                  <SecurityCard icon={KeyIcon} title="Replace your bootstrap password" description="Your initial administrator password cannot be used for normal operations.">
                     <form className="space-y-4" onSubmit={e => { e.preventDefault(); void run(async () => { await changePasswordRequest({ old_password: oldPassword, new_password: newPassword }); localStorage.removeItem('auth_user'); window.location.assign('/login') }) }}>
                       <label className="block text-sm font-semibold text-text-secondary">Current password<input className={input} type="password" autoComplete="current-password" required value={oldPassword} onChange={e => setOldPassword(e.target.value)} /></label>
                       <label className="block text-sm font-semibold text-text-secondary">New password<input className={input} type="password" autoComplete="new-password" minLength={6} required value={newPassword} onChange={e => setNewPassword(e.target.value)} /><span className="mt-2 block text-xs font-normal text-text-tertiary">Use at least 6 characters.</span></label>
