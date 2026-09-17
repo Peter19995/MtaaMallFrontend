@@ -8,6 +8,7 @@ import { MemoryRouter } from 'react-router-dom'
 import { BusinessForm, LifecycleActions } from './BusinessComponents'
 import MyBusinessPage from './MyBusinessPage'
 import PlatformBusinessesPage from './PlatformBusinessesPage'
+import { SiteDialogProvider } from '@components/common'
 import { changeBusinessStatus, getMyBusiness, getMyBusinessDocuments, updateMyBusiness, listBusinesses, createBusiness } from '@api/modules/businesses.api'
 import type { Business } from '@api/modules/businesses.api'
 
@@ -21,7 +22,7 @@ const business: Business = {
   rejection_reason: null, created_by_user_id: 1, approved_by_user_id: 1, approved_at: null,
   suspended_at: null, created_at: '2026-09-06T09:00:00Z', updated_at: null, owner: null, branches: []
 }
-const mount = (element: React.ReactElement) => render(<QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } })}><MemoryRouter>{element}</MemoryRouter></QueryClientProvider>)
+const mount = (element: React.ReactElement) => render(<QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } })}><MemoryRouter><SiteDialogProvider>{element}</SiteDialogProvider></MemoryRouter></QueryClientProvider>)
 beforeEach(() => { vi.resetAllMocks(); vi.mocked(getMyBusinessDocuments).mockResolvedValue([]); identity.user.roles = ['root_system_admin']; identity.user.permissions = ['platform.businesses.read', 'platform.businesses.suspend'] })
 afterEach(cleanup)
 

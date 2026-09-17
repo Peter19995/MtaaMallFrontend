@@ -10,6 +10,7 @@ export type MpesaProviderAccount = {
   merchant_type: 'paybill' | 'till'
   shortcode: string
   transaction_type: string
+  callback_url: string | null
   credential_version: number
   credentials_configured: boolean
   status: 'draft' | 'testing' | 'active' | 'inactive' | 'retired'
@@ -25,6 +26,7 @@ export type MpesaConfiguration = {
   merchant_type: 'paybill' | 'till'
   shortcode?: string
   transaction_type: string
+  callback_url: string
   consumer_key?: string
   consumer_secret?: string
   passkey?: string
@@ -48,6 +50,8 @@ export type PaymentAuditEvent = {
 }
 export type ReconciliationItem = {
   id: number; provider: string; checkout_request_id: string | null
+  routed_provider_account_id: string | null; provider_account_id: string | null
+  business_id: string | null; business_name: string | null
   processing_status: string; received_at: string; processed_at: string | null; error_message: string | null
 }
 export type PaymentMetrics = {

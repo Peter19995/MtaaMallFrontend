@@ -6,6 +6,7 @@ import { Link, useParams } from 'react-router-dom'
 import { useAuth } from '@hooks/useAuth'
 import { useSiteDialog } from '@components/common'
 import { getBusiness, listBusinesses } from '@api/modules/businesses.api'
+import { reauthenticateRequest } from '@api/modules/auth.api'
 import {
   activateMpesaConfiguration,
   disablePaymentPilotBusiness,
@@ -29,15 +30,34 @@ const secondary = 'rounded-xl border border-border bg-white px-4 py-2.5 text-sm 
 
 const emptyForm: MpesaConfiguration = {
   environment: 'sandbox', merchant_type: 'paybill', shortcode: '',
-  transaction_type: 'CustomerPayBillOnline', reason: '',
+  transaction_type: 'CustomerPayBillOnline', callback_url: '', reason: '',
 }
 
 const errorText = (error: unknown) => {
   if (typeof error === 'object' && error && 'response' in error) {
-    const response = (error as { response?: { data?: { message?: string; detail?: string } } }).response
-    return response?.data?.message ?? response?.data?.detail ?? 'The request could not be completed.'
+    const response = (error as { response?: { data?: { message?: unknown; detail?: unknown } } }).response
+    const detail = response?.data?.detail
+    const detailMessage = typeof detail === 'object' && detail && 'message' in detail
+      ? (detail as { message?: unknown }).message
+      : detail
+    return typeof response?.data?.message === 'string'
+      ? response.data.message
+      : typeof detailMessage === 'string'
+        ? detailMessage
+        : 'The request could not be completed.'
   }
   return error instanceof Error ? error.message : 'The request could not be completed.'
+}
+
+const requiresReauthentication = (error: unknown) => {
+  if (typeof error !== 'object' || !error || !('response' in error)) return false
+  const response = (error as { response?: { status?: number; data?: Record<string, unknown> } }).response
+  const data = response?.data
+  const detail = data?.detail
+  return data?.reauthentication_required === true ||
+    (typeof detail === 'object' && detail !== null &&
+      (detail as Record<string, unknown>).reauthentication_required === true) ||
+    (response?.status === 403 && errorText(error).toLowerCase().includes('recent authentication'))
 }
 
 export default function PlatformMpesaPage() {
@@ -93,6 +113,7 @@ export default function PlatformMpesaPage() {
       merchant_type: account.data.merchant_type,
       shortcode: '',
       transaction_type: account.data.transaction_type,
+      callback_url: account.data.callback_url ?? '',
       reason: '',
     })
   }, [account.data, scope, selectedBusinessId])
@@ -101,31 +122,51 @@ export default function PlatformMpesaPage() {
     await queryClient.invalidateQueries({ queryKey: ['platform-mpesa', scope, selectedBusinessId] })
     await queryClient.invalidateQueries({ queryKey: ['platform-payment-audit', selectedBusinessId] })
   }
+  const runSensitive = async <T,>(operation: () => Promise<T>): Promise<T> => {
+    try {
+      return await operation()
+    } catch (error) {
+      if (!requiresReauthentication(error)) throw error
+      const password = await dialog.prompt({
+        title: 'Confirm your identity',
+        message: 'Enter your account password to authorize sensitive payment changes for the next 10 minutes.',
+        inputLabel: 'Password',
+        inputType: 'password',
+        trim: false,
+        minLength: 1,
+        maxLength: 1024,
+        confirmLabel: 'Continue',
+      })
+      if (password === null) throw error
+      await reauthenticateRequest(password)
+      return operation()
+    }
+  }
   const save = useMutation({
-    mutationFn: (payload: MpesaConfiguration) => saveMpesaConfiguration(payload, selectedBusinessId),
+    mutationFn: (payload: MpesaConfiguration) => runSensitive(() => saveMpesaConfiguration(payload, selectedBusinessId)),
     onSuccess: async () => {
       setForm(current => ({ ...current, consumer_key: '', consumer_secret: '', passkey: '', reason: '' }))
       await refresh()
       await dialog.alert({ title: 'Configuration saved', message: 'Credentials remain write-only. Test this account before activation.' })
     },
   })
-  const test = useMutation({ mutationFn: () => testMpesaConfiguration(selectedBusinessId), onSuccess: refresh })
-  const activate = useMutation({ mutationFn: (reason: string) => activateMpesaConfiguration(reason, selectedBusinessId), onSuccess: refresh })
-  const suspend = useMutation({ mutationFn: (reason: string) => suspendMpesaConfiguration(reason, selectedBusinessId), onSuccess: refresh })
+  const test = useMutation({ mutationFn: () => runSensitive(() => testMpesaConfiguration(selectedBusinessId)), onSuccess: refresh })
+  const activate = useMutation({ mutationFn: (reason: string) => runSensitive(() => activateMpesaConfiguration(reason, selectedBusinessId)), onSuccess: refresh })
+  const suspend = useMutation({ mutationFn: (reason: string) => runSensitive(() => suspendMpesaConfiguration(reason, selectedBusinessId)), onSuccess: refresh })
   const refreshRollout = () => queryClient.invalidateQueries({ queryKey: ['platform-payment-rollout'] })
   const changeRollout = useMutation({
     mutationFn: ({ mode, reason }: { mode: PaymentRolloutStatus['online_mode']; reason: string }) =>
-      updatePaymentRollout(mode, reason),
+      runSensitive(() => updatePaymentRollout(mode, reason)),
     onSuccess: refreshRollout,
   })
   const addPilot = useMutation({
     mutationFn: ({ id, reason }: { id: string; reason: string }) =>
-      enablePaymentPilotBusiness(id, reason),
+      runSensitive(() => enablePaymentPilotBusiness(id, reason)),
     onSuccess: refreshRollout,
   })
   const removePilot = useMutation({
     mutationFn: ({ id, reason }: { id: string; reason: string }) =>
-      disablePaymentPilotBusiness(id, reason),
+      runSensitive(() => disablePaymentPilotBusiness(id, reason)),
     onSuccess: refreshRollout,
   })
 
@@ -142,6 +183,7 @@ export default function PlatformMpesaPage() {
       consumer_key: form.consumer_key || undefined,
       consumer_secret: form.consumer_secret || undefined,
       passkey: form.passkey || undefined,
+      callback_url: form.callback_url.trim(),
       reason: form.reason.trim(),
     })
   }
@@ -230,6 +272,7 @@ export default function PlatformMpesaPage() {
           ['Default online', current?.scope === 'platform' ? (current.is_default ? 'Yes' : 'No') : 'Not applicable'],
           ['Latest test', current?.last_test_status ?? 'Not tested'],
         ].map(([label, value]) => <div className="rounded-xl bg-background p-3" key={label}><dt className="text-xs text-text-tertiary">{label}</dt><dd className="mt-1 font-bold text-text">{value}</dd></div>)}</dl>
+        <div className="mt-3 rounded-xl bg-background p-3"><p className="text-xs text-text-tertiary">Account callback URL</p><p className="mt-1 break-all text-sm font-semibold text-text">{current?.callback_url ?? 'Not configured'}</p><p className="mt-1 text-xs text-text-secondary">This account-specific address links callbacks to the correct system or business account.</p></div>
         {hasPermission('platform.payments.test') && <button disabled={!current || busy} className={`${secondary} mt-5 w-full`} onClick={() => test.mutate()}>{test.isPending ? 'Testing with Daraja…' : 'Test credentials'}</button>}
         <div className="mt-3 flex gap-3">{hasPermission('platform.payments.activate') && <button disabled={!current || current.last_test_status !== 'passed' || busy} className={`${primary} flex-1`} onClick={() => void requestReason('activate')}>Activate</button>}{hasPermission('platform.payments.suspend') && <button disabled={!current || current.status !== 'active' || busy} className={`${secondary} flex-1`} onClick={() => void requestReason('suspend')}>Suspend</button>}</div>
       </section>
@@ -241,6 +284,7 @@ export default function PlatformMpesaPage() {
           <label className="text-sm font-semibold text-text">Merchant type<select className={input} value={form.merchant_type} onChange={event => setForm({ ...form, merchant_type: event.target.value as MpesaConfiguration['merchant_type'] })}><option value="paybill">PayBill</option><option value="till">Till / Buy Goods</option></select></label>
           <label className="text-sm font-semibold text-text">Shortcode<input className={input} required={!current} minLength={2} value={form.shortcode ?? ''} placeholder={current ? `Leave blank to keep ${current.shortcode}` : 'Enter shortcode'} onChange={event => setForm({ ...form, shortcode: event.target.value })} /></label>
           <label className="text-sm font-semibold text-text">Transaction type<input className={input} required value={form.transaction_type} onChange={event => setForm({ ...form, transaction_type: event.target.value })} /></label>
+          <label className="text-sm font-semibold text-text sm:col-span-2">Public callback URL<input className={input} required type="url" inputMode="url" placeholder="https://api.example.com" value={form.callback_url} onChange={event => setForm({ ...form, callback_url: event.target.value })} /><span className="mt-1 block text-xs font-normal text-text-secondary">Enter the public HTTPS API address. The system adds this account’s secure callback path automatically.</span></label>
           <label className="text-sm font-semibold text-text">Consumer key<input className={input} type="password" autoComplete="new-password" value={form.consumer_key ?? ''} onChange={event => setForm({ ...form, consumer_key: event.target.value })} /></label>
           <label className="text-sm font-semibold text-text">Consumer secret<input className={input} type="password" autoComplete="new-password" value={form.consumer_secret ?? ''} onChange={event => setForm({ ...form, consumer_secret: event.target.value })} /></label>
           <label className="text-sm font-semibold text-text sm:col-span-2">Passkey<input className={input} type="password" autoComplete="new-password" value={form.passkey ?? ''} onChange={event => setForm({ ...form, passkey: event.target.value })} /></label>

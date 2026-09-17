@@ -1,6 +1,6 @@
 import { downloadBusinessDocument } from '@api/modules/businesses.api'
 import { useState } from 'react'
-import { useSearchParams } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useAuth } from '@hooks/useAuth'
 import { createBusiness, decideBusiness, getBusiness, listBusinesses, type Business, type BusinessStatus } from '@api/modules/businesses.api'
@@ -93,6 +93,11 @@ export default function PlatformBusinessesPage() {
         {detail.isError && <section className={`${card} space-y-3 p-6`}><ErrorNotice error={detail.error} /><button className={secondary} onClick={() => detail.refetch()}>Retry details</button></section>}
         {detail.data && business && !detail.isError && <>
           <BusinessDetails business={business} />
+
+          {hasPermission('platform.payments.read') && <section className={`${card} flex flex-wrap items-center justify-between gap-4 p-5 sm:p-6`}>
+            <div><h2 className="font-semibold">Business POS payments</h2><p className="mt-1 text-sm text-slate-500">Configure and test the M-Pesa account used only by this business's POS terminals.</p></div>
+            <Link className={button} to={`/platform/businesses/${business.public_id}/payments`}>Configure POS M-Pesa</Link>
+          </section>}
 
           <section className={`${card} p-5 sm:p-6`}><div className="flex flex-wrap items-center justify-between gap-3"><div><h2 className="font-semibold">Review decision</h2><p className="mt-1 text-sm text-slate-500">Every action records your identity and a required reason.</p></div><StatusBadge status={business.status} /></div>
             {!availableActions.length && <p className="mt-5 rounded-xl bg-slate-50 p-4 text-sm text-slate-600">No lifecycle decisions are available for your permissions and this status.</p>}

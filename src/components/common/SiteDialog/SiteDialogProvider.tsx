@@ -32,9 +32,11 @@ type DialogOptions = {
 type PromptOptions = DialogOptions & {
   defaultValue?: string
   inputLabel?: string
+  inputType?: 'text' | 'password'
   placeholder?: string
   minLength?: number
   maxLength?: number
+  trim?: boolean
 }
 
 type ActiveDialog = {
@@ -98,6 +100,7 @@ export const SiteDialogProvider = ({ children }: { children: ReactNode }) => {
     if (!active) return
     active.resolve(value)
     dialogRef.current = null
+    setInputValue('')
     setDialog(null)
   }, [])
 
@@ -114,13 +117,15 @@ export const SiteDialogProvider = ({ children }: { children: ReactNode }) => {
   const submit = (event: FormEvent) => {
     event.preventDefault()
     if (!dialog) return
-    close(dialog.kind === 'prompt' ? inputValue.trim() : dialog.kind === 'confirm' ? true : undefined)
+    const promptValue = dialog.options.trim === false ? inputValue : inputValue.trim()
+    close(dialog.kind === 'prompt' ? promptValue : dialog.kind === 'confirm' ? true : undefined)
   }
 
   const title = dialog?.options.title ??
     (dialog?.kind === 'prompt' ? 'Reason required' : dialog?.kind === 'confirm' ? 'Please confirm' : 'Notice')
   const minimumLength = dialog?.options.minLength ?? 0
-  const promptIsValid = dialog?.kind !== 'prompt' || inputValue.trim().length >= minimumLength
+  const validatedInput = dialog?.options.trim === false ? inputValue : inputValue.trim()
+  const promptIsValid = dialog?.kind !== 'prompt' || validatedInput.length >= minimumLength
   const isDanger = dialog?.options.tone === 'danger'
   const Icon = isDanger
     ? ExclamationTriangleIcon
@@ -177,16 +182,34 @@ export const SiteDialogProvider = ({ children }: { children: ReactNode }) => {
 
               <div className="p-5">
                 {dialog.kind === 'prompt' && (
-                  <TextArea
-                    autoFocus
-                    label={dialog.options.inputLabel ?? 'Reason'}
-                    placeholder={dialog.options.placeholder ?? 'Enter a clear reason'}
-                    value={inputValue}
-                    minLength={minimumLength || undefined}
-                    maxLength={dialog.options.maxLength ?? 1000}
-                    required={minimumLength > 0}
-                    onChange={(event) => setInputValue(event.target.value)}
-                  />
+                  dialog.options.inputType === 'password' ? (
+                    <label className="block text-sm font-semibold text-text">
+                      {dialog.options.inputLabel ?? 'Password'}
+                      <input
+                        autoFocus
+                        type="password"
+                        autoComplete="current-password"
+                        className="mt-1 w-full rounded-xl border border-border bg-white px-3 py-2.5 text-sm text-text outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/15"
+                        placeholder={dialog.options.placeholder ?? 'Enter your password'}
+                        value={inputValue}
+                        minLength={minimumLength || undefined}
+                        maxLength={dialog.options.maxLength ?? 1024}
+                        required={minimumLength > 0}
+                        onChange={(event) => setInputValue(event.target.value)}
+                      />
+                    </label>
+                  ) : (
+                    <TextArea
+                      autoFocus
+                      label={dialog.options.inputLabel ?? 'Reason'}
+                      placeholder={dialog.options.placeholder ?? 'Enter a clear reason'}
+                      value={inputValue}
+                      minLength={minimumLength || undefined}
+                      maxLength={dialog.options.maxLength ?? 1000}
+                      required={minimumLength > 0}
+                      onChange={(event) => setInputValue(event.target.value)}
+                    />
+                  )
                 )}
                 <div className="mt-5 flex flex-wrap justify-end gap-3">
                   {dialog.kind !== 'alert' && (

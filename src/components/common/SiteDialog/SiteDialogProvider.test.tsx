@@ -32,6 +32,18 @@ const RefundPrompt = () => {
   )
 }
 
+const PasswordPrompt = () => {
+  const dialog = useSiteDialog()
+  return <button onClick={() => void dialog.prompt({
+    title: 'Confirm your identity',
+    message: 'Enter your password.',
+    inputLabel: 'Password',
+    inputType: 'password',
+    trim: false,
+    minLength: 1,
+  })}>Reauthenticate</button>
+}
+
 describe('SiteDialogProvider', () => {
   it('collects a required reason in a themed application dialog', async () => {
     const user = userEvent.setup()
@@ -53,5 +65,15 @@ describe('SiteDialogProvider', () => {
 
     await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
     expect(screen.getByText('Customer returned the item')).toBeInTheDocument()
+  })
+
+  it('uses a protected password input for reauthentication', async () => {
+    const user = userEvent.setup()
+    render(<SiteDialogProvider><PasswordPrompt /></SiteDialogProvider>)
+
+    await user.click(screen.getByRole('button', { name: 'Reauthenticate' }))
+
+    expect(screen.getByLabelText('Password')).toHaveAttribute('type', 'password')
+    expect(screen.getByLabelText('Password')).toHaveAttribute('autocomplete', 'current-password')
   })
 })

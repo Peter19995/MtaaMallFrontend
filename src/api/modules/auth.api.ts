@@ -127,6 +127,11 @@ export const logoutRequest = async (): Promise<AuthActionResponse> => {
   return data
 }
 
+export const reauthenticateRequest = async (password: string): Promise<AuthActionResponse> => {
+  const { data } = await api.post<AuthActionResponse>('/auth/reauthenticate', { password })
+  return data
+}
+
 export const changePasswordRequest = async (
   payload: PasswordChangeRequest
 ): Promise<AuthActionResponse> => {
