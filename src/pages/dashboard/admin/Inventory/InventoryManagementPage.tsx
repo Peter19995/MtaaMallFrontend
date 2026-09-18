@@ -135,6 +135,18 @@ const createRestockRow = (): RestockRowState => ({
   notes: ''
 })
 
+const restockTargetKey = (row: Pick<RestockRowState, 'productId' | 'productVariantId'>) =>
+  `${row.productId}:${row.productVariantId || 'base'}`
+
+const hasDuplicateRestockTarget = (
+  rows: RestockRowState[],
+  candidate: RestockRowState,
+  excludedRowId: string | null = null
+) =>
+  rows.some(
+    (row) => row.id !== excludedRowId && restockTargetKey(row) === restockTargetKey(candidate)
+  )
+
 const createStockCountRow = (): StockCountRowState => ({
   id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
   productId: '',
@@ -845,6 +857,11 @@ const InventoryManagementPage = ({ view = 'status' }: InventoryManagementPagePro
     if (variants.length > 0 && !restockItemDraft.productVariantId) {
       return setRestockItemError('Select the exact product variant.')
     }
+    if (hasDuplicateRestockTarget(restockForm.rows, restockItemDraft, editingRestockRowId)) {
+      return setRestockItemError(
+        'This product is already on the restock list. Use its Edit action to update it.'
+      )
+    }
     if (toSafeNumber(restockItemDraft.quantity) < 1) {
       return setRestockItemError('Quantity must be 1 or more.')
     }
@@ -932,12 +949,21 @@ const InventoryManagementPage = ({ view = 'status' }: InventoryManagementPagePro
     stockTransferDestinationAvailable + stockTransferQuantity
 
   const getProductOptionsForRow = () => {
+    const baseProductsAlreadyAdded = new Set(
+      restockForm.rows
+        .filter((row) => row.id !== editingRestockRowId && row.productId && !row.productVariantId)
+        .map((row) => row.productId)
+    )
     return [
       { label: 'Select product', value: '' },
       ...((productsQuery.data ?? [])
         .map((product) => ({
           label: `${product.name} (${product.sku})`,
-          value: String(product.id)
+          value: String(product.id),
+          disabled: baseProductsAlreadyAdded.has(String(product.id)),
+          description: baseProductsAlreadyAdded.has(String(product.id))
+            ? 'Already added — use Edit to update it'
+            : undefined
         })) || [])
     ]
   }
@@ -972,6 +998,11 @@ const InventoryManagementPage = ({ view = 'status' }: InventoryManagementPagePro
       }
       if (!payload.rows.length) {
         throw new Error('Add at least one product row.')
+      }
+
+      const targetKeys = payload.rows.map(restockTargetKey)
+      if (new Set(targetKeys).size !== targetKeys.length) {
+        throw new Error('Each product or product variant can appear only once. Edit the existing item.')
       }
 
       const items = payload.rows.map((row, index) => {
@@ -1905,7 +1936,21 @@ const InventoryManagementPage = ({ view = 'status' }: InventoryManagementPagePro
                       },
                       ...draftVariants.map((variant) => ({
                         label: formatVariantLabel(variant),
-                        value: String(variant.id)
+                        value: String(variant.id),
+                        disabled: restockForm.rows.some(
+                          (row) =>
+                            row.id !== editingRestockRowId &&
+                            row.productId === restockItemDraft.productId &&
+                            row.productVariantId === String(variant.id)
+                        ),
+                        description: restockForm.rows.some(
+                          (row) =>
+                            row.id !== editingRestockRowId &&
+                            row.productId === restockItemDraft.productId &&
+                            row.productVariantId === String(variant.id)
+                        )
+                          ? 'Already added — use Edit to update it'
+                          : undefined
                       }))
                     ]}
                     value={restockItemDraft.productVariantId}
