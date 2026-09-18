@@ -28,6 +28,8 @@ import {
   ArchiveBoxIcon,
   ShoppingCartIcon,
   ArrowsRightLeftIcon,
+  PencilSquareIcon,
+  TrashIcon,
 } from '@heroicons/react/24/outline'
 import { Button, DataTable, Select, TextArea, TextInput, useSiteDialog, type Column } from '@components/common'
 import { getProductRequest, listProductsRequest } from '@api/modules/products.api'
@@ -192,7 +194,7 @@ const isLowStockStatus = (status: ProductStockStatusResponse): boolean => {
 const createEmptyRestockForm = (branchId = ''): RestockFormState => ({
   branchId,
   restockDate: today,
-  rows: [createRestockRow()]
+  rows: []
 })
 
 const createEmptyStockCountForm = (branchId = ''): StockCountFormState => ({
@@ -346,6 +348,10 @@ const InventoryManagementPage = ({ view = 'status' }: InventoryManagementPagePro
   const statusLimit = 50
   const recentLimit = 10
   const [showRestockForm, setShowRestockForm] = useState(false)
+  const [showRestockItemForm, setShowRestockItemForm] = useState(false)
+  const [editingRestockRowId, setEditingRestockRowId] = useState<string | null>(null)
+  const [restockItemDraft, setRestockItemDraft] = useState<RestockRowState>(createRestockRow())
+  const [restockItemError, setRestockItemError] = useState<string | null>(null)
   const [showStockCountForm, setShowStockCountForm] = useState(false)
   const [showStockTransferForm, setShowStockTransferForm] = useState(false)
   const [restockForm, setRestockForm] = useState<RestockFormState>(createEmptyRestockForm())
@@ -609,6 +615,27 @@ const InventoryManagementPage = ({ view = 'status' }: InventoryManagementPagePro
     })
   })
 
+  const restockItemProductId = Number(restockItemDraft.productId)
+  const restockItemProductQuery = useQuery({
+    queryKey: [
+      'products',
+      'details',
+      selectedRestockBranchId ?? 'none',
+      restockItemProductId || 'none'
+    ],
+    queryFn: () =>
+      getProductRequest(restockItemProductId, {
+        branch_id: selectedRestockBranchId
+      }),
+    enabled:
+      showRestockItemForm &&
+      Number.isFinite(restockItemProductId) &&
+      restockItemProductId > 0 &&
+      typeof selectedRestockBranchId === 'number' &&
+      selectedRestockBranchId > 0,
+    staleTime: 30_000
+  })
+
   const stockCountRowStockQueries = useQueries({
     queries: stockCountForm.rows.map((row) => {
       const productId = Number(row.productId)
@@ -738,45 +765,6 @@ const InventoryManagementPage = ({ view = 'status' }: InventoryManagementPagePro
     )
   }, [stockTransferForm.fromBranchId])
 
-  const updateRestockRow = (
-    rowId: string,
-    updater: (row: RestockRowState) => RestockRowState
-  ) => {
-    setRestockForm((prev) => ({
-      ...prev,
-      rows: prev.rows.map((row) => (row.id === rowId ? updater(row) : row))
-    }))
-  }
-
-  const updateRestockRowField = (
-    rowId: string,
-    field: 'productId' | 'productVariantId' | 'quantity' | 'buyingPrice' | 'sellingPrice' | 'notes',
-    value: string
-  ) => {
-    updateRestockRow(rowId, (row) => {
-      const next = { ...row, [field]: value } as RestockRowState
-      if (field === 'productId') {
-        next.productVariantId = ''
-      }
-      if (field === 'quantity' || field === 'sellingPrice') {
-        return syncMaxOffer(next)
-      }
-      return next
-    })
-  }
-
-  const updateRestockRowMaxOfferAmount = (rowId: string, value: string) => {
-    updateRestockRow(rowId, (row) =>
-      syncMaxOffer({ ...row, maxOfferMode: 'amount', maxOfferAmount: value })
-    )
-  }
-
-  const updateRestockRowMaxOfferPercent = (rowId: string, value: string) => {
-    updateRestockRow(rowId, (row) =>
-      syncMaxOffer({ ...row, maxOfferMode: 'percent', maxOfferPercent: value })
-    )
-  }
-
   const updateStockCountRow = (
     rowId: string,
     updater: (row: StockCountRowState) => StockCountRowState
@@ -814,17 +802,71 @@ const InventoryManagementPage = ({ view = 'status' }: InventoryManagementPagePro
     }))
   }
 
-  const addRestockRow = () => {
-    setRestockForm((prev) => ({
-      ...prev,
-      rows: [...prev.rows, createRestockRow()]
+  const openNewRestockItemForm = () => {
+    setEditingRestockRowId(null)
+    setRestockItemDraft(createRestockRow())
+    setRestockItemError(null)
+    setShowRestockItemForm(true)
+  }
+
+  const openEditRestockItemForm = (row: RestockRowState) => {
+    setEditingRestockRowId(row.id)
+    setRestockItemDraft({ ...row })
+    setRestockItemError(null)
+    setShowRestockItemForm(true)
+  }
+
+  const closeRestockItemForm = () => {
+    setShowRestockItemForm(false)
+    setEditingRestockRowId(null)
+    setRestockItemDraft(createRestockRow())
+    setRestockItemError(null)
+  }
+
+  const updateRestockItemDraft = (
+    field: 'productId' | 'productVariantId' | 'quantity' | 'buyingPrice' | 'sellingPrice' | 'notes',
+    value: string
+  ) => {
+    setRestockItemDraft((current) => {
+      const next = { ...current, [field]: value } as RestockRowState
+      if (field === 'productId') next.productVariantId = ''
+      return field === 'quantity' || field === 'sellingPrice' ? syncMaxOffer(next) : next
+    })
+  }
+
+  const saveRestockItemDraft = () => {
+    const product = restockItemProductQuery.data
+    const variants = product?.variants ?? []
+    if (!restockForm.branchId) return setRestockItemError('Select a branch first.')
+    if (!restockItemDraft.productId) return setRestockItemError('Select a product.')
+    if (restockItemProductQuery.isLoading || !product) {
+      return setRestockItemError('Product details are still loading. Try again.')
+    }
+    if (variants.length > 0 && !restockItemDraft.productVariantId) {
+      return setRestockItemError('Select the exact product variant.')
+    }
+    if (toSafeNumber(restockItemDraft.quantity) < 1) {
+      return setRestockItemError('Quantity must be 1 or more.')
+    }
+    if (toSafeNumber(restockItemDraft.buyingPrice) < 0 || toSafeNumber(restockItemDraft.sellingPrice) < 0) {
+      return setRestockItemError('Buying and selling prices must be 0 or more.')
+    }
+
+    setRestockForm((current) => ({
+      ...current,
+      rows: editingRestockRowId
+        ? current.rows.map((row) =>
+            row.id === editingRestockRowId ? { ...restockItemDraft, id: editingRestockRowId } : row
+          )
+        : [...current.rows, restockItemDraft]
     }))
+    closeRestockItemForm()
   }
 
   const removeRestockRow = (rowId: string) => {
     setRestockForm((prev) => ({
       ...prev,
-      rows: prev.rows.length > 1 ? prev.rows.filter((row) => row.id !== rowId) : prev.rows
+      rows: prev.rows.filter((row) => row.id !== rowId)
     }))
   }
 
@@ -1422,6 +1464,7 @@ const InventoryManagementPage = ({ view = 'status' }: InventoryManagementPagePro
   const closeRestockForm = () => {
     if (createRestockMutation.isPending) return
 
+    closeRestockItemForm()
     setShowRestockForm(false)
     setRestockForm(createEmptyRestockForm(defaultInventoryBranchId))
     setRestockError(null)
@@ -1441,6 +1484,14 @@ const InventoryManagementPage = ({ view = 'status' }: InventoryManagementPagePro
   }
 
   const viewCopy = inventoryViewCopy[view]
+  const draftProduct = restockItemProductQuery.data ?? null
+  const draftVariants = draftProduct?.variants ?? []
+  const draftSelectedVariant = draftVariants.find(
+    (variant) => String(variant.id) === restockItemDraft.productVariantId
+  )
+  const draftQuantity = toSafeNumber(restockItemDraft.quantity)
+  const draftBuyingTotal = draftQuantity * toSafeNumber(restockItemDraft.buyingPrice)
+  const draftSellingTotal = draftQuantity * toSafeNumber(restockItemDraft.sellingPrice)
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-background via-white to-background p-6">
@@ -1646,287 +1697,119 @@ const InventoryManagementPage = ({ view = 'status' }: InventoryManagementPagePro
                   />
                 </div>
 
-                <div className="space-y-3">
-                  {restockForm.rows.map((row, index) => {
-                    const quantity = toSafeNumber(row.quantity)
-                    const buyingPrice = toSafeNumber(row.buyingPrice)
-                    const sellingPrice = toSafeNumber(row.sellingPrice)
-                    const totalBuyingAmount = quantity * buyingPrice
-                    const totalSellingAmount = quantity * sellingPrice
-                    const expectedProfit = totalSellingAmount - totalBuyingAmount
-                    const rowProductQuery = restockRowProductQueries[index]
-                    const selectedProduct = rowProductQuery?.data ?? null
-                    const variants = selectedProduct?.variants ?? []
-                    const hasVariants = variants.length > 0
-                    const selectedVariant = variants.find(
-                      (variant) => String(variant.id) === row.productVariantId
-                    )
-                    const variantSelectPlaceholder = row.productId
-                      ? rowProductQuery?.isLoading
-                        ? 'Loading variants...'
-                        : hasVariants
-                        ? 'Select variant'
-                        : 'No variants for this product'
-                      : 'Select a product first'
-
-                    return (
-                      <motion.div
-                        key={row.id}
-                        initial={{ opacity: 0, x: -20 }}
-                        animate={{ opacity: 1, x: 0 }}
-                        exit={{ opacity: 0, x: -20 }}
-                        className="bg-background rounded-lg border border-border p-4"
-                      >
-                        <div className="flex items-center justify-between mb-3">
-                          <div className="flex items-center gap-2">
-                            <span className="text-xs font-semibold text-text-secondary bg-white px-2 py-1 rounded">
-                              Product {index + 1}
-                            </span>
-                          </div>
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => removeRestockRow(row.id)}
-                            disabled={restockForm.rows.length === 1}
-                            className="text-error hover:bg-error/5"
-                          >
-                            <XMarkIcon className="h-4 w-4" />
-                          </Button>
-                        </div>
-
-                        <div className="grid gap-4 md:grid-cols-4">
-                          <Select
-                            label="Product"
-                            options={getProductOptionsForRow()}
-                            value={row.productId}
-                            onChange={(event) =>
-                              updateRestockRowField(row.id, 'productId', String(event.target.value))
-                            }
-                            required
-                          />
-                          <Select
-                            label="Variant"
-                            options={[
-                              {
-                                label: variantSelectPlaceholder,
-                                value: ''
-                              },
-                              ...variants.map((variant) => ({
-                                label: formatVariantLabel(variant),
-                                value: String(variant.id)
-                              }))
-                            ]}
-                            value={row.productVariantId}
-                            onChange={(event) =>
-                              updateRestockRowField(
-                                row.id,
-                                'productVariantId',
-                                String(event.target.value)
-                              )
-                            }
-                            disabled={!hasVariants}
-                            required={hasVariants}
-                          />
-                          <TextInput
-                            label="Quantity"
-                            type="number"
-                            min={1}
-                            value={row.quantity}
-                            onChange={(event) =>
-                              updateRestockRowField(row.id, 'quantity', event.target.value)
-                            }
-                            required
-                          />
-                          <TextInput
-                            label="Buying Price (per unit)"
-                            type="number"
-                            min={0}
-                            step="0.01"
-                            value={row.buyingPrice}
-                            onChange={(event) =>
-                              updateRestockRowField(row.id, 'buyingPrice', event.target.value)
-                            }
-                            required
-                          />
-                        </div>
-
-                        <div className="grid gap-4 md:grid-cols-2">
-                          <TextInput
-                            label="Selling Price (per unit)"
-                            type="number"
-                            min={0}
-                            step="0.01"
-                            value={row.sellingPrice}
-                            onChange={(event) =>
-                              updateRestockRowField(row.id, 'sellingPrice', event.target.value)
-                            }
-                            required
-                          />
-                          <TextInput
-                            label="Restock Target"
-                            value={
-                              hasVariants
-                                ? selectedVariant
-                                  ? formatVariantLabel(selectedVariant)
-                                  : 'Select a variant to choose the exact SKU'
-                                : row.productId
-                                ? 'Base product stock'
-                                : 'Select a product first'
-                            }
-                            readOnly
-                            className="bg-white"
-                          />
-                        </div>
-
-                        <div className="mt-3 rounded-lg border border-border bg-white px-3 py-2">
-                          {!restockForm.branchId ? (
-                            <p className="text-xs text-text-tertiary">
-                              Select a branch to load current stock for this product.
-                            </p>
-                          ) : !row.productId ? (
-                            <p className="text-xs text-text-tertiary">
-                              Select a product to see current stock in {selectedRestockBranchName}.
-                            </p>
-                          ) : rowProductQuery?.isLoading ? (
-                            <div className="flex items-center gap-2 text-xs text-text-secondary">
-                              <ArrowPathIcon className="h-3.5 w-3.5 animate-spin" />
-                              Loading product details for {selectedRestockBranchName}...
-                            </div>
-                          ) : rowProductQuery?.isError ? (
-                            <p className="text-xs text-error">
-                              Could not load product details for this branch.
-                            </p>
-                          ) : hasVariants && !row.productVariantId ? (
-                            <p className="text-xs text-text-tertiary">
-                              This product has variants. Select the exact variant before recording
-                              new stock.
-                            </p>
-                          ) : hasVariants && selectedVariant ? (
-                            <div className="flex flex-col gap-1 text-xs text-text-secondary sm:flex-row sm:flex-wrap sm:items-center sm:gap-4">
-                              <span>
-                                Variant SKU: <strong className="text-text">{selectedVariant.sku}</strong>
-                              </span>
-                              <span>
-                                Current stock in {selectedRestockBranchName}:{' '}
-                                <strong className="text-text">{selectedVariant.stock_quantity}</strong>
-                              </span>
-                              <span>
-                                Target: <strong className="text-text">{formatVariantLabel(selectedVariant)}</strong>
-                              </span>
-                            </div>
-                          ) : selectedProduct ? (
-                            <div className="flex flex-col gap-1 text-xs text-text-secondary sm:flex-row sm:flex-wrap sm:items-center sm:gap-4">
-                              <span>
-                                Current stock in {selectedRestockBranchName}:{' '}
-                                <strong className="text-text">{selectedProduct.stock_quantity}</strong>
-                              </span>
-                              <span>
-                                Reorder level:{' '}
-                                <strong className="text-text">{selectedProduct.reorder_level}</strong>
-                              </span>
-                              <span>
-                                Restocking: <strong className="text-text">Base product stock</strong>
-                              </span>
-                            </div>
-                          ) : (
-                            <p className="text-xs text-text-tertiary">
-                              No product details found for this selection in {selectedRestockBranchName}.
-                            </p>
-                          )}
-                        </div>
-
-                        <div className="grid gap-4 md:grid-cols-4 mt-3">
-                          <TextInput
-                            label="Total Buying"
-                            value={formatCurrency(totalBuyingAmount)}
-                            readOnly
-                            className="bg-white"
-                          />
-                          <TextInput
-                            label="Total Selling"
-                            value={formatCurrency(totalSellingAmount)}
-                            readOnly
-                            className="bg-white"
-                          />
-                          <TextInput
-                            label="Expected Profit"
-                            value={formatCurrency(expectedProfit)}
-                            readOnly
-                            className={`bg-white ${
-                              expectedProfit >= 0 ? 'text-success' : 'text-error'
-                            }`}
-                          />
-                          <div className="flex gap-2">
-                            <TextInput
-                              label="Max Offer (Amount)"
-                              type="number"
-                              min={0}
-                              step="0.01"
-                              value={row.maxOfferAmount}
-                              onChange={(event) =>
-                                updateRestockRowMaxOfferAmount(row.id, event.target.value)
-                              }
-                              className="flex-1"
-                            />
-                            <TextInput
-                              label="Max Offer (%)"
-                              type="number"
-                              min={0}
-                              step="0.01"
-                              value={row.maxOfferPercent}
-                              onChange={(event) =>
-                                updateRestockRowMaxOfferPercent(row.id, event.target.value)
-                              }
-                              className="flex-1"
-                            />
-                          </div>
-                        </div>
-
-                        <div className="mt-3">
-                          <TextInput
-                            label="Notes"
-                            value={row.notes}
-                            onChange={(event) =>
-                              updateRestockRowField(row.id, 'notes', event.target.value)
-                            }
-                            placeholder="Optional notes about this restock item"
-                          />
-                        </div>
-                      </motion.div>
-                    )
-                  })}
-
-                  <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 pt-2">
+                <div className="overflow-hidden rounded-xl border border-border">
+                  <div className="flex flex-col gap-3 border-b border-border bg-background/70 p-4 sm:flex-row sm:items-center sm:justify-between">
+                    <div>
+                      <h3 className="text-sm font-semibold text-text">Restock items</h3>
+                      <p className="mt-0.5 text-xs text-text-tertiary">
+                        Add products one at a time, then edit or remove them from this list.
+                      </p>
+                    </div>
                     <Button
                       type="button"
-                      variant="outline"
-                      onClick={addRestockRow}
+                      onClick={openNewRestockItemForm}
+                      disabled={!restockForm.branchId}
                       className="flex items-center gap-2"
                     >
                       <PlusIcon className="h-4 w-4" />
-                      Add Product Row
+                      Add Item
                     </Button>
+                  </div>
 
-                    <div className="bg-primary/5 rounded-lg p-3 border border-primary/20">
-                      <div className="grid grid-cols-3 gap-4 text-sm">
-                        <div>
-                          <p className="text-xs text-text-tertiary">Total Buying</p>
-                          <p className="font-semibold text-text">{formatCurrency(restockTotals.totalBuying)}</p>
-                        </div>
-                        <div>
-                          <p className="text-xs text-text-tertiary">Total Selling</p>
-                          <p className="font-semibold text-text">{formatCurrency(restockTotals.totalSelling)}</p>
-                        </div>
-                        <div>
-                          <p className="text-xs text-text-tertiary">Expected Profit</p>
-                          <p className={`font-semibold ${
-                            restockTotals.expectedProfit >= 0 ? 'text-success' : 'text-error'
-                          }`}>
-                            {formatCurrency(restockTotals.expectedProfit)}
-                          </p>
-                        </div>
-                      </div>
+                  {restockForm.rows.length === 0 ? (
+                    <div className="px-4 py-10 text-center">
+                      <CubeIcon className="mx-auto h-9 w-9 text-text-tertiary" />
+                      <p className="mt-3 text-sm font-medium text-text">No items added yet</p>
+                      <p className="mt-1 text-xs text-text-tertiary">
+                        Select a branch, then use Add Item to build this restock.
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="overflow-x-auto">
+                      <table className="min-w-full divide-y divide-border text-sm">
+                        <thead className="bg-background/50 text-left text-xs uppercase tracking-wide text-text-tertiary">
+                          <tr>
+                            <th className="px-4 py-3 font-semibold">Product</th>
+                            <th className="px-4 py-3 font-semibold">Qty</th>
+                            <th className="px-4 py-3 font-semibold">Buying</th>
+                            <th className="px-4 py-3 font-semibold">Selling</th>
+                            <th className="px-4 py-3 font-semibold">Total</th>
+                            <th className="px-4 py-3 text-right font-semibold">Actions</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-border bg-white">
+                          {restockForm.rows.map((row, index) => {
+                            const product = restockRowProductQueries[index]?.data
+                            const variant = product?.variants?.find(
+                              (item) => String(item.id) === row.productVariantId
+                            )
+                            return (
+                              <tr key={row.id}>
+                                <td className="px-4 py-3">
+                                  <p className="font-medium text-text">{product?.name ?? 'Loading product...'}</p>
+                                  <p className="mt-0.5 text-xs text-text-tertiary">
+                                    {variant ? formatVariantLabel(variant) : product?.sku ?? ''}
+                                  </p>
+                                </td>
+                                <td className="whitespace-nowrap px-4 py-3 text-text-secondary">{row.quantity}</td>
+                                <td className="whitespace-nowrap px-4 py-3 text-text-secondary">
+                                  {formatCurrency(toSafeNumber(row.buyingPrice))}
+                                </td>
+                                <td className="whitespace-nowrap px-4 py-3 text-text-secondary">
+                                  {formatCurrency(toSafeNumber(row.sellingPrice))}
+                                </td>
+                                <td className="whitespace-nowrap px-4 py-3 font-medium text-text">
+                                  {formatCurrency(toSafeNumber(row.quantity) * toSafeNumber(row.buyingPrice))}
+                                </td>
+                                <td className="px-4 py-3">
+                                  <div className="flex justify-end gap-1">
+                                    <Button
+                                      type="button"
+                                      variant="ghost"
+                                      size="sm"
+                                      onClick={() => openEditRestockItemForm(row)}
+                                      aria-label={`Edit ${product?.name ?? 'restock item'}`}
+                                    >
+                                      <PencilSquareIcon className="h-4 w-4" />
+                                      <span className="ml-1">Edit</span>
+                                    </Button>
+                                    <Button
+                                      type="button"
+                                      variant="ghost"
+                                      size="sm"
+                                      onClick={() => removeRestockRow(row.id)}
+                                      className="text-error hover:bg-error/5"
+                                      aria-label={`Remove ${product?.name ?? 'restock item'}`}
+                                    >
+                                      <TrashIcon className="h-4 w-4" />
+                                      <span className="ml-1">Remove</span>
+                                    </Button>
+                                  </div>
+                                </td>
+                              </tr>
+                            )
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </div>
+
+                <div className="rounded-lg border border-primary/20 bg-primary/5 p-3">
+                  <div className="grid grid-cols-3 gap-4 text-sm">
+                    <div>
+                      <p className="text-xs text-text-tertiary">Total Buying</p>
+                      <p className="font-semibold text-text">{formatCurrency(restockTotals.totalBuying)}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs text-text-tertiary">Total Selling</p>
+                      <p className="font-semibold text-text">{formatCurrency(restockTotals.totalSelling)}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs text-text-tertiary">Expected Profit</p>
+                      <p className={`font-semibold ${restockTotals.expectedProfit >= 0 ? 'text-success' : 'text-error'}`}>
+                        {formatCurrency(restockTotals.expectedProfit)}
+                      </p>
                     </div>
                   </div>
                 </div>
@@ -1955,6 +1838,201 @@ const InventoryManagementPage = ({ view = 'status' }: InventoryManagementPagePro
                   )}
                 </div>
               </form>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {view === 'restocks' && showRestockForm && showRestockItemForm && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm"
+            onClick={closeRestockItemForm}
+          >
+            <motion.div
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="restock-item-form-title"
+              initial={{ opacity: 0, y: 16, scale: 0.97 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: 16, scale: 0.97 }}
+              className="max-h-[90vh] w-full max-w-3xl overflow-y-auto rounded-2xl border border-border bg-white p-5 shadow-2xl sm:p-6"
+              onClick={(event) => event.stopPropagation()}
+            >
+              <div className="mb-5 flex items-start justify-between gap-4">
+                <div>
+                  <h3 id="restock-item-form-title" className="text-lg font-semibold text-text">
+                    {editingRestockRowId ? 'Edit Restock Item' : 'Add Restock Item'}
+                  </h3>
+                  <p className="mt-1 text-sm text-text-tertiary">
+                    Enter one product, then add it to the restock list.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  aria-label="Close item form"
+                  onClick={closeRestockItemForm}
+                  className="rounded-lg p-2 text-text-tertiary hover:bg-background hover:text-text"
+                >
+                  <XMarkIcon className="h-5 w-5" />
+                </button>
+              </div>
+
+              <div className="space-y-4">
+                <div className="grid gap-4 md:grid-cols-2">
+                  <Select
+                    label="Product"
+                    options={getProductOptionsForRow()}
+                    value={restockItemDraft.productId}
+                    onChange={(event) => updateRestockItemDraft('productId', String(event.target.value))}
+                    required
+                  />
+                  <Select
+                    label="Variant"
+                    options={[
+                      {
+                        label: restockItemDraft.productId
+                          ? restockItemProductQuery.isLoading
+                            ? 'Loading variants...'
+                            : draftVariants.length
+                            ? 'Select variant'
+                            : 'No variants for this product'
+                          : 'Select a product first',
+                        value: ''
+                      },
+                      ...draftVariants.map((variant) => ({
+                        label: formatVariantLabel(variant),
+                        value: String(variant.id)
+                      }))
+                    ]}
+                    value={restockItemDraft.productVariantId}
+                    onChange={(event) =>
+                      updateRestockItemDraft('productVariantId', String(event.target.value))
+                    }
+                    disabled={!draftVariants.length}
+                    required={draftVariants.length > 0}
+                  />
+                  <TextInput
+                    label="Quantity"
+                    type="number"
+                    min={1}
+                    value={restockItemDraft.quantity}
+                    onChange={(event) => updateRestockItemDraft('quantity', event.target.value)}
+                    required
+                  />
+                  <TextInput
+                    label="Buying Price (per unit)"
+                    type="number"
+                    min={0}
+                    step="0.01"
+                    value={restockItemDraft.buyingPrice}
+                    onChange={(event) => updateRestockItemDraft('buyingPrice', event.target.value)}
+                    required
+                  />
+                  <TextInput
+                    label="Selling Price (per unit)"
+                    type="number"
+                    min={0}
+                    step="0.01"
+                    value={restockItemDraft.sellingPrice}
+                    onChange={(event) => updateRestockItemDraft('sellingPrice', event.target.value)}
+                    required
+                  />
+                  <TextInput
+                    label="Restock Target"
+                    value={
+                      draftVariants.length
+                        ? draftSelectedVariant
+                          ? formatVariantLabel(draftSelectedVariant)
+                          : 'Select the exact variant'
+                        : restockItemDraft.productId
+                        ? 'Base product stock'
+                        : 'Select a product first'
+                    }
+                    readOnly
+                    className="bg-background"
+                  />
+                </div>
+
+                {draftProduct && (
+                  <div className="rounded-lg border border-border bg-background/60 px-3 py-2 text-xs text-text-secondary">
+                    Current stock in {selectedRestockBranchName}:{' '}
+                    <strong className="text-text">
+                      {draftSelectedVariant?.stock_quantity ?? draftProduct.stock_quantity}
+                    </strong>
+                  </div>
+                )}
+
+                <div className="grid gap-4 md:grid-cols-2">
+                  <TextInput
+                    label="Max Offer (Amount)"
+                    type="number"
+                    min={0}
+                    step="0.01"
+                    value={restockItemDraft.maxOfferAmount}
+                    onChange={(event) =>
+                      setRestockItemDraft((row) =>
+                        syncMaxOffer({ ...row, maxOfferMode: 'amount', maxOfferAmount: event.target.value })
+                      )
+                    }
+                  />
+                  <TextInput
+                    label="Max Offer (%)"
+                    type="number"
+                    min={0}
+                    step="0.01"
+                    value={restockItemDraft.maxOfferPercent}
+                    onChange={(event) =>
+                      setRestockItemDraft((row) =>
+                        syncMaxOffer({ ...row, maxOfferMode: 'percent', maxOfferPercent: event.target.value })
+                      )
+                    }
+                  />
+                </div>
+
+                <TextInput
+                  label="Notes"
+                  value={restockItemDraft.notes}
+                  onChange={(event) => updateRestockItemDraft('notes', event.target.value)}
+                  placeholder="Optional notes about this item"
+                />
+
+                <div className="grid grid-cols-3 gap-3 rounded-lg border border-primary/20 bg-primary/5 p-3 text-sm">
+                  <div>
+                    <p className="text-xs text-text-tertiary">Total Buying</p>
+                    <p className="font-semibold text-text">{formatCurrency(draftBuyingTotal)}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-text-tertiary">Total Selling</p>
+                    <p className="font-semibold text-text">{formatCurrency(draftSellingTotal)}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-text-tertiary">Expected Profit</p>
+                    <p className={`font-semibold ${draftSellingTotal - draftBuyingTotal >= 0 ? 'text-success' : 'text-error'}`}>
+                      {formatCurrency(draftSellingTotal - draftBuyingTotal)}
+                    </p>
+                  </div>
+                </div>
+
+                {restockItemError && (
+                  <p role="alert" className="flex items-center gap-2 text-sm text-error">
+                    <XCircleIcon className="h-4 w-4" />
+                    {restockItemError}
+                  </p>
+                )}
+
+                <div className="flex justify-end gap-3 pt-1">
+                  <Button type="button" variant="outline" onClick={closeRestockItemForm}>
+                    Cancel
+                  </Button>
+                  <Button type="button" onClick={saveRestockItemDraft}>
+                    {editingRestockRowId ? 'Update Item' : 'Add to List'}
+                  </Button>
+                </div>
+              </div>
             </motion.div>
           </motion.div>
         )}
