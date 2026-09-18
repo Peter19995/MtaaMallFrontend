@@ -20,7 +20,7 @@ import {
 import { HeartIcon as HeartIconSolid } from '@heroicons/react/24/solid'
 import { Button, TextInput } from '@components/common'
 import { CartContext } from '@contexts/CartContext'
-import { listProductsRequest, listProductVariantsRequest, type ProductResponse, type ProductVariantResponse } from '@api/modules/products.api'
+import { listInStockProductsRequest, listProductVariantsRequest, type ProductResponse, type ProductVariantResponse } from '@api/modules/products.api'
 import { AppTheme, withOpacity } from '@constants/theme'
 import { resolveMediaUrls } from '@utils/media'
 
@@ -87,7 +87,6 @@ const ProductsPage = () => {
   const [priceRange, setPriceRange] = useState<[number, number]>([0, 100000])
   const [showFilters, setShowFilters] = useState(false)
   const [wishlist, setWishlist] = useState<number[]>([])
-  const [inStockOnly, setInStockOnly] = useState(false)
   const [onOfferOnly, setOnOfferOnly] = useState(false)
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid')
   const [productQuantities, setProductQuantities] = useState<Record<number, number>>({})
@@ -101,8 +100,8 @@ const ProductsPage = () => {
   }
 
   const productsQuery = useQuery({
-    queryKey: ['products', 'catalog-page'],
-    queryFn: () => listProductsRequest({ limit: 200 })
+    queryKey: ['products', 'online-catalog-page'],
+    queryFn: () => listInStockProductsRequest({ scope: 'online', limit: 200 })
   })
 
   const products = useMemo(
@@ -142,11 +141,6 @@ const ProductsPage = () => {
       return price >= priceRange[0] && price <= priceRange[1]
     })
 
-    // Apply stock filter
-    if (inStockOnly) {
-      filtered = filtered.filter(p => p.stock_quantity > 0)
-    }
-
     // Apply offer filter
     if (onOfferOnly) {
       filtered = filtered.filter(p => p.is_on_offer)
@@ -175,7 +169,7 @@ const ProductsPage = () => {
     })
 
     return filtered
-  }, [products, search, selectedCategory, sortBy, priceRange, inStockOnly, onOfferOnly])
+  }, [products, search, selectedCategory, sortBy, priceRange, onOfferOnly])
 
   const getProductQuantity = (product: ProductResponse): number =>
     Math.max(1, Math.min(productQuantities[product.id] ?? 1, Math.max(1, product.stock_quantity)))
@@ -523,15 +517,6 @@ const ProductsPage = () => {
 
                   {/* Checkbox Filters */}
                   <div className="lg:col-span-4 flex flex-wrap gap-6">
-                    <label className="flex items-center gap-2 cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={inStockOnly}
-                        onChange={(e) => setInStockOnly(e.target.checked)}
-                        className="w-4 h-4 rounded border-border text-primary focus:ring-primary/20"
-                      />
-                      <span className="text-sm text-text-secondary">In stock only</span>
-                    </label>
                     <label className="flex items-center gap-2 cursor-pointer">
                       <input
                         type="checkbox"

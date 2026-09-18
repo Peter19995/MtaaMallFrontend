@@ -169,7 +169,7 @@ export type ProductGetParams = {
   branch_id?: number
 }
 
-export type InStockProductsScope = 'all' | 'branch'
+export type InStockProductsScope = 'all' | 'branch' | 'online'
 
 export type InStockProductsParams = {
   scope?: InStockProductsScope

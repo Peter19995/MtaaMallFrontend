@@ -15,7 +15,7 @@ import {
   Squares2X2Icon,
 } from "@heroicons/react/24/outline";
 import {
-  listProductsRequest,
+  listInStockProductsRequest,
   listCategoriesRequest,
   type ProductResponse,
 } from "@api/modules/products.api";
@@ -215,7 +215,7 @@ export default function HomePage() {
   const [search, setSearch] = useState("");
   const products = useQuery({
     queryKey: ["home", "mall-products"],
-    queryFn: () => listProductsRequest({ limit: 24 }),
+    queryFn: () => listInStockProductsRequest({ scope: "online", limit: 24 }),
     staleTime: 60000,
   });
   const categories = useQuery({
