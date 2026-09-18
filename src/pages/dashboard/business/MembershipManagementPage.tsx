@@ -5,6 +5,7 @@ import api from '@api/config/axios.config'
 import { listMemberships, inviteMember, invitePlatformAdmin, changeMember, type Membership, type Scope } from '@api/modules/memberships.api'
 import { ErrorNotice, panel, button, secondary } from './BusinessComponents'
 import BusinessWorkforcePage from './BusinessWorkforcePage'
+import { Select } from '@components/common'
 
 const roles = {
   platform: ['system_admin', 'business_manager', 'support_agent', 'platform_auditor'],
@@ -58,9 +59,9 @@ function ScopedMembershipManagement({ scope }: { scope: Scope }) {
           <label className="text-sm">Full name <span className="text-slate-400">(optional)</span><input className={input} value={fullName} onChange={e => setFullName(e.target.value)} /></label>
           <label className="text-sm">Phone <span className="text-slate-400">(optional)</span><input className={input} value={phone} onChange={e => setPhone(e.target.value)} /></label>
         </>}
-        {action === 'role' && <><label className="text-sm">Role<select className={input} value={role} onChange={e => { setRole(e.target.value); if (e.target.value === 'business_owner') setBranch('') }}>{roles[scope].filter(r => r !== 'business_owner' || user?.roles?.includes('business_owner')).map(r => <option key={r} value={r}>{r.replace(/_/g, ' ')}</option>)}</select></label>
-          {scope === 'business' && <label className="text-sm">Branch scope<select className={input} value={branch} required={role === 'branch_manager'} disabled={role === 'business_owner'} onChange={e => setBranch(e.target.value)}><option value="">Business-wide</option>{branches.data?.filter(b => b.is_active).map(b => <option key={b.id} value={b.id}>{b.name}</option>)}</select>{branches.isError && <span role="alert">Unable to load branches. Refresh before assigning a branch.</span>}</label>}</>}
-        {action === 'status' && editing !== 'invite' && <label className="text-sm">New access status<select className={input} value={status} onChange={e => setStatus(e.target.value)}>{(editing.status === 'invited' ? ['revoked'] : editing.status === 'suspended' ? ['active', 'revoked'] : ['suspended', 'revoked']).map(s => <option key={s} value={s}>{s}</option>)}</select></label>}
+        {action === 'role' && <><label className="text-sm">Role<Select className={input} value={role} onChange={e => { setRole(e.target.value); if (e.target.value === 'business_owner') setBranch('') }}>{roles[scope].filter(r => r !== 'business_owner' || user?.roles?.includes('business_owner')).map(r => <option key={r} value={r}>{r.replace(/_/g, ' ')}</option>)}</Select></label>
+          {scope === 'business' && <label className="text-sm">Branch scope<Select className={input} value={branch} required={role === 'branch_manager'} disabled={role === 'business_owner'} onChange={e => setBranch(e.target.value)}><option value="">Business-wide</option>{branches.data?.filter(b => b.is_active).map(b => <option key={b.id} value={b.id}>{b.name}</option>)}</Select>{branches.isError && <span role="alert">Unable to load branches. Refresh before assigning a branch.</span>}</label>}</>}
+        {action === 'status' && editing !== 'invite' && <label className="text-sm">New access status<Select className={input} value={status} onChange={e => setStatus(e.target.value)}>{(editing.status === 'invited' ? ['revoked'] : editing.status === 'suspended' ? ['active', 'revoked'] : ['suspended', 'revoked']).map(s => <option key={s} value={s}>{s}</option>)}</Select></label>}
         <label className="text-sm sm:col-span-2">Audit reason<textarea className={input} required minLength={3} maxLength={1000} value={reason} onChange={e => setReason(e.target.value)} placeholder="Why is this access needed or changing?" /></label>
         <p className="text-sm text-slate-500 sm:col-span-2">Confirming records your identity, reason, and the membership changes in the audit log.</p>
         <div className="flex gap-3"><button className={button} disabled={save.isPending}>{save.isPending ? 'Saving…' : 'Confirm change'}</button><button type="button" className={secondary} disabled={save.isPending} onClick={() => setEditing(null)}>Cancel</button></div>

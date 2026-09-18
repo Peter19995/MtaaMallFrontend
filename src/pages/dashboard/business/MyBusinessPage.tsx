@@ -8,6 +8,7 @@ import { useAuth } from '@hooks/useAuth'
 import { getMyBusiness, getMyBusinessDocuments, getMyBusinessOnboarding, submitMyBusinessDocument, updateMyBusiness, type BusinessStatus } from '@api/modules/businesses.api'
 import { allowedStatusChanges, isBusinessReadOnly } from '@utils/businessLifecycle'
 import { BusinessDetails, BusinessForm, LifecycleActions, ErrorNotice, StatusBadge, secondary } from './BusinessComponents'
+import { Select } from '@components/common'
 import './business-workspace.css'
 
 const statusCopy: Record<BusinessStatus, { title: string; description: string }> = {
@@ -89,7 +90,7 @@ export default function MyBusinessPage() {
             {documents.isError && <ErrorNotice error={documents.error} />}{downloadError && <p role="alert">{downloadError}</p>}
             <ul className="mt-3 space-y-2">{documents.data?.map(document => <li key={document.public_id} className="rounded-lg bg-slate-50 p-3 text-sm"><button className="font-semibold text-primary hover:underline" onClick={() => downloadBusinessDocument(document).catch(() => setDownloadError('Document unavailable; legacy links must be resubmitted.'))}>{document.file_name}</button><p className="mt-1 text-xs text-slate-500">{document.document_type.replaceAll('_', ' ')} · {document.status}</p></li>)}</ul>
             {['draft', 'pending_verification', 'rejected'].includes(business.status) && hasPermission('business.settings.update') && <form className="mt-4 space-y-3" onSubmit={event => { event.preventDefault(); documentFile && submitDocument.mutate({ document_type: documentType, file: documentFile }) }}>
-              <select aria-label="Document type" className="w-full rounded-lg border border-slate-200 p-2.5 text-sm" value={documentType} onChange={event => setDocumentType(event.target.value)}><option value="registration_certificate">Registration certificate</option><option value="tax_certificate">Tax certificate</option><option value="owner_identification">Owner identification</option><option value="business_permit">Business permit</option><option value="other">Other</option></select>
+              <Select aria-label="Document type" className="w-full rounded-lg border border-slate-200 p-2.5 text-sm" value={documentType} onChange={event => setDocumentType(event.target.value)}><option value="registration_certificate">Registration certificate</option><option value="tax_certificate">Tax certificate</option><option value="owner_identification">Owner identification</option><option value="business_permit">Business permit</option><option value="other">Other</option></Select>
               <input aria-label="Document image" required type="file" accept="image/png,image/jpeg" className="w-full text-sm" onChange={event => setDocumentFile(event.target.files?.[0] ?? null)} /><p className="text-xs text-slate-500">PNG or JPEG, maximum 5 MB. Files are validated and stored privately. PDF/office uploads are not enabled.</p>
               {submitDocument.isError && <ErrorNotice error={submitDocument.error} />}<button className="business-outline-button" disabled={submitDocument.isPending}>{submitDocument.isPending ? 'Submitting…' : 'Add document'}</button>
             </form>}

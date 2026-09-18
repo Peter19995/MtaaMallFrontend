@@ -509,7 +509,7 @@ const ServiceManagementPage = () => {
 
             {/* Status Filter */}
             <div className="w-full lg:w-48">
-              <select
+              <Select
                 value={statusFilter}
                 onChange={(e) => setStatusFilter(e.target.value as any)}
                 className="w-full h-10 px-3 bg-background border border-border rounded-lg text-sm focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
@@ -517,7 +517,7 @@ const ServiceManagementPage = () => {
                 <option value="all">All Services</option>
                 <option value="active">Active Only</option>
                 <option value="inactive">Inactive Only</option>
-              </select>
+              </Select>
             </div>
 
             {/* Filter Toggle */}
@@ -570,24 +570,24 @@ const ServiceManagementPage = () => {
                     <label className="block text-xs font-medium text-text-secondary mb-1">
                       Duration
                     </label>
-                    <select className="w-full h-9 px-3 bg-background border border-border rounded-lg text-sm">
+                    <Select className="w-full h-9 px-3 bg-background border border-border rounded-lg text-sm">
                       <option>Any Duration</option>
                       <option>Under 30 min</option>
                       <option>30-60 min</option>
                       <option>60-120 min</option>
                       <option>Over 120 min</option>
-                    </select>
+                    </Select>
                   </div>
                   <div>
                     <label className="block text-xs font-medium text-text-secondary mb-1">
                       Category
                     </label>
-                    <select className="w-full h-9 px-3 bg-background border border-border rounded-lg text-sm">
+                    <Select className="w-full h-9 px-3 bg-background border border-border rounded-lg text-sm">
                       <option>All Categories</option>
                       {categoriesQuery.data?.map(cat => (
                         <option key={cat.id} value={cat.id}>{cat.name}</option>
                       ))}
-                    </select>
+                    </Select>
                   </div>
                 </div>
               </motion.div>

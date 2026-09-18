@@ -17,7 +17,7 @@ import {
   PaintBrushIcon,
   DevicePhoneMobileIcon
 } from '@heroicons/react/24/outline'
-import { Button, TextInput } from '@components/common'
+import { Button, Select, TextInput } from '@components/common'
 import { CartContext } from '@contexts/CartContext'
 import {
   listServiceCategoriesRequest,
@@ -347,7 +347,7 @@ const ServicesPage = () => {
             </div>
 
             <div className="flex gap-2">
-              <select
+              <Select
                 className="h-12 px-4 bg-white border-2 border-border rounded-xl 
                          text-text focus:border-primary focus:outline-none focus:ring-4 
                          focus:ring-primary/20 transition-all min-w-[180px]"
@@ -364,7 +364,7 @@ const ServicesPage = () => {
                     {category.name}
                   </option>
                 ))}
-              </select>
+              </Select>
 
               <button
                 onClick={() => setShowFilters(!showFilters)}

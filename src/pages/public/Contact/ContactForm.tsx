@@ -1,5 +1,5 @@
 import { FormEvent, useState } from 'react'
-import { TextInput, TextArea, Button } from '@components/common'
+import { TextInput, TextArea, Button, Select } from '@components/common'
 
 export const ContactForm = () => {
   const [submitting, setSubmitting] = useState(false)
@@ -48,7 +48,7 @@ export const ContactForm = () => {
         <label htmlFor="serviceType" className="block font-medium text-text-secondary">
           Service type
         </label>
-        <select
+        <Select
           id="serviceType"
           name="serviceType"
           className="w-full rounded-md border border-border bg-surface px-3 py-2 text-xs sm:text-sm outline-none transition shadow-sm focus:border-primary focus:ring-1 focus:ring-primary"
@@ -63,7 +63,7 @@ export const ContactForm = () => {
           <option value="wall_painting">Wall painting</option>
           <option value="post_construction_cleaning">Post-construction cleaning</option>
           <option value="other">Other</option>
-        </select>
+        </Select>
       </div>
       <TextArea
         name="message"

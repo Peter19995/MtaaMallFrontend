@@ -1115,7 +1115,7 @@ const ProjectsOperationsPage = () => {
                 <MagnifyingGlassIcon className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-text-tertiary" />
               </div>
               <div className="w-full md:w-48">
-                <select
+                <Select
                   value={projectStatusFilter}
                   onChange={(e) => setProjectStatusFilter(e.target.value)}
                   className="w-full h-10 px-3 bg-white border border-border rounded-lg text-sm focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
@@ -1123,7 +1123,7 @@ const ProjectsOperationsPage = () => {
                   {projectStatusFilterOptions.map(opt => (
                     <option key={opt.value} value={opt.value}>{opt.label}</option>
                   ))}
-                </select>
+                </Select>
               </div>
               <div>
                 <Button

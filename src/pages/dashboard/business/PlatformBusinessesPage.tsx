@@ -6,7 +6,7 @@ import { useAuth } from '@hooks/useAuth'
 import { createBusiness, decideBusiness, getBusiness, listBusinesses, type Business, type BusinessStatus } from '@api/modules/businesses.api'
 import { statusLabels, isPlatformOperator } from '@utils/businessLifecycle'
 import { BusinessDetails, BusinessForm, ErrorNotice, StatusBadge, button, secondary } from './BusinessComponents'
-import { useSiteDialog } from '@components/common'
+import { Select, useSiteDialog } from '@components/common'
 
 const card = 'rounded-2xl border border-slate-200 bg-white shadow-sm'
 const date = (value?: string | null) => value ? new Date(value).toLocaleString() : 'Not recorded'
@@ -80,7 +80,7 @@ export default function PlatformBusinessesPage() {
       <section className={`${card} overflow-hidden`}>
         <div className="border-b border-slate-100 p-5"><div className="flex items-center justify-between"><div><h2 className="font-semibold">Review queue</h2><p className="mt-1 text-xs text-slate-500">{businesses.length} businesses in this view</p></div><button className={secondary} disabled={list.isFetching} onClick={() => list.refetch()}>Refresh</button></div>
           <input aria-label="Search businesses" className="mt-4 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm" placeholder="Search name or business ID" value={search} onChange={event => setSearch(event.target.value)} />
-          <select aria-label="Business status" className="mt-3 w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm" value={filter} onChange={event => setFilter(event.target.value as BusinessStatus | '')}><option value="">All statuses</option>{Object.entries(statusLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select>
+          <Select aria-label="Business status" className="mt-3 w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm" value={filter} onChange={event => setFilter(event.target.value as BusinessStatus | '')}><option value="">All statuses</option>{Object.entries(statusLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</Select>
         </div>
         {list.isPending && <p className="p-6" role="status">Loading review queue…</p>}{list.isError && <div className="p-5"><ErrorNotice error={list.error} /></div>}
         {!list.isPending && !list.isError && !businesses.length && <p className="p-8 text-center text-sm text-slate-500">No businesses match this view.</p>}

@@ -12,7 +12,7 @@ import {
   type PaymentTransaction,
 } from '@api/modules/platformPayments.api'
 import { useAuth } from '@hooks/useAuth'
-import { useSiteDialog } from '@components/common'
+import { Select, useSiteDialog } from '@components/common'
 
 const panel = 'rounded-2xl border border-border bg-white shadow-sm'
 const input = 'rounded-xl border border-border bg-white px-3 py-2.5 text-sm text-text outline-none focus:border-primary focus:ring-2 focus:ring-primary/15'
@@ -51,7 +51,7 @@ export function PlatformTransactionsPage() {
   const [channel, setChannel] = useState(''); const [state, setState] = useState(''); const [search, setSearch] = useState('')
   const query = useQuery({ queryKey: ['platform-payment-transactions', channel, state], queryFn: () => getPaymentTransactions({ channel: channel || undefined, state: state || undefined }) })
   const rows = useMemo(() => (query.data ?? []).filter(row => `${row.business_name} ${row.mpesa_receipt_number ?? ''} ${row.checkout_request_id ?? ''}`.toLowerCase().includes(search.toLowerCase())), [query.data, search])
-  return <div className="mx-auto max-w-7xl space-y-6 pb-12"><Header eyebrow="Platform payments" title="Transactions" text="Read-only payment attempts from the system online account and all business POS accounts." /><section className={`${panel} p-4`}><div className="flex flex-wrap gap-3"><input className={`${input} min-w-64 flex-1`} placeholder="Search business, receipt or request ID" value={search} onChange={e => setSearch(e.target.value)} /><select className={input} value={channel} onChange={e => setChannel(e.target.value)}><option value="">All channels</option><option value="online">Online</option><option value="pos">POS</option></select><select className={input} value={state} onChange={e => setState(e.target.value)}><option value="">All states</option>{['created','initiating','pending_customer','successful','failed','cancelled','timed_out','unknown'].map(value => <option value={value} key={value}>{value.replace(/_/g,' ')}</option>)}</select></div><div className="mt-4"><TransactionsTable rows={rows} /></div></section></div>
+  return <div className="mx-auto max-w-7xl space-y-6 pb-12"><Header eyebrow="Platform payments" title="Transactions" text="Read-only payment attempts from the system online account and all business POS accounts." /><section className={`${panel} p-4`}><div className="flex flex-wrap gap-3"><input className={`${input} min-w-64 flex-1`} placeholder="Search business, receipt or request ID" value={search} onChange={e => setSearch(e.target.value)} /><Select className={input} value={channel} onChange={e => setChannel(e.target.value)}><option value="">All channels</option><option value="online">Online</option><option value="pos">POS</option></Select><Select className={input} value={state} onChange={e => setState(e.target.value)}><option value="">All states</option>{['created','initiating','pending_customer','successful','failed','cancelled','timed_out','unknown'].map(value => <option value={value} key={value}>{value.replace(/_/g,' ')}</option>)}</Select></div><div className="mt-4"><TransactionsTable rows={rows} /></div></section></div>
 }
 
 export function PlatformReconciliationPage() {
@@ -137,7 +137,7 @@ export function PlatformSettlementsPage() {
       <h2 className="font-bold text-text">Commission policy</h2>
       <p className="mt-1 text-sm text-text-secondary">Policies apply to future successful online payments only.</p>
       {hasPermission('platform.settlements.configure_commission') && <form className="mt-4 grid gap-3 md:grid-cols-6" onSubmit={e => { e.preventDefault(); savePolicy.mutate() }}>
-        <select className={input} required value={policy.businessId} onChange={e => setPolicy({ ...policy, businessId: e.target.value })}><option value="">Select business</option>{businesses.data?.map(item => <option value={item.public_id} key={item.public_id}>{item.display_name}</option>)}</select>
+        <Select className={input} required value={policy.businessId} onChange={e => setPolicy({ ...policy, businessId: e.target.value })}><option value="">Select business</option>{businesses.data?.map(item => <option value={item.public_id} key={item.public_id}>{item.display_name}</option>)}</Select>
         <input className={input} required value={policy.name} onChange={e => setPolicy({ ...policy, name: e.target.value })} placeholder="Agreement name" />
         <input className={input} type="number" min="0" max="100" step="0.0001" value={policy.percentage} onChange={e => setPolicy({ ...policy, percentage: e.target.value })} placeholder="Commission %" aria-label="Commission percentage" />
         <input className={input} type="number" min="0" step="0.01" value={policy.fixed} onChange={e => setPolicy({ ...policy, fixed: e.target.value })} placeholder="Fixed commission" aria-label="Fixed commission" />

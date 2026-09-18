@@ -738,21 +738,21 @@ const ProductManagementPage = () => {
                     <label className="block text-xs font-medium text-text-secondary mb-1">
                       Stock Status
                     </label>
-                    <select className="w-full h-9 px-3 bg-background border border-border rounded-lg text-sm">
+                    <Select className="w-full h-9 px-3 bg-background border border-border rounded-lg text-sm">
                       <option>All</option>
                       <option>Low Stock</option>
                       <option>Out of Stock</option>
-                    </select>
+                    </Select>
                   </div>
                   <div>
                     <label className="block text-xs font-medium text-text-secondary mb-1">
                       Offer Status
                     </label>
-                    <select className="w-full h-9 px-3 bg-background border border-border rounded-lg text-sm">
+                    <Select className="w-full h-9 px-3 bg-background border border-border rounded-lg text-sm">
                       <option>All</option>
                       <option>On Offer</option>
                       <option>Not on Offer</option>
-                    </select>
+                    </Select>
                   </div>
                 </div>
               </motion.div>

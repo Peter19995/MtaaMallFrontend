@@ -18,7 +18,7 @@ import {
   PlusIcon
 } from '@heroicons/react/24/outline'
 import { HeartIcon as HeartIconSolid } from '@heroicons/react/24/solid'
-import { Button, TextInput } from '@components/common'
+import { Button, Select, TextInput } from '@components/common'
 import { CartContext } from '@contexts/CartContext'
 import { listInStockProductsRequest, listProductVariantsRequest, type ProductResponse, type ProductVariantResponse } from '@api/modules/products.api'
 import { AppTheme, withOpacity } from '@constants/theme'
@@ -449,7 +449,7 @@ const ProductsPage = () => {
                     <label className="block text-xs font-medium text-text-secondary mb-2">
                       Category
                     </label>
-                    <select
+                    <Select
                       value={selectedCategory}
                       onChange={(e) => setSelectedCategory(e.target.value)}
                       className="w-full px-3 py-2 bg-white border border-border rounded-lg 
@@ -461,7 +461,7 @@ const ProductsPage = () => {
                           {cat === 'all' ? 'All Categories' : cat}
                         </option>
                       ))}
-                    </select>
+                    </Select>
                   </div>
 
                   {/* Sort By */}
@@ -469,7 +469,7 @@ const ProductsPage = () => {
                     <label className="block text-xs font-medium text-text-secondary mb-2">
                       Sort By
                     </label>
-                    <select
+                    <Select
                       value={sortBy}
                       onChange={(e) => setSortBy(e.target.value)}
                       className="w-full px-3 py-2 bg-white border border-border rounded-lg 
@@ -481,7 +481,7 @@ const ProductsPage = () => {
                           {option.label}
                         </option>
                       ))}
-                    </select>
+                    </Select>
                   </div>
 
                   {/* Price Range */}

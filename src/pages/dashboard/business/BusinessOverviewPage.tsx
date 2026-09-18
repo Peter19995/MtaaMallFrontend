@@ -7,6 +7,7 @@ import { useAuth } from '@hooks/useAuth'
 import { getMyBusiness } from '@api/modules/businesses.api'
 import { getSalesSummaryRequest, getDailySalesRequest } from '@api/modules/reports.api'
 import { ErrorNotice, StatusBadge } from './BusinessComponents'
+import { Select } from '@components/common'
 import './business-workspace.css'
 import './business-overview.css'
 
@@ -52,7 +53,7 @@ export default function BusinessOverviewPage() {
     {business.isError && <div className="overview-message"><ErrorNotice error={business.error} /><button className="business-outline-button" onClick={() => business.refetch()}>Retry business</button></div>}
     {business.data && !business.isError && <>
       <section className="overview-welcome"><div><p className="business-eyebrow">BUSINESS WORKSPACE</p><h2>{business.data.display_name}</h2><p>{business.data.branches.length} registered {business.data.branches.length === 1 ? 'branch' : 'branches'} · {business.data.currency}</p></div><StatusBadge status={business.data.status} /></section>
-      <div className="overview-toolbar"><div><h2>Performance summary</h2><p>Sales and orders for the selected period · UTC dates</p></div><div className="overview-controls"><label>Period<select aria-label="Reporting period" value={days} onChange={event => setDays(Number(event.target.value))}><option value={7}>Last 7 days</option><option value={30}>Last 30 days</option><option value={90}>Last 90 days</option></select></label>{canReport && <button className="business-outline-button" aria-label="Refresh performance" disabled={summary.isFetching || daily.isFetching} onClick={() => { void summary.refetch(); void daily.refetch() }}><ArrowPathIcon aria-hidden="true" /></button>}</div></div>
+      <div className="overview-toolbar"><div><h2>Performance summary</h2><p>Sales and orders for the selected period · UTC dates</p></div><div className="overview-controls"><label>Period<Select aria-label="Reporting period" value={days} onChange={event => setDays(Number(event.target.value))}><option value={7}>Last 7 days</option><option value={30}>Last 30 days</option><option value={90}>Last 90 days</option></Select></label>{canReport && <button className="business-outline-button" aria-label="Refresh performance" disabled={summary.isFetching || daily.isFetching} onClick={() => { void summary.refetch(); void daily.refetch() }}><ArrowPathIcon aria-hidden="true" /></button>}</div></div>
       {!canReport ? <p className="overview-message">Your role does not include access to performance reports. Your permitted operational tools are available below.</p> : <>
         {summary.isPending && <p role="status" className="overview-message">Loading performance summary…</p>}
         {summary.isError && <div className="overview-message"><ErrorNotice error={summary.error} /><button className="business-outline-button" onClick={() => summary.refetch()}>Retry summary</button></div>}
