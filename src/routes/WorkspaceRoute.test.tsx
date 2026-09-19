@@ -27,7 +27,7 @@ it('denies a shopper who navigates directly to a business route', () => {
   mount('/business/products'); expect(screen.getByText('Access denied')).toBeTruthy()
 })
 it('redirects pending owners to onboarding while permitting granted local tools', () => {
-  state.query = { data: { context: 'business:a', roles: ['business_owner'], permissions: ['business.settings.read', 'products.read', 'pos.sell'], allowed_branch_ids: [1], business_status: 'pending_verification', business_capabilities: { local_pos_enabled: true } } }
+  state.query = { data: { context: 'business:a', experience: 'business', roles: ['business_owner'], permissions: ['business.settings.read', 'products.read', 'pos.sell'], allowed_branch_ids: [1], business_status: 'pending_verification', business_capabilities: { local_pos_enabled: true } } }
   mount('/business'); expect(screen.getByText('Complete onboarding')).toBeTruthy()
   cleanup(); mount('/business/products'); expect(screen.getByText('Product content')).toBeTruthy()
   cleanup(); mount('/business/sales/create'); expect(screen.getByText('POS content')).toBeTruthy()

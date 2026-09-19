@@ -13,6 +13,12 @@ export type WorkspacePrincipal = {
   business_memberships?: { status: string }[]
 }
 export type Experience = 'platform' | 'business' | 'employee' | 'account' | 'unauthorized'
+const businessExperience = (permissions: string[]): 'business' | 'employee' =>
+  permissions.some(permission => [
+    'business.settings.update',
+    'business.members.assign_role',
+  ].includes(permission)) ? 'business' : 'employee'
+
 // Labels select a shell, never grant permissions. Only the selected membership's
 // effective permissions may enable a module; no cross-membership union is used.
 export function experienceFor(user: WorkspacePrincipal): Experience {
@@ -29,7 +35,7 @@ export function experienceFor(user: WorkspacePrincipal): Experience {
   }
   if ((!user.context || user.context === 'platform') && hasPlatformAuthority) return 'platform'
   if ((!user.context || user.context.startsWith('business:')) && businessGrants.length > 0)
-    return user.roles?.some(role => role === 'business_owner' || role === 'business_admin') ? 'business' : 'employee'
+    return businessExperience(permissions)
   if ((!user.context || user.context === 'customer') && hasCustomerAuthority) return 'account'
   return 'unauthorized'
 }

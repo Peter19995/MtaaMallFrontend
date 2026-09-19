@@ -138,6 +138,7 @@ export type PosSaleResponse = {
   channel: string
   total_amount: number
   created_at: string
+  cashier_membership_id?: number | null
   items: PosSaleOrderItemResponse[]
 }
 

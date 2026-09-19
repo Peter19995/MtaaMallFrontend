@@ -1,11 +1,11 @@
 // @vitest-environment jsdom
 import React from 'react'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import '@testing-library/jest-dom/vitest'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import BusinessWorkforcePage from './BusinessWorkforcePage'
-import { inviteBusinessEmployee, listBusinessInvitations, listBusinessMembers } from '@api/modules/memberships.api'
+import { inviteBusinessEmployee, listBusinessInvitations, listBusinessMembers, listBusinessMembershipAudit } from '@api/modules/memberships.api'
 import api from '@api/config/axios.config'
 
 const identity = vi.hoisted(() => ({ user: { id: '1', context: 'business:a', roles: ['business_owner'],
@@ -15,6 +15,7 @@ vi.mock('@hooks/useAuth', () => ({ useAuth: () => ({ user: identity.user,
 vi.mock('@api/config/axios.config', () => ({ default: { get: vi.fn() } }))
 vi.mock('@api/modules/memberships.api', () => ({
   listBusinessMembers: vi.fn(), listBusinessInvitations: vi.fn(), inviteBusinessEmployee: vi.fn(),
+  listBusinessMembershipAudit: vi.fn(),
   updateBusinessMemberRole: vi.fn(), updateBusinessMemberBranches: vi.fn(),
   setBusinessMemberAccess: vi.fn(), revokeBusinessMember: vi.fn(),
 }))
@@ -23,11 +24,16 @@ const mount = () => render(<QueryClientProvider client={new QueryClient({ defaul
   queries: { retry: false }, mutations: { retry: false } } })}><BusinessWorkforcePage /></QueryClientProvider>)
 
 describe('business workforce', () => {
+  afterEach(cleanup)
   beforeEach(() => {
     vi.resetAllMocks()
+    identity.user.roles = ['business_owner']
     vi.mocked(listBusinessMembers).mockResolvedValue([{ id: 1, user_id: 1, username: 'owner', role: 'business_owner',
       status: 'active', business_id: 'a', business_name: 'A', branch_scope: 'all', branch_ids: [] }])
     vi.mocked(listBusinessInvitations).mockResolvedValue([])
+    vi.mocked(listBusinessMembershipAudit).mockResolvedValue([{ id: 'audit-1', actor_user_id: 1, actor_name: 'Owner',
+      subject_user_id: 2, subject_name: 'Staff', action: 'membership.role_changed', before: null, after: null,
+      reason: 'Moved to sales', created_at: '2026-09-19T08:00:00Z' }])
     vi.mocked(api.get).mockResolvedValue({ data: [{ id: 8, name: 'Main branch', is_active: true }] })
     vi.mocked(inviteBusinessEmployee).mockImplementation(() => new Promise(() => {}))
   })
@@ -43,5 +49,16 @@ describe('business workforce', () => {
       email: 'staff@example.com', role: 'sales_staff', branch_scope: 'selected', branch_ids: [8], reason: 'New salesperson',
     }))
     expect(screen.getByText('owner (you)')).toBeInTheDocument()
+    expect(screen.getByText('Employee: Staff')).toBeInTheDocument()
+  })
+
+  it('does not offer owner or business administrator roles to branch managers', async () => {
+    identity.user.roles = ['branch_manager']
+    mount()
+    fireEvent.click(await screen.findByRole('button', { name: 'Invite employee' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Business role' }))
+    expect(screen.queryByRole('option', { name: 'Business Owner' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('option', { name: 'Business Admin' })).not.toBeInTheDocument()
+    expect(screen.getByRole('option', { name: 'Sales Staff' })).toBeInTheDocument()
   })
 })

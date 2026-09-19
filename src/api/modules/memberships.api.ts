@@ -12,6 +12,11 @@ export type BusinessInvitation = {
   status: 'pending' | 'accepted' | 'expired' | 'revoked'; expires_at: string; invited_by_user_id: number
   accepted_at: string | null; revoked_at: string | null; created_at: string
 }
+export type MembershipAudit = {
+  id: string; actor_user_id: number; actor_name: string; subject_user_id: number; subject_name: string
+  action: string; before: Record<string, unknown> | null; after: Record<string, unknown> | null
+  reason: string; created_at: string
+}
 export type Memberships = {
   business_memberships: Membership[]
   platform_memberships: Membership[]
@@ -33,6 +38,8 @@ export const acceptMembership = async (scope: Scope, id: number) =>
 
 export const listBusinessMembers = async () => (await api.get<Membership[]>('/business/members', { params: { limit: 500 } })).data
 export const listBusinessInvitations = async () => (await api.get<BusinessInvitation[]>('/business/invitations')).data
+export const listBusinessMembershipAudit = async () =>
+  (await api.get<MembershipAudit[]>('/business/membership-audit', { params: { limit: 100 } })).data
 export const inviteBusinessEmployee = async (body: { email: string; role: string; branch_scope: 'all' | 'selected'; branch_ids: number[]; reason: string }) =>
   (await api.post<BusinessInvitation>('/business/invitations', body)).data
 export const acceptBusinessInvitation = async (token: string) =>

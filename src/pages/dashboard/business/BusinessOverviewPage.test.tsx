@@ -9,7 +9,7 @@ import { getSalesSummaryRequest, getDailySalesRequest } from '@api/modules/repor
 import { canAccessDashboard } from '@utils/dashboardAccess'
 import BusinessOverviewPage, { overviewRange } from './BusinessOverviewPage'
 
-const identity = vi.hoisted(() => ({ user: { id: 'owner', roles: ['business_owner'], permissions: ['business.settings.read', 'reports.read', 'orders.read', 'pos.sell'] } }))
+const identity = vi.hoisted(() => ({ user: { id: 'owner', context: 'business:a', experience: 'business' as const, roles: ['business_owner'], permissions: ['business.settings.read', 'reports.read', 'orders.read', 'pos.sell'] } }))
 vi.mock('@hooks/useAuth', () => ({ useAuth: () => ({ user: identity.user, hasPermission: (name: string) => identity.user.permissions.includes(name) }) }))
 vi.mock('@api/modules/businesses.api', () => ({ getMyBusiness: vi.fn(), updateMyBusiness: vi.fn() }))
 vi.mock('@api/modules/reports.api', () => ({ getSalesSummaryRequest: vi.fn(), getDailySalesRequest: vi.fn() }))

@@ -239,7 +239,7 @@ const SettingsPage = () => {
         <section className="rounded-xl border border-border bg-white p-4 shadow-sm" aria-label="Business capabilities">
           <h2 className="text-sm font-semibold text-text">Business capabilities</h2>
           <p className="mt-1 text-xs text-text-secondary">These switches are managed by the platform. Business lifecycle restrictions always take priority.</p>
-          <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-5">{[
+          <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-5">{([
             ['Local POS', 'local_pos_enabled'], ['Storefront', 'storefront_enabled'],
             ['Online orders', 'online_orders_enabled'], ['Online payments', 'online_payments_enabled'],
             ['Settlements', 'settlements_enabled'],

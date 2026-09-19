@@ -1,7 +1,7 @@
 import { useWorkspacePath } from '@hooks/useWorkspacePath'
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
-import { useQuery } from '@tanstack/react-query'
+import { useQueries, useQuery } from '@tanstack/react-query'
 import { ArrowUpRightIcon, ArrowPathIcon, BanknotesIcon, ShoppingBagIcon, BuildingStorefrontIcon, CubeIcon, BriefcaseIcon, UserCircleIcon } from '@heroicons/react/24/outline'
 import { useAuth } from '@hooks/useAuth'
 import { getMyBusiness } from '@api/modules/businesses.api'
@@ -28,6 +28,15 @@ export default function BusinessOverviewPage() {
   const reportEnabled = Boolean(business.data) && !business.isError && canReport
   const summary = useQuery({ queryKey: ['business-overview', 'summary', user?.id, business.data?.public_id, range], queryFn: () => getSalesSummaryRequest(range), enabled: reportEnabled, refetchInterval: 30000 })
   const daily = useQuery({ queryKey: ['business-overview', 'daily', user?.id, business.data?.public_id, range], queryFn: () => getDailySalesRequest(range), enabled: reportEnabled, refetchInterval: 30000 })
+  const activeBranches = business.data?.branches.filter(branch => branch.is_active) ?? []
+  const branchSummaries = useQueries({
+    queries: activeBranches.map(branch => ({
+      queryKey: ['business-overview', 'branch-summary', business.data?.public_id, branch.id, range],
+      queryFn: () => getSalesSummaryRequest({ ...range, branch_id: branch.id }),
+      enabled: reportEnabled && activeBranches.length > 1,
+      refetchInterval: 30000
+    }))
+  })
   const formatMoney = (amount: number) => {
     const currency = business.data?.currency ?? 'KES'
     try { return new Intl.NumberFormat('en', { style: 'currency', currency, maximumFractionDigits: 2 }).format(amount) }
@@ -81,6 +90,15 @@ export default function BusinessOverviewPage() {
               <div><dt><BuildingStorefrontIcon aria-hidden="true" />Active branches</dt><dd>{business.data.branches.filter(branch => branch.is_active).length} / {business.data.branches.length}</dd></div>
             </dl><p className="overview-operation-note">{stats.low_stock_products > 0 ? 'Some branch stock items are at or below their reorder level. Review inventory for replenishment.' : 'No low-stock items are currently reported for your business.'}</p></section>
           </div>
+          {activeBranches.length > 1 && <section className="business-card overview-daily-table" aria-label="Branch comparison">
+            <div className="overview-section-heading"><div><h2>Branch comparison</h2><p>Revenue and orders for the selected period</p></div></div>
+            <div><table><thead><tr><th>Branch</th><th>Revenue</th><th>Orders</th><th>POS orders</th><th>Online orders</th></tr></thead><tbody>
+              {activeBranches.map((branch, index) => {
+                const row = branchSummaries[index]
+                return <tr key={branch.id}><td>{branch.name}</td><td>{row.data ? formatMoney(row.data.total_sales) : '—'}</td><td>{row.data?.total_orders ?? '—'}</td><td>{row.data?.pos_orders ?? '—'}</td><td>{row.data?.online_orders ?? '—'}</td></tr>
+              })}
+            </tbody></table></div>
+          </section>}
         </>}
       </>}
       <section className="overview-tools"><div className="overview-section-heading"><div><h2>Run your business</h2><p>Go straight to your daily operations.</p></div>{hasPermission('pos.sell') && (business.data.local_pos_enabled && !['suspended', 'closed'].includes(business.data.status) ? <Link to={workspacePath('/dashboard/admin/sales/create')} className="business-primary-button">New POS sale</Link> : <span className="overview-pos-locked">POS is not available for this business</span>)}</div><div className="overview-shortcuts">{shortcuts.map(item => <Link key={item.path} to={item.path} className="business-card"><item.icon aria-hidden="true" /><div><h3>{item.label}</h3><p>{item.description}</p></div><ArrowUpRightIcon aria-hidden="true" /></Link>)}</div></section>

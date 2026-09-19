@@ -2,7 +2,7 @@ import { requestApproval } from '@api/modules/audit.api'
 import { useAuth } from '@hooks/useAuth'
 import { canAccessWorkspace } from '@utils/experiences'
 import { useWorkspacePath } from '@hooks/useWorkspacePath'
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { motion, AnimatePresence } from 'framer-motion'
@@ -105,6 +105,8 @@ const SalesOperationsPage = () => {
   const { user, hasPermission } = useAuth()
   const siteDialog = useSiteDialog()
   const canReport = hasPermission('reports.read')
+  const canReadSales = hasPermission('orders.read')
+  const isSalesStaff = user?.roles?.includes('sales_staff') ?? false
   const canSell = canAccessWorkspace(user, workspacePath('/dashboard/admin/sales/create'))
   const canMutate = !['suspended', 'closed'].includes(user?.business_status ?? '')
   const queryClient = useQueryClient()
@@ -151,6 +153,20 @@ const SalesOperationsPage = () => {
     queryKey: ['branches', 'operations'],
     queryFn: () => listBranchesRequest(), enabled: hasPermission('branches.read')
   })
+  const allowedBranches = useMemo(
+    () => (branchesQuery.data ?? []).filter((branch) => branch.is_active),
+    [branchesQuery.data]
+  )
+
+  useEffect(() => {
+    if (allowedBranches.length === 1 && branchId !== String(allowedBranches[0].id)) {
+      setBranchId(String(allowedBranches[0].id))
+      return
+    }
+    if (branchId && !allowedBranches.some((branch) => String(branch.id) === branchId)) {
+      setBranchId('')
+    }
+  }, [allowedBranches, branchId])
 
   const summaryQuery = useQuery({
     queryKey: ['reports', 'summary', reportParams],
@@ -179,7 +195,7 @@ const SalesOperationsPage = () => {
       getDailyPosSummaryRequest({
         branch_id: branchIdNumber,
         summary_date: dailySummaryDate || undefined
-      }), enabled: canReport
+      }), enabled: canReadSales
   })
 
   const selectedSaleQuery = useQuery({
@@ -193,7 +209,7 @@ const SalesOperationsPage = () => {
 
   const branchOptions = useMemo(
     () => [
-      { label: 'All branches', value: '' },
+      { label: 'All authorized branches', value: '' },
       ...((branchesQuery.data ?? []).map((branch) => ({
         label: `${branch.name} (${branch.code})`,
         value: String(branch.id)
@@ -448,19 +464,19 @@ const SalesOperationsPage = () => {
           <div>
             <h1 className="text-2xl font-bold text-text flex items-center gap-2">
               <ShoppingBagIcon className="h-6 w-6 text-primary" />
-              Sales Operations
+              {isSalesStaff ? 'My Sales' : 'Sales Operations'}
             </h1>
             <p className="text-sm text-text-secondary mt-1">
-              Track reports and manage POS sales from one place
+              {isSalesStaff ? 'Your sales today and your personal sales history' : 'Track reports and manage POS sales from one place'}
             </p>
           </div>
         </div>
       </motion.div>
 
       {/* Primary POS workspace */}
-      {(canSell || canReport) && (
+      {(canSell || canReadSales) && (
         <section
-          className={`mb-6 grid gap-6 ${canSell && canReport ? 'lg:grid-cols-2' : 'grid-cols-1'}`}
+          className={`mb-6 grid gap-6 ${canSell && canReadSales ? 'lg:grid-cols-2' : 'grid-cols-1'}`}
         >
           {canSell && (
             <motion.div
@@ -489,7 +505,7 @@ const SalesOperationsPage = () => {
             </motion.div>
           )}
 
-          {canReport && (
+          {canReadSales && (
             <motion.div
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
@@ -575,12 +591,12 @@ const SalesOperationsPage = () => {
           </div>
 
           <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-            <Select
+            {allowedBranches.length > 1 && <Select
               label="Branch"
               options={branchOptions}
               value={branchId}
               onChange={(event) => setBranchId(String(event.target.value))}
-            />
+            />}
             <TextInput
               label="Date From"
               type="date"

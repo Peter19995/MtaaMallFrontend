@@ -11,7 +11,7 @@ vi.mock('@/components/common/WorkspaceSwitcher', () => ({ default: () => <span>W
 vi.mock('@pages/dashboard/business/BusinessStatusNotice', () => ({ default: () => null }))
 afterEach(cleanup)
 it('renders an employee menu without owner or platform functions', () => {
-  state.user = { username: 'sales', context: 'business:a', roles: ['sales_staff'], permissions: ['products.read', 'pos.sell', 'orders.read'], business_status: 'active', business_capabilities: { local_pos_enabled: true }, allowed_branch_ids: [1] }
+  state.user = { username: 'sales', context: 'business:a', experience: 'employee', roles: ['sales_staff'], permissions: ['products.read', 'pos.sell', 'orders.read'], business_status: 'active', business_capabilities: { local_pos_enabled: true }, allowed_branch_ids: [1] }
   render(<MemoryRouter><DashboardLayout /></MemoryRouter>)
   const menu = screen.getByRole('navigation', { name: 'Employee workspace' })
   expect(menu.textContent).toContain('Sales & Payments')
@@ -27,6 +27,7 @@ it('orders the business menu by operational workflow', () => {
   state.user = {
     username: 'owner',
     context: 'business:a',
+    experience: 'business',
     roles: ['business_owner'],
     permissions: [
       'orders.read', 'pos.sell', 'payments.manage',
@@ -52,7 +53,7 @@ it('orders the business menu by operational workflow', () => {
   expect(screen.getByRole('link', { name: 'Customers' }).getAttribute('href')).toBe('/business/customers')
 })
 it('keeps a business owner’s profile separate from the overview', () => {
-  state.user = { username: 'owner', context: 'business:a', roles: ['business_owner'], permissions: ['business.settings.read'], business_status: 'active' }
+  state.user = { username: 'owner', context: 'business:a', experience: 'business', roles: ['business_owner'], permissions: ['business.settings.read'], business_status: 'active' }
   render(<MemoryRouter><DashboardLayout /></MemoryRouter>)
   expect(screen.getByRole('link', { name: 'Business overview' }).getAttribute('href')).toBe('/business')
   fireEvent.click(screen.getByRole('button', { name: /owner/ }))
