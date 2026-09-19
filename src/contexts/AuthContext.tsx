@@ -3,7 +3,7 @@ import { getMeRequest, logoutRequest, type UserResponse } from '@api/modules/aut
 import { hasNamedPermission } from '../utils/authorization'
 import { authorizationFingerprint } from '../utils/authorization'
 import { useQueryClient } from '@tanstack/react-query'
-import { setActiveApiContext } from '@api/config/axios.config'
+import { clearAuthentication, setActiveApiContext } from '@api/config/axios.config'
 import axios from 'axios'
 
 export type AuthUser = {
@@ -52,10 +52,7 @@ const ACCESS_TOKEN_KEY = 'access_token'
 const REFRESH_TOKEN_KEY = 'refresh_token'
 
 const clearStoredAuth = () => {
-  setActiveApiContext(null)
-  localStorage.removeItem(AUTH_USER_KEY)
-  localStorage.removeItem(ACCESS_TOKEN_KEY)
-  localStorage.removeItem(REFRESH_TOKEN_KEY)
+  clearAuthentication()
 }
 
 export const toAuthUser = (me: UserResponse): AuthUser => {

@@ -126,11 +126,27 @@ export const setActiveApiContext = (context: string | null) => {
   else localStorage.removeItem('auth_context')
 }
 
-const clearAuthentication = () => {
+const clearSensitiveSessionCache = () => {
+  for (let index = sessionStorage.length - 1; index >= 0; index -= 1) {
+    const key = sessionStorage.key(index)
+    if (key?.startsWith('mtaamall:')) sessionStorage.removeItem(key)
+  }
+}
+
+export const clearAuthentication = () => {
   setActiveApiContext(null)
   localStorage.removeItem('auth_user')
   localStorage.removeItem('access_token')
   localStorage.removeItem('refresh_token')
+  clearSensitiveSessionCache()
+}
+
+export const recoverRevokedWorkspace = (
+  replace: (url: string) => void = (url) => window.location.replace(url),
+  now: () => number = Date.now
+) => {
+  setActiveApiContext('customer')
+  replace(`/account/workspaces?workspaceRefresh=${now()}`)
 }
 
 api.interceptors.request.use((config) => {
@@ -179,8 +195,7 @@ api.interceptors.response.use(
     if (error.response?.status === 403 && getAuthErrorMessage(error.response.data).includes('no active membership')) {
       // Revoking one membership does not end the identity session. Drop every
       // tenant cache and return to workspace discovery in customer context.
-      setActiveApiContext('customer')
-      window.location.replace(`/account/workspaces?workspaceRefresh=${Date.now()}`)
+      recoverRevokedWorkspace()
       return Promise.reject(error)
     }
 
@@ -197,7 +212,7 @@ api.interceptors.response.use(
         // Serialize rotating-cookie exchanges across tabs as well as within this
         // tab. Each exchange reads the latest browser cookie after acquiring it.
         const exchange = navigator.locks
-          ? navigator.locks.request('mtaamall-session-refresh', refreshAccessToken)
+          ? navigator.locks.request('mtaamall-session-refresh', () => refreshAccessToken())
           : refreshAccessToken()
         refreshPromise = exchange.finally(() => {
           refreshPromise = null

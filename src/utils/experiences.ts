@@ -65,7 +65,7 @@ export const platformModules: WorkspaceModule[] = [
 ]
 export const businessModules: WorkspaceModule[] = [
   { path: 'audit', label: 'Audit history', permission: 'audit.read' },
-  { path: 'approvals', label: 'Approvals', permission: 'approvals.request', anyPermissions: ['audit.read', 'approvals.discount.approve', 'approvals.refund.approve', 'approvals.stock_writeoff.approve'] },
+  { path: 'approvals', label: 'Approvals', permission: 'approvals.request', anyPermissions: ['audit.read', 'approvals.discount.approve', 'approvals.refund.approve', 'approvals.stock_writeoff.approve', 'approvals.pos_void.approve', 'approvals.role_change.approve', 'approvals.financial_posting.approve'] },
   { path: 'profile', label: 'Business profile', permission: 'business.settings.read' },
   { path: 'members', label: 'Team', permission: 'business.members.read' },
   { path: 'customers', label: 'Customers', permission: 'customers.read' },

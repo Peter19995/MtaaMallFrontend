@@ -3,10 +3,11 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useAuth } from '@hooks/useAuth'
 import api from '@api/config/axios.config'
 import { inviteBusinessEmployee, listBusinessInvitations, listBusinessMembers, listBusinessMembershipAudit, revokeBusinessMember,
-  setBusinessMemberAccess, updateBusinessMemberBranches, updateBusinessMemberRole,
+  setBusinessMemberAccess, updateBusinessMemberBranches,
   type Membership } from '@api/modules/memberships.api'
 import { ErrorNotice, button, secondary } from './BusinessComponents'
 import { Select } from '@components/common'
+import { requestApproval } from '@api/modules/audit.api'
 
 const roles = ['business_owner', 'business_admin', 'branch_manager', 'inventory_manager', 'sales_staff', 'accountant', 'project_manager', 'content_manager', 'business_auditor']
 const card = 'rounded-2xl border border-slate-200 bg-white shadow-sm'
@@ -46,11 +47,13 @@ export default function BusinessWorkforcePage() {
   const save = useMutation({ mutationFn: async () => {
     if (mode === 'invite') return inviteBusinessEmployee({ email: email.trim(), role, branch_scope: branchScope, branch_ids: branchScope === 'all' ? [] : branchIds, reason: reason.trim() })
     if (!selected) throw new Error('Choose a team member')
-    if (mode === 'role') return updateBusinessMemberRole(selected.id, role, reason.trim())
+    if (mode === 'role') return requestApproval('role_change', reason.trim(), {
+      membership_id: selected.id, role, reason: reason.trim(),
+    })
     if (mode === 'branches') return updateBusinessMemberBranches(selected.id, branchScope, branchScope === 'all' ? [] : branchIds, reason.trim())
     if (access === 'revoke') return revokeBusinessMember(selected.id, reason.trim())
     return setBusinessMemberAccess(selected.id, access, reason.trim())
-  }, onSuccess: async () => { close(); await queryClient.invalidateQueries({ queryKey: ['business-workforce'] }); await queryClient.invalidateQueries({ queryKey: ['memberships'] }) } })
+  }, onSuccess: async () => { close(); await queryClient.invalidateQueries({ queryKey: ['business-workforce'] }); await queryClient.invalidateQueries({ queryKey: ['memberships'] }); await queryClient.invalidateQueries({ queryKey: ['approvals'] }) } })
 
   const allOnly = role === 'business_owner' || role === 'business_admin'
   const selectedOnly = role === 'branch_manager' || role === 'sales_staff'
@@ -82,7 +85,7 @@ export default function BusinessWorkforcePage() {
         {(mode === 'invite' || mode === 'branches') && <fieldset><legend className="text-sm font-medium">Branch scope</legend><div className="mt-2 grid gap-2 sm:grid-cols-2"><label className="flex items-center gap-2 rounded-xl border border-slate-200 p-3 text-sm"><input aria-label="All branches" type="radio" checked={branchScope === 'all'} disabled={selectedOnly} onChange={() => { setBranchScope('all'); setBranchIds([]) }} />All branches</label><label className="flex items-center gap-2 rounded-xl border border-slate-200 p-3 text-sm"><input aria-label="Selected branches" type="radio" checked={branchScope === 'selected'} disabled={allOnly} onChange={() => setBranchScope('selected')} />Selected branches</label></div>{branchScope === 'selected' && <><p className="mt-2 text-xs text-slate-500">Leaving every branch unchecked gives this employee no branch access.</p><div className="mt-2 grid gap-2 sm:grid-cols-2">{branches.data?.filter(branch => branch.is_active).map(branch => <label key={branch.id} className="flex items-center gap-2 rounded-xl border border-slate-200 p-3 text-sm"><input type="checkbox" checked={branchIds.includes(branch.id)} onChange={() => toggleBranch(branch.id)} />{branch.name}</label>)}</div></>}</fieldset>}
         {mode === 'access' && <label className="block text-sm font-medium">Access action<Select aria-label="Access action" className={field} value={access} onChange={event => setAccess(event.target.value as typeof access)}>{selected?.status === 'suspended' && <option value="reactivate">Reactivate access</option>}{selected?.status === 'active' && <option value="suspend">Suspend access</option>}<option value="revoke">Revoke permanently</option></Select></label>}
         <label className="block text-sm font-medium">Audit reason<textarea aria-label="Audit reason" className={field} required minLength={3} maxLength={1000} rows={3} value={reason} onChange={event => setReason(event.target.value)} /></label>
-        <div className="flex gap-3"><button className={button} disabled={save.isPending || reason.trim().length < 3}>{save.isPending ? 'Saving…' : 'Confirm change'}</button><button className={secondary} type="button" disabled={save.isPending} onClick={close}>Cancel</button></div>
+        <div className="flex gap-3"><button className={button} disabled={save.isPending || reason.trim().length < 3}>{save.isPending ? 'Saving…' : mode === 'role' ? 'Request approval' : 'Confirm change'}</button><button className={secondary} type="button" disabled={save.isPending} onClick={close}>Cancel</button></div>
       </form></section></div>}
   </div>
 }

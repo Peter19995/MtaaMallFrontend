@@ -21,6 +21,17 @@ jobs:
       - name: Check out source
         uses: actions/checkout@v4
 
+      - name: Use Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+
+      - name: Run workspace and navigation tests
+        run: |
+          npm ci
+          npm test -- --run
+
       - name: Build frontend image
         run: |
           docker build \
@@ -67,3 +78,6 @@ jobs:
           $SCP "$RUNNER_TEMP/mtaamall-frontend-${GITHUB_SHA}.tar.gz" "mtaamall-deploy@109.199.109.99:$remote_archive"
           $SSH mtaamall-deploy@109.199.109.99 \
             "sudo /usr/local/sbin/deploy-mtaamall frontend '$remote_archive' '$GITHUB_SHA'"
+
+      - name: Verify public website
+        run: curl --fail --silent --show-error --retry 12 --retry-delay 5 https://mtaamall.com/ >/dev/null

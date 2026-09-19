@@ -13,6 +13,7 @@ import {
 } from '@heroicons/react/24/outline'
 import api from '@api/config/axios.config'
 import { changePasswordRequest, logoutRequest } from '@api/modules/auth.api'
+import { clearAuthentication } from '@api/config/axios.config'
 import { useAuth } from '@hooks/useAuth'
 import brandLogo from '@/assets/mtaamall-logo.svg'
 import { loginLanding } from '@utils/experiences'
@@ -231,7 +232,7 @@ export default function SecurityPage() {
 
                 {state.must_change_password && (
                   <SecurityCard icon={KeyIcon} title="Replace your bootstrap password" description="Your initial administrator password cannot be used for normal operations.">
-                    <form className="space-y-4" onSubmit={e => { e.preventDefault(); void run(async () => { await changePasswordRequest({ old_password: oldPassword, new_password: newPassword }); localStorage.removeItem('auth_user'); window.location.assign('/login') }) }}>
+                    <form className="space-y-4" onSubmit={e => { e.preventDefault(); void run(async () => { await changePasswordRequest({ old_password: oldPassword, new_password: newPassword }); clearAuthentication(); window.location.assign('/login') }) }}>
                       <label className="block text-sm font-semibold text-text-secondary">Current password<input className={input} type="password" autoComplete="current-password" required value={oldPassword} onChange={e => setOldPassword(e.target.value)} /></label>
                       <label className="block text-sm font-semibold text-text-secondary">New password<input className={input} type="password" autoComplete="new-password" minLength={6} required value={newPassword} onChange={e => setNewPassword(e.target.value)} /><span className="mt-2 block text-xs font-normal text-text-tertiary">Use at least 6 characters.</span></label>
                       <button className={primaryButton} disabled={busy}>Change password and sign out</button>
@@ -275,7 +276,7 @@ export default function SecurityPage() {
             )}
 
             <div className="flex justify-center pb-3 pt-1">
-              <button className="text-sm font-semibold text-text-secondary underline decoration-border underline-offset-4 transition hover:text-secondary" disabled={busy} onClick={() => void run(async () => { await logoutRequest(); localStorage.removeItem('auth_user'); window.location.assign('/login') })}>Sign out</button>
+              <button className="text-sm font-semibold text-text-secondary underline decoration-border underline-offset-4 transition hover:text-secondary" disabled={busy} onClick={() => void run(async () => { await logoutRequest(); clearAuthentication(); window.location.assign('/login') })}>Sign out</button>
             </div>
           </div>
         </div>

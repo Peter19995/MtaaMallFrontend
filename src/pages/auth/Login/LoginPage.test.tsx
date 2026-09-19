@@ -2,7 +2,7 @@
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import '@testing-library/jest-dom/vitest'
-import { MemoryRouter } from 'react-router-dom'
+import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { loginRequest, getMeRequest } from '@api/modules/auth.api'
 import LoginPage from './LoginPage'
 
@@ -24,4 +24,31 @@ it('accepts lowercase usernames without altering passwords or stored username sp
   fireEvent.submit(identifier.closest('form')!)
   await waitFor(() => expect(loginRequest).toHaveBeenCalledWith({ username: 'osltd', password: 'SecurePass1!' }))
   await waitFor(() => expect(getMeRequest).toHaveBeenCalledWith())
+})
+
+it.each([
+  [{ context: 'platform', experience: 'platform', roles: ['business_manager'], permissions: ['platform.businesses.read'] }, 'Platform landing'],
+  [{ context: 'business:a', experience: 'business', roles: ['business_owner'], permissions: ['business.settings.read'] }, 'Business landing'],
+  [{ context: 'business:a', experience: 'employee', roles: ['sales_staff'], permissions: ['pos.sell'] }, 'Employee landing'],
+  [{ context: 'customer', experience: 'account', roles: ['customer'], permissions: ['self.profile.read'] }, 'Customer landing'],
+])('lands each selected profile in its own experience', async (authority, expected) => {
+  vi.mocked(loginRequest).mockResolvedValue({ access_token: 'test', refresh_token: 'refresh', token_type: 'bearer', expires_in: 3600 })
+  vi.mocked(getMeRequest).mockResolvedValue({
+    id: 1, username: 'identity', email: null, full_name: null,
+    is_active: true, is_superuser: false, created_at: '2026-09-06T00:00:00Z',
+    business_memberships: [], platform_memberships: [], workspaces: [],
+    ...authority,
+  } as any)
+  const paths: Record<string, string> = {
+    'Platform landing': '/platform', 'Business landing': '/business',
+    'Employee landing': '/employee', 'Customer landing': '/account',
+  }
+  render(<MemoryRouter initialEntries={['/login']}><Routes>
+    <Route path="/login" element={<LoginPage />} />
+    <Route path={paths[expected]} element={<p>{expected}</p>} />
+  </Routes></MemoryRouter>)
+  fireEvent.change(screen.getByLabelText('Username, email or phone'), { target: { value: 'identity' } })
+  fireEvent.change(screen.getByLabelText('Password'), { target: { value: 'password' } })
+  fireEvent.submit(screen.getByLabelText('Username, email or phone').closest('form')!)
+  await waitFor(() => expect(screen.getByText(expected)).toBeInTheDocument())
 })

@@ -42,7 +42,6 @@ import {
   type DailySalesPoint
 } from '@api/modules/reports.api'
 import {
-  cancelPosSaleRequest,
   getDailyPosSummaryRequest,
   getPosSaleRequest,
   listPosSalesRequest,
@@ -234,25 +233,16 @@ const SalesOperationsPage = () => {
 
   const cancelSaleMutation = useMutation({
     mutationFn: (input: { saleId: number; reason?: string; branchId?: number; restockItems: boolean }) =>
-      cancelPosSaleRequest(
-        input.saleId,
-        {
-          reason: input.reason,
-          restock_items: input.restockItems
-        },
-        {
-          branch_id: input.branchId
-        }
-      ),
-    onSuccess: (sale) => {
+      requestApproval('pos_void', input.reason ?? '', {
+        sale_id: input.saleId, reason: input.reason, restock_items: input.restockItems,
+      }),
+    onSuccess: (request) => {
       setFeedback({
         type: 'success',
-        message: `Sale #${sale.id} cancelled successfully.`
+        message: 'POS void approval requested. The sale remains unchanged until another authorized person approves it.'
       })
-      queryClient.invalidateQueries({ queryKey: ['pos', 'sales'] })
-      queryClient.invalidateQueries({ queryKey: ['pos', 'sales', 'detail', sale.id] })
-      queryClient.invalidateQueries({ queryKey: ['pos', 'daily-summary'] })
-      queryClient.invalidateQueries({ queryKey: ['inventory', 'dashboard'] })
+      queryClient.invalidateQueries({ queryKey: ['approvals'] })
+      queryClient.invalidateQueries({ queryKey: ['pos', 'sales', 'detail', request.payload.sale_id] })
       setTimeout(() => setFeedback(null), 3000)
     },
     onError: (error: Error) => {
@@ -276,10 +266,10 @@ const SalesOperationsPage = () => {
   const onCancelSale = async (sale: PosSaleResponse) => {
     const reasonInput = await siteDialog.prompt({
       title: `Cancel sale #${sale.id}`,
-      message: 'This will cancel the unpaid sale and return its items to stock.',
+        message: 'This requests a second-person approval to cancel the unpaid sale and return its items to stock.',
       inputLabel: 'Cancellation reason',
       placeholder: 'Explain why this sale is being cancelled',
-      confirmLabel: 'Cancel sale',
+      confirmLabel: 'Request approval',
       tone: 'danger',
       minLength: 3
     })

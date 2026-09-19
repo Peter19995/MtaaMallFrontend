@@ -13,21 +13,28 @@ async function withApiMessage<T>(operation: Promise<{ data: T }>): Promise<T> {
   }
 }
 
-export type ApprovalKind = 'discount' | 'refund' | 'stock_writeoff'
+export type ApprovalKind = 'discount' | 'refund' | 'stock_writeoff' | 'pos_void' | 'role_change' | 'financial_posting'
 export type Approval = {
   id: string; kind: ApprovalKind; status: 'pending' | 'executed' | 'rejected'; reason: string
-  branch_id: number; requested_by_user_id: number; decided_by_user_id?: number
+  branch_id?: number; request_hash: string; requested_by_user_id: number; decided_by_user_id?: number
   payload: Record<string, unknown>; snapshot: Record<string, unknown>; result?: Record<string, unknown>
   decision_reason?: string; created_at: string; expires_at: string
 }
 export type AuditEvent = {
-  id: string; actor_user_id?: number; actor_kind: string; business_id?: string; branch_id?: number
+  id: string; actor_user_id?: number; actor_kind: string; context: string; business_id?: string; branch_id?: number
   action: string; resource_type: string; resource_id: string; before: unknown; after: unknown
   details: unknown; created_at: string
 }
-export const listAudit = async (platform: boolean, offset: number, action: string) =>
-  withApiMessage(api.get<AuditEvent[]>(`/${platform ? 'platform' : 'business'}/audit`, { params: { offset, limit: 50, action: action || undefined } }))
-export const listApprovals = async (offset: number) => withApiMessage(api.get<Approval[]>('/business/approvals', { params: { offset, limit: 50 } }))
+export type AuditFilters = { action?: string; actor_user_id?: string; resource_type?: string; branch_id?: string }
+export type ApprovalFilters = { status?: string; kind?: string }
+export const listAudit = async (platform: boolean, offset: number, filters: AuditFilters | string = {}) => {
+  const values = typeof filters === 'string' ? { action: filters } : filters
+  return withApiMessage(api.get<AuditEvent[]>(`/${platform ? 'platform' : 'business'}/audit`, { params: {
+    offset, limit: 50, ...Object.fromEntries(Object.entries(values).filter(([, value]) => value))
+  } }))
+}
+export const listApprovals = async (offset: number, filters: ApprovalFilters = {}) =>
+  withApiMessage(api.get<Approval[]>('/business/approvals', { params: { offset, limit: 50, ...filters } }))
 export const requestApproval = async (kind: ApprovalKind, reason: string, payload: unknown) =>
   withApiMessage(api.post<Approval>('/business/approvals', { kind, reason, payload }))
 export const decideApproval = async (id: string, decision: 'approve' | 'reject', reason: string) =>
