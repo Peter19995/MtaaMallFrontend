@@ -20,6 +20,7 @@ import {
   GiftIcon,
   MapPinIcon,
   ShieldCheckIcon,
+  Squares2X2Icon,
 } from "@heroicons/react/24/outline";
 import { CartContext } from "@contexts/CartContext";
 import { useAuth } from "@hooks/useAuth";
@@ -299,7 +300,7 @@ export const MainLayout = () => {
                           <Link role="menuitem" to="/account/cart" className="flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm text-text-secondary transition hover:bg-primary/5 hover:text-primary-dark"><ShoppingBagIcon className="h-5 w-5" /><span>My cart</span>{cartCount > 0 && <span className="ml-auto rounded-full bg-secondary px-2 py-0.5 text-[10px] font-bold text-white">{cartCount}</span>}</Link>
                           <p className="px-3 pb-1 pt-3 text-[10px] font-bold uppercase tracking-[0.16em] text-text-tertiary">Account settings</p>
                           <div className="grid grid-cols-2 gap-1">
-                            {[{ to: "/account/profile", label: "Profile", icon: UserIcon }, { to: "/account/addresses", label: "Addresses", icon: MapPinIcon }, { to: "/account/payments", label: "Payments", icon: CreditCardIcon }, { to: "/account/loyalty", label: "Loyalty", icon: GiftIcon }, { to: "/account/returns", label: "Returns", icon: ArrowPathRoundedSquareIcon }, { to: "/security", label: "Security", icon: ShieldCheckIcon }].map(({ to, label, icon: Icon }) => <Link key={to} role="menuitem" to={to} className="flex items-center gap-2 rounded-xl px-3 py-2.5 text-sm text-text-secondary transition hover:bg-primary/5 hover:text-primary-dark"><Icon className="h-4 w-4" /><span>{label}</span></Link>)}
+                            {[{ to: "/account/profile", label: "Profile", icon: UserIcon }, { to: "/account/addresses", label: "Addresses", icon: MapPinIcon }, { to: "/account/payments", label: "Payments", icon: CreditCardIcon }, { to: "/account/loyalty", label: "Loyalty", icon: GiftIcon }, { to: "/account/returns", label: "Returns", icon: ArrowPathRoundedSquareIcon }, { to: "/account/saved", label: "Saved", icon: HeartIcon }, { to: "/security", label: "Security", icon: ShieldCheckIcon }, { to: "/account/workspaces", label: "Workspaces", icon: Squares2X2Icon }].map(({ to, label, icon: Icon }) => <Link key={to} role="menuitem" to={to} className="flex items-center gap-2 rounded-xl px-3 py-2.5 text-sm text-text-secondary transition hover:bg-primary/5 hover:text-primary-dark"><Icon className="h-4 w-4" /><span>{label}</span></Link>)}
                           </div>
                         </div>}
                         {dashboardPath !== "/account" && <div className="border-t border-divider p-2"><Link role="menuitem" to={dashboardPath} className="flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-semibold text-text-secondary transition hover:bg-primary/5 hover:text-primary-dark"><SparklesIcon className="h-5 w-5" />Open workspace</Link></div>}

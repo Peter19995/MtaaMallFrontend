@@ -56,6 +56,8 @@ type ProductFormState = {
   reorderLevel: string
   sellingPrice: string
   isActive: boolean
+  isPublished: boolean
+  availableOnline: boolean
   isOnOffer: boolean
   maxOffer: string
   imageFiles: File[]
@@ -71,6 +73,8 @@ const EMPTY_FORM: ProductFormState = {
   reorderLevel: '5',
   sellingPrice: '0',
   isActive: true,
+  isPublished: false,
+  availableOnline: false,
   isOnOffer: false,
   maxOffer: '0',
   imageFiles: []
@@ -264,6 +268,8 @@ const ProductManagementPage = () => {
           reorder_level: reorderLevel,
           selling_price: sellingPrice,
           is_active: payload.isActive,
+          is_published: storefrontEnabled && payload.isPublished,
+          available_online: storefrontEnabled && payload.availableOnline,
           is_on_offer: payload.isOnOffer,
           max_offer: payload.isOnOffer ? maxOffer : 0
         }
@@ -283,6 +289,8 @@ const ProductManagementPage = () => {
         reorder_level: reorderLevel,
         selling_price: sellingPrice,
         is_active: payload.isActive,
+        is_published: storefrontEnabled && payload.isPublished,
+        available_online: storefrontEnabled && payload.availableOnline,
         is_on_offer: payload.isOnOffer,
         max_offer: payload.isOnOffer ? maxOffer : 0
       }
@@ -415,6 +423,8 @@ const ProductManagementPage = () => {
       reorderLevel: String(product.reorder_level),
       sellingPrice: String(getBasePrice(product)),
       isActive: product.is_active,
+      isPublished: Boolean(product.is_published),
+      availableOnline: Boolean(product.available_online),
       isOnOffer: Boolean(product.is_on_offer),
       maxOffer: String(product.max_offer ?? 0),
       imageFiles: []
@@ -972,6 +982,14 @@ const ProductManagementPage = () => {
                   </div>
 
                   <div className="flex items-center gap-4">
+                    <label className="flex items-center gap-2 cursor-pointer">
+                      <input type="checkbox" disabled={!storefrontEnabled} checked={form.isPublished} onChange={(e) => setForm({ ...form, isPublished: e.target.checked })} className="w-4 h-4 rounded border-border text-primary focus:ring-primary/20" />
+                      <span className="text-sm text-text-secondary">Published to marketplace</span>
+                    </label>
+                    <label className="flex items-center gap-2 cursor-pointer">
+                      <input type="checkbox" disabled={!storefrontEnabled} checked={form.availableOnline} onChange={(e) => setForm({ ...form, availableOnline: e.target.checked })} className="w-4 h-4 rounded border-border text-primary focus:ring-primary/20" />
+                      <span className="text-sm text-text-secondary">Available for online orders</span>
+                    </label>
                     {storefrontEnabled ? <label className="flex items-center gap-2 cursor-pointer">
                       <input
                         type="checkbox"

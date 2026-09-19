@@ -23,6 +23,8 @@ import { CartContext } from '@contexts/CartContext'
 import { listInStockProductsRequest, listProductVariantsRequest, type ProductResponse, type ProductVariantResponse } from '@api/modules/products.api'
 import { AppTheme, withOpacity } from '@constants/theme'
 import { resolveMediaUrls } from '@utils/media'
+import { useAuth } from '@hooks/useAuth'
+import { getSavedProducts, removeSavedProduct, saveProduct } from '@api/modules/account.api'
 
 const formatCurrency = (amount: number): string =>
   new Intl.NumberFormat('en-KE', {
@@ -74,6 +76,7 @@ const sortOptions = [
 ]
 
 const ProductsPage = () => {
+  const { user } = useAuth()
   const [variantChoice, setVariantChoice] = useState<{
     product: ProductResponse
     variants: ProductVariantResponse[]
@@ -103,6 +106,14 @@ const ProductsPage = () => {
     queryKey: ['products', 'online-catalog-page'],
     queryFn: () => listInStockProductsRequest({ scope: 'online', limit: 200 })
   })
+  const savedProductsQuery = useQuery({
+    queryKey: ['customer-account', user?.id, 'saved-products'],
+    queryFn: getSavedProducts,
+    enabled: Boolean(user),
+  })
+  useEffect(() => {
+    if (savedProductsQuery.data) setWishlist(savedProductsQuery.data.map(product => product.product_id))
+  }, [savedProductsQuery.data])
 
   const products = useMemo(
     () => (productsQuery.data ?? []).filter((product) => product.is_active !== false),
@@ -265,22 +276,17 @@ const ProductsPage = () => {
     } catch (e: any) { toast.error(String(e?.response?.data?.message || e?.message || 'Could not add this product.')) }
   }
 
-  const toggleWishlist = (productId: number) => {
-    setWishlist(prev => 
-      prev.includes(productId) 
-        ? prev.filter(id => id !== productId)
-        : [...prev, productId]
-    )
-    
-    toast.success(
-      wishlist.includes(productId) 
-        ? 'Removed from wishlist' 
-        : 'Added to wishlist',
-      {
-        icon: '❤️',
-        duration: 2000
-      }
-    )
+  const toggleWishlist = async (productId: number) => {
+    if (!user) { toast.error('Sign in to save products.'); return }
+    const wasSaved = wishlist.includes(productId)
+    try {
+      if (wasSaved) await removeSavedProduct(productId)
+      else await saveProduct(productId)
+      setWishlist(previous => wasSaved ? previous.filter(id => id !== productId) : [...previous, productId])
+      toast.success(wasSaved ? 'Removed from saved products' : 'Saved for later', { icon: '❤️', duration: 2000 })
+    } catch (error: any) {
+      toast.error(String(error?.response?.data?.detail || error?.message || 'Could not update saved products.'))
+    }
   }
 
   // Get min and max prices for range slider
@@ -634,6 +640,7 @@ const ProductsPage = () => {
                                 {product.category_name || 'Uncategorized'}
                               </p>
                               <h2 className="text-lg font-semibold text-text mt-1">{product.name}</h2>
+                              <p className="mt-1 text-xs font-semibold text-text-tertiary">Sold by {product.business_name ?? 'MtaaMall seller'}</p>
                             </div>
                             <button
                               onClick={() => toggleWishlist(product.id)}
@@ -762,6 +769,7 @@ const ProductsPage = () => {
                         <h3 className="text-base font-semibold text-text mb-2 line-clamp-1">
                           {product.name}
                         </h3>
+                        <p className="mb-2 text-xs font-semibold text-text-tertiary">{product.business_name ?? 'MtaaMall seller'}{product.branch_name ? ` · ${product.branch_name}` : ''}</p>
 
                         {/* Price and Stock */}
                         <div className="flex items-end justify-between mb-3">

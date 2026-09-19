@@ -91,6 +91,8 @@ export type ProductVariantResponse = {
   weight?: number | null
   image_url?: string | null
   is_active: boolean
+  is_published?: boolean
+  available_online?: boolean
   options: Record<string, string>
   option_value_ids: number[]
   created_at?: string | null
@@ -117,6 +119,9 @@ export type ProductResponse = {
   variants?: ProductVariantResponse[]
   branch_id?: number | null
   branch_name?: string | null
+  business_id?: string | null
+  business_name?: string | null
+  fulfillment_methods?: string[]
   created_at: string
 }
 
@@ -129,6 +134,8 @@ export type ProductCreate = {
   stock_quantity?: number
   reorder_level?: number
   is_active?: boolean
+  is_published?: boolean
+  available_online?: boolean
   selling_price?: number
   is_on_offer?: boolean
   max_offer?: number
@@ -142,6 +149,8 @@ export type ProductUpdate = {
   stock_quantity?: number
   reorder_level?: number
   is_active?: boolean
+  is_published?: boolean
+  available_online?: boolean
   selling_price?: number
   is_on_offer?: boolean
   max_offer?: number

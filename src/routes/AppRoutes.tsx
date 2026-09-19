@@ -10,7 +10,7 @@ import VerifyEmailPage from '@pages/auth/VerifyEmail/VerifyEmailPage'
 import ResetPasswordPage from '@pages/auth/ResetPassword/ResetPasswordPage'
 import { MainLayout } from '@layouts/MainLayout/MainLayout'
 import { DashboardLayout } from '@layouts/DashboardLayout/DashboardLayout'
-import { AccountLayout, AccountOverview, AccountProfile, AccountAddresses, AccountOrders, AccountOrderDetails, AccountPayments, AccountReturns, AccountLoyalty, AccountCheckout } from '@pages/customer/AccountPages'
+import { AccountLayout, AccountOverview, AccountProfile, AccountAddresses, AccountOrders, AccountOrderDetails, AccountPayments, AccountReturns, AccountLoyalty, AccountCheckout, AccountSavedProducts } from '@pages/customer/AccountPages'
 
 const HomePage = lazy(() => import('@pages/public/Home/HomePage'))
 const AboutPage = lazy(() => import('@pages/public/About/AboutPage'))
@@ -143,6 +143,7 @@ export const AppRoutes = () => {
               <Route path="payments" element={<AccountPayments />} />
               <Route path="returns" element={<AccountReturns />} />
               <Route path="loyalty" element={<AccountLoyalty />} />
+              <Route path="saved" element={<AccountSavedProducts />} />
             </Route>
           </Route>
         </Route>
