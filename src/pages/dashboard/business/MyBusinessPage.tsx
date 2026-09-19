@@ -66,6 +66,16 @@ export default function MyBusinessPage() {
         </div>
         {copyStatus && <p role="status" className="business-copy-status">{copyStatus}</p>}
       </section>
+      <section className="business-card p-5" aria-label="Business capabilities">
+        <p className="business-eyebrow">ENABLED SERVICES</p>
+        <h2 className="mt-1 text-lg font-semibold">Business capabilities</h2>
+        <p className="business-small-copy">Platform approval and these service switches both apply. A suspended or closed business remains read-only even when a switch is on.</p>
+        <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-5">{[
+          ['Local POS', business.local_pos_enabled], ['Storefront', business.storefront_enabled],
+          ['Online orders', business.online_orders_enabled], ['Online payments', business.online_payments_enabled],
+          ['Settlements', business.settlements_enabled],
+        ].map(([label, enabled]) => <div key={String(label)} className={`rounded-xl border p-3 ${enabled ? 'border-emerald-200 bg-emerald-50' : 'border-slate-200 bg-slate-50'}`}><p className="text-sm font-semibold">{label}</p><p className={`mt-1 text-xs ${enabled ? 'text-emerald-700' : 'text-slate-500'}`}>{enabled ? 'Enabled' : 'Not enabled'}</p></div>)}</div>
+      </section>
       <div className="business-workspace-grid">
         <section className="business-card business-profile-card" id="business-profile">
           <header className="business-card-heading"><div><p className="business-eyebrow">BUSINESS DETAILS</p><h2>Business profile</h2><p>Keep your information accurate and up to date.</p></div><span className="business-edit-label">{readOnly ? <LockClosedIcon aria-hidden="true" /> : <ShieldCheckIcon aria-hidden="true" />}{readOnly ? 'Read-only' : 'Your information'}</span></header>

@@ -11,7 +11,7 @@ vi.mock('@/components/common/WorkspaceSwitcher', () => ({ default: () => <span>W
 vi.mock('@pages/dashboard/business/BusinessStatusNotice', () => ({ default: () => null }))
 afterEach(cleanup)
 it('renders an employee menu without owner or platform functions', () => {
-  state.user = { username: 'sales', context: 'business:a', roles: ['sales_staff'], permissions: ['products.read', 'pos.sell', 'orders.read'], business_status: 'active', allowed_branch_ids: [1] }
+  state.user = { username: 'sales', context: 'business:a', roles: ['sales_staff'], permissions: ['products.read', 'pos.sell', 'orders.read'], business_status: 'active', business_capabilities: { local_pos_enabled: true }, allowed_branch_ids: [1] }
   render(<MemoryRouter><DashboardLayout /></MemoryRouter>)
   const menu = screen.getByRole('navigation', { name: 'Employee workspace' })
   expect(menu.textContent).toContain('Sales & Payments')
@@ -32,7 +32,7 @@ it('orders the business menu by operational workflow', () => {
       'orders.read', 'pos.sell', 'payments.manage',
       'products.read', 'products.update', 'inventory.read',
       'business.members.read', 'customers.read', 'branches.read', 'projects.read', 'content.manage',
-      'reports.read', 'business.audit.read', 'approvals.request'
+      'reports.read', 'audit.read', 'approvals.request'
     ],
     business_status: 'active',
     allowed_branch_ids: [1]

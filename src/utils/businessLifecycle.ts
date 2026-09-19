@@ -16,9 +16,8 @@ const transitionPermission: Record<BusinessStatus, string> = {
   suspended: 'platform.businesses.suspend', closed: 'platform.businesses.close'
 }
 export type Principal = WorkspacePrincipal
-const platformRoles = ['root_system_admin', 'system_admin', 'business_manager', 'support_agent', 'platform_auditor']
 export const isPlatformOperator = (user: Principal | null) =>
-  Boolean(user?.roles?.some(role => platformRoles.includes(role)))
+  Boolean((!user?.context || user.context === 'platform') && user?.permissions?.some(permission => permission.startsWith('platform.')))
 export const allowedStatusChanges = (status: BusinessStatus, user: Principal | null, own = false) =>
   transitions[status].filter(target => own
     ? ['draft', 'pending_verification'].includes(target) && hasNamedPermission(user, 'business.settings.update')

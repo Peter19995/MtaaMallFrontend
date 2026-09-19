@@ -59,7 +59,7 @@ export const MainLayout = () => {
 
   const isAuthenticated = Boolean(user);
   const dashboardPath = landingPage(user ?? {});
-  const hasCustomerAccount = Boolean(user?.roles?.includes("customer"));
+  const hasCustomerAccount = Boolean(user?.workspaces?.some((workspace) => workspace.type === "customer"));
 
   // Handle scroll effect
   useEffect(() => {

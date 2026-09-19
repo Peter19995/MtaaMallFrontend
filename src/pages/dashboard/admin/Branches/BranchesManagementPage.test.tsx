@@ -10,7 +10,7 @@ import {
   listBranchesRequest,
   updateBranchRequest
 } from '@api/modules/branches.api'
-import { listUsersRequest } from '@api/modules/users.api'
+import { listBusinessMembers } from '@api/modules/memberships.api'
 import BranchesManagementPage from './BranchesManagementPage'
 
 vi.mock('@api/modules/branches.api', () => ({
@@ -21,7 +21,7 @@ vi.mock('@api/modules/branches.api', () => ({
   listBranchesRequest: vi.fn(),
   updateBranchRequest: vi.fn()
 }))
-vi.mock('@api/modules/users.api', () => ({ listUsersRequest: vi.fn() }))
+vi.mock('@api/modules/memberships.api', () => ({ listBusinessMembers: vi.fn() }))
 
 const branch = {
   id: 1,
@@ -49,7 +49,7 @@ const mount = () =>
 beforeEach(() => {
   vi.resetAllMocks()
   vi.mocked(listBranchesRequest).mockResolvedValue([branch])
-  vi.mocked(listUsersRequest).mockResolvedValue([])
+  vi.mocked(listBusinessMembers).mockResolvedValue([])
   vi.mocked(createBranchRequest).mockResolvedValue(branch)
   vi.mocked(getBranchRequest).mockResolvedValue(branch)
   vi.mocked(updateBranchRequest).mockResolvedValue(branch)

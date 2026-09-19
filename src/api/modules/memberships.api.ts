@@ -1,4 +1,5 @@
 import api from '../config/axios.config'
+import type { CustomerProfile, WorkspaceSummary } from './auth.api'
 
 export type Membership = {
   id: number; user_id: number; username: string; full_name?: string | null; email?: string | null; role: string
@@ -11,7 +12,12 @@ export type BusinessInvitation = {
   status: 'pending' | 'accepted' | 'expired' | 'revoked'; expires_at: string; invited_by_user_id: number
   accepted_at: string | null; revoked_at: string | null; created_at: string
 }
-export type Memberships = { business_memberships: Membership[]; platform_memberships: Membership[] }
+export type Memberships = {
+  business_memberships: Membership[]
+  platform_memberships: Membership[]
+  customer_profile?: CustomerProfile | null
+  workspaces?: WorkspaceSummary[]
+}
 export type Scope = 'business' | 'platform'
 export const myMemberships = async () => (await api.get<Memberships>('/memberships/me')).data
 export const listMemberships = async (scope: Scope) => (await api.get<Membership[]>(`/memberships/${scope}`, { params: { limit: 500 } })).data

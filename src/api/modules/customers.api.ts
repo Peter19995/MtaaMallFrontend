@@ -2,6 +2,7 @@ import api from '@api/config/axios.config'
 
 export type CustomerResponse = {
   id: number
+  public_id: string
   email: string
   username: string
   full_name?: string | null
@@ -58,13 +59,13 @@ export const getDefaultCashCustomerRequest = async (): Promise<CustomerResponse>
   return data
 }
 
-export const getCustomerRequest = async (customerId: number): Promise<CustomerResponse> => {
+export const getCustomerRequest = async (customerId: string): Promise<CustomerResponse> => {
   const { data } = await api.get<CustomerResponse>(`/customers/${customerId}`)
   return data
 }
 
 export const updateCustomerRequest = async (
-  customerId: number,
+  customerId: string,
   payload: CustomerUpdate
 ): Promise<CustomerResponse> => {
   const { data } = await api.put<CustomerResponse>(`/customers/${customerId}`, payload)
@@ -72,7 +73,7 @@ export const updateCustomerRequest = async (
 }
 
 export const deactivateCustomerRequest = async (
-  customerId: number
+  customerId: string
 ): Promise<CustomerResponse> => {
   const { data } = await api.delete<CustomerResponse>(`/customers/${customerId}`)
   return data

@@ -4,13 +4,10 @@ import { canAccessDashboard } from '@utils/dashboardAccess'
 import { useTenantState } from '@hooks/useTenantState'
 import { canAccessWorkspace, experienceFor, workspaceLanding } from '@utils/experiences'
 
-type PrivateRouteProps = {
-  requiredRoles?: string[]
-  dashboard?: boolean
-}
+type PrivateRouteProps = { dashboard?: boolean }
 
-export const PrivateRoute = ({ requiredRoles, dashboard }: PrivateRouteProps) => {
-  const { user, isLoading, hasRole } = useAuth()
+export const PrivateRoute = ({ dashboard }: PrivateRouteProps) => {
+  const { user, isLoading } = useAuth()
   const location = useLocation()
 
   if (isLoading) {
@@ -25,10 +22,6 @@ export const PrivateRoute = ({ requiredRoles, dashboard }: PrivateRouteProps) =>
     return <Navigate to="/login" state={{ from: location }} replace />
   }
 
-  if (requiredRoles && requiredRoles.length > 0 && !requiredRoles.some((r) => hasRole(r))) {
-    return <Navigate to="/unauthorized" replace />
-  }
-
   if (dashboard && !canAccessDashboard(user, location.pathname)) return <Navigate to="/unauthorized" replace />
 
   return <Outlet />
@@ -39,6 +32,7 @@ export const ActiveBusinessRoute = () => {
   if (query.isPending) return <p role="status" className="p-6">Checking business status…</p>
   if (query.isError) return <div role="alert" className="p-6">Unable to verify business status. <button onClick={() => query.refetch()}>Retry</button></div>
   if (['suspended', 'closed'].includes(query.data?.business_status ?? '')) return <p role="alert" className="p-6">POS is unavailable while this business is suspended or closed. Existing sales remain available in Sales.</p>
+  if (!query.data?.business_capabilities?.local_pos_enabled) return <p role="alert" className="p-6">Local POS is not enabled for this business. Contact a platform administrator.</p>
   return <Outlet />
 }
 

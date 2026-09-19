@@ -13,7 +13,7 @@ const identity = vi.hoisted(() => ({ user: { id: 'owner', roles: ['business_owne
 vi.mock('@hooks/useAuth', () => ({ useAuth: () => ({ user: identity.user, hasPermission: (name: string) => identity.user.permissions.includes(name) }) }))
 vi.mock('@api/modules/businesses.api', () => ({ getMyBusiness: vi.fn(), updateMyBusiness: vi.fn() }))
 vi.mock('@api/modules/reports.api', () => ({ getSalesSummaryRequest: vi.fn(), getDailySalesRequest: vi.fn() }))
-const business = { id: 'tenant', public_id: 'tenant', legal_name: 'Example Ltd', display_name: 'Example Shop', slug: 'example', country: 'KE', currency: 'KES', timezone: 'Africa/Nairobi', status: 'active' as const, owner: null, branches: [], rejection_reason: null, created_by_user_id: 1, approved_by_user_id: 1, approved_at: null, suspended_at: null, created_at: '2026-09-06', updated_at: null }
+const business = { id: 'tenant', public_id: 'tenant', legal_name: 'Example Ltd', display_name: 'Example Shop', slug: 'example', country: 'KE', currency: 'KES', timezone: 'Africa/Nairobi', status: 'active' as const, local_pos_enabled: true, storefront_enabled: true, online_orders_enabled: true, online_payments_enabled: true, settlements_enabled: true, owner: null, branches: [], rejection_reason: null, created_by_user_id: 1, approved_by_user_id: 1, approved_at: null, suspended_at: null, created_at: '2026-09-06', updated_at: null }
 const stats = { total_sales: 1200, total_orders: 5, pos_orders: 3, online_orders: 2, active_projects: 2, low_stock_products: 4 }
 configure({ asyncUtilTimeout: 10000 })
 const mount = () => render(<QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}><MemoryRouter><BusinessOverviewPage /></MemoryRouter></QueryClientProvider>)

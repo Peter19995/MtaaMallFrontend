@@ -3,7 +3,7 @@ import { useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useAuth } from '@hooks/useAuth'
-import { createBusiness, decideBusiness, getBusiness, listBusinesses, type Business, type BusinessStatus } from '@api/modules/businesses.api'
+import { createBusiness, decideBusiness, getBusiness, listBusinesses, updateBusinessCapabilities, type Business, type BusinessCapabilities, type BusinessStatus } from '@api/modules/businesses.api'
 import { statusLabels, isPlatformOperator } from '@utils/businessLifecycle'
 import { BusinessDetails, BusinessForm, ErrorNotice, StatusBadge, button, secondary } from './BusinessComponents'
 import { Select, useSiteDialog } from '@components/common'
@@ -55,6 +55,13 @@ export default function PlatformBusinessesPage() {
       await queryClient.invalidateQueries({ queryKey: ['tenant-state'] })
     },
   })
+  const capabilities = useMutation({
+    mutationFn: (body: BusinessCapabilities & { reason: string }) => updateBusinessCapabilities(selected!, body),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ['businesses'] })
+      await queryClient.invalidateQueries({ queryKey: ['tenant-state'] })
+    },
+  })
 
   const businesses = list.data?.filter(item => `${item.display_name} ${item.legal_name} ${item.public_id}`.toLowerCase().includes(search.toLowerCase())) ?? []
   const pending = list.data?.filter(item => item.status === 'pending_verification').length ?? 0
@@ -93,6 +100,28 @@ export default function PlatformBusinessesPage() {
         {detail.isError && <section className={`${card} space-y-3 p-6`}><ErrorNotice error={detail.error} /><button className={secondary} onClick={() => detail.refetch()}>Retry details</button></section>}
         {detail.data && business && !detail.isError && <>
           <BusinessDetails business={business} />
+
+          {hasPermission('platform.businesses.activate') && <section className={`${card} p-5 sm:p-6`}>
+            <h2 className="font-semibold">Business capabilities</h2>
+            <p className="mt-1 text-sm text-slate-500">Control local and marketplace services independently. Lifecycle restrictions always take priority.</p>
+            <form key={`${business.public_id}-${business.updated_at}`} className="mt-5 space-y-4" onSubmit={event => {
+              event.preventDefault(); const form = new FormData(event.currentTarget)
+              capabilities.mutate({
+                local_pos_enabled: form.has('local_pos_enabled'), storefront_enabled: form.has('storefront_enabled'),
+                online_orders_enabled: form.has('online_orders_enabled'), online_payments_enabled: form.has('online_payments_enabled'),
+                settlements_enabled: form.has('settlements_enabled'), reason: String(form.get('reason') ?? '').trim(),
+              })
+            }}>
+              <div className="grid gap-3 sm:grid-cols-2">{([
+                ['local_pos_enabled', 'Local POS'], ['storefront_enabled', 'Marketplace storefront'],
+                ['online_orders_enabled', 'Online orders'], ['online_payments_enabled', 'Online payments'],
+                ['settlements_enabled', 'Seller settlements'],
+              ] as const).map(([name, label]) => <label key={name} className="flex items-center gap-3 rounded-xl border border-slate-200 p-3 text-sm font-medium"><input name={name} type="checkbox" defaultChecked={business[name]} />{label}</label>)}</div>
+              <label className="block text-sm font-medium">Change reason<input name="reason" required minLength={3} maxLength={1000} className="mt-1 w-full rounded-xl border border-slate-200 p-3" placeholder="Why these capabilities are appropriate" /></label>
+              {capabilities.isError && <ErrorNotice error={capabilities.error} />}{capabilities.isSuccess && <p role="status" className="text-sm text-emerald-700">Capabilities updated and audited.</p>}
+              <button className={button} disabled={capabilities.isPending}>{capabilities.isPending ? 'Saving…' : 'Save capabilities'}</button>
+            </form>
+          </section>}
 
           {hasPermission('platform.payments.read') && <section className={`${card} flex flex-wrap items-center justify-between gap-4 p-5 sm:p-6`}>
             <div><h2 className="font-semibold">Business POS payments</h2><p className="mt-1 text-sm text-slate-500">Configure and test the M-Pesa account used only by this business's POS terminals.</p></div>

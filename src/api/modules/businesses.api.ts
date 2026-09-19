@@ -1,6 +1,13 @@
 import api from '@api/config/axios.config'
 
 export type BusinessStatus = 'draft' | 'pending_verification' | 'active' | 'suspended' | 'rejected' | 'closed'
+export type BusinessCapabilities = {
+  local_pos_enabled: boolean
+  storefront_enabled: boolean
+  online_orders_enabled: boolean
+  online_payments_enabled: boolean
+  settlements_enabled: boolean
+}
 export type BusinessProfile = {
   legal_name: string
   display_name: string
@@ -15,7 +22,7 @@ export type BusinessProfile = {
   currency: string
   timezone: string
 }
-export type Business = BusinessProfile & {
+export type Business = BusinessProfile & Partial<BusinessCapabilities> & {
   id: string
   public_id: string
   slug: string
@@ -71,6 +78,8 @@ export const getBusiness = async (id: string) =>
   (await api.get<PlatformBusinessDetail>(`/platform/businesses/${encodeURIComponent(id)}`)).data
 export const decideBusiness = async (id: string, action: 'activate' | 'reject' | 'suspend' | 'reactivate', reason: string) =>
   (await api.post<Business>(`/platform/businesses/${encodeURIComponent(id)}/${action}`, { reason })).data
+export const updateBusinessCapabilities = async (id: string, body: BusinessCapabilities & { reason: string }) =>
+  (await api.put<Business>(`/platform/businesses/${encodeURIComponent(id)}/capabilities`, body)).data
 export const createBusiness = async (body: BusinessProfile & { owner_username: string }) =>
   (await api.post<Business>('/businesses/', body)).data
 export const getMyBusiness = async () => (await api.get<Business>('/businesses/me')).data

@@ -193,7 +193,7 @@ const CustomersManagementPage = () => {
   const [includeInactive, setIncludeInactive] = useState(false)
   const [customerForm, setCustomerForm] = useState<CustomerFormState>(createEmptyCustomerForm())
   const [isFormVisible, setIsFormVisible] = useState(false)
-  const [editingCustomerId, setEditingCustomerId] = useState<number | null>(null)
+  const [editingCustomerId, setEditingCustomerId] = useState<string | null>(null)
   const [deactivateCandidate, setDeactivateCandidate] = useState<CustomerResponse | null>(null)
   const [deactivateErrorMessage, setDeactivateErrorMessage] = useState<string | null>(null)
   const [feedback, setFeedback] = useState<FeedbackState | null>(null)
@@ -306,7 +306,7 @@ const CustomersManagementPage = () => {
   })
 
   const toggleCustomerStatusMutation = useMutation({
-    mutationFn: (input: { customerId: number; isActive: boolean }) =>
+    mutationFn: (input: { customerId: string; isActive: boolean }) =>
       updateCustomerRequest(input.customerId, {
         is_active: input.isActive
       }),
@@ -327,7 +327,7 @@ const CustomersManagementPage = () => {
   })
 
   const deactivateCustomerMutation = useMutation({
-    mutationFn: (customerId: number) => deactivateCustomerRequest(customerId),
+    mutationFn: (customerId: string) => deactivateCustomerRequest(customerId),
     onSuccess: (customer) => {
       setFeedback({
         type: 'success',
@@ -364,7 +364,7 @@ const CustomersManagementPage = () => {
       return
     }
 
-    setEditingCustomerId(customer.id)
+    setEditingCustomerId(customer.public_id)
     setCustomerForm({
       email: customer.email,
       username: customer.username,
@@ -481,7 +481,7 @@ const CustomersManagementPage = () => {
       render: (customer) => {
         const isUpdatingCurrent =
           toggleCustomerStatusMutation.isPending &&
-          toggleCustomerStatusMutation.variables?.customerId === customer.id
+          toggleCustomerStatusMutation.variables?.customerId === customer.public_id
         const isDeactivatingCurrent =
           deactivateCustomerMutation.isPending &&
           deactivateCandidate?.id === customer.id
@@ -526,7 +526,7 @@ const CustomersManagementPage = () => {
                 className="!border-success/20 !px-3 !py-2 !text-success hover:!bg-success/5"
                 onClick={() =>
                   toggleCustomerStatusMutation.mutate({
-                    customerId: customer.id,
+                    customerId: customer.public_id,
                     isActive: true
                   })
                 }
@@ -951,7 +951,7 @@ const CustomersManagementPage = () => {
                   loading={deactivateCustomerMutation.isPending}
                   onClick={() => {
                     setDeactivateErrorMessage(null)
-                    deactivateCustomerMutation.mutate(deactivateCandidate.id)
+                    deactivateCustomerMutation.mutate(deactivateCandidate.public_id)
                   }}
                 >
                   Deactivate Customer

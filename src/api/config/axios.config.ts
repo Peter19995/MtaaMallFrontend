@@ -1,5 +1,6 @@
 import axios, { type InternalAxiosRequestConfig } from 'axios'
 import { requestTenantContext } from './tenantContext'
+import { queryClient } from './queryClient'
 
 type RetryableRequest = InternalAxiosRequestConfig & { _retry?: boolean; _contextAtDispatch?: string | null }
 type ApiEnvelope<T> = {
@@ -115,6 +116,23 @@ const api = axios.create({
   headers: { 'X-Requested-With': 'MtaaMall' }
 })
 
+export const setActiveApiContext = (context: string | null) => {
+  const previous = localStorage.getItem('auth_context')
+  if (previous === context) return
+  // Cancel in-flight requests before discarding their tenant-specific results.
+  void queryClient.cancelQueries()
+  queryClient.clear()
+  if (context) localStorage.setItem('auth_context', context)
+  else localStorage.removeItem('auth_context')
+}
+
+const clearAuthentication = () => {
+  setActiveApiContext(null)
+  localStorage.removeItem('auth_user')
+  localStorage.removeItem('access_token')
+  localStorage.removeItem('refresh_token')
+}
+
 api.interceptors.request.use((config) => {
   const context = localStorage.getItem('auth_context')
   const requestContext = requestTenantContext(window.location.pathname, config.url, context)
@@ -137,7 +155,6 @@ const refreshAccessToken = async (): Promise<string | null> => {
     })
     return 'cookie-session'
   } catch {
-    localStorage.removeItem('auth_user')
     return null
   }
 }
@@ -160,8 +177,9 @@ api.interceptors.response.use(
       return Promise.reject(new axios.CanceledError('Workspace changed'))
     }
     if (error.response?.status === 403 && getAuthErrorMessage(error.response.data).includes('no active membership')) {
-      localStorage.setItem('auth_context', 'customer')
-      localStorage.removeItem('auth_user')
+      // Revoking one membership does not end the identity session. Drop every
+      // tenant cache and return to workspace discovery in customer context.
+      setActiveApiContext('customer')
       window.location.replace(`/account/workspaces?workspaceRefresh=${Date.now()}`)
       return Promise.reject(error)
     }
@@ -190,6 +208,17 @@ api.interceptors.response.use(
       if (nextAccessToken) {
         originalRequest.headers.delete('Authorization')
         return api(originalRequest)
+      }
+    }
+
+    if (
+      error.response?.status === 401 &&
+      !originalRequest?.url?.includes('/auth/login') &&
+      !originalRequest?.url?.includes('/auth/refresh')
+    ) {
+      clearAuthentication()
+      if (!window.location.pathname.startsWith('/login')) {
+        window.location.replace('/login?sessionExpired=1')
       }
     }
 

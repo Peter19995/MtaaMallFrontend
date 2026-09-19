@@ -6,7 +6,10 @@ import '@testing-library/jest-dom/vitest'
 import { MemoryRouter } from 'react-router-dom'
 import WorkspaceSwitcher from './WorkspaceSwitcher'
 vi.mock('@hooks/useAuth', () => ({ useAuth: () => ({ user: {
-  context: 'business:a', business_memberships: [
+  context: 'business:a', selected_context: 'business:a', workspaces: [
+    { context: 'customer', type: 'customer', label: 'Personal shopping', status: 'active', selected: false, branch_ids: [] },
+    { context: 'business:a', type: 'business', label: 'Business A · business owner', status: 'active', selected: true, branch_ids: [] }
+  ], business_memberships: [
     { id: 1, business_id: 'a', business_name: 'Business A', role: 'business_owner', status: 'active' },
     { id: 2, business_id: 'b', business_name: 'Business B', role: 'sales_staff', status: 'suspended' }
   ], platform_memberships: [{ id: 3, role: 'support_agent', status: 'invited' }]

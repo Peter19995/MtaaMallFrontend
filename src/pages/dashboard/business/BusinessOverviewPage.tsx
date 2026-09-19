@@ -83,7 +83,7 @@ export default function BusinessOverviewPage() {
           </div>
         </>}
       </>}
-      <section className="overview-tools"><div className="overview-section-heading"><div><h2>Run your business</h2><p>Go straight to your daily operations.</p></div>{hasPermission('pos.sell') && (!['suspended', 'closed'].includes(business.data.status) ? <Link to={workspacePath('/dashboard/admin/sales/create')} className="business-primary-button">New POS sale</Link> : <span className="overview-pos-locked">POS is unavailable while the business is restricted</span>)}</div><div className="overview-shortcuts">{shortcuts.map(item => <Link key={item.path} to={item.path} className="business-card"><item.icon aria-hidden="true" /><div><h3>{item.label}</h3><p>{item.description}</p></div><ArrowUpRightIcon aria-hidden="true" /></Link>)}</div></section>
+      <section className="overview-tools"><div className="overview-section-heading"><div><h2>Run your business</h2><p>Go straight to your daily operations.</p></div>{hasPermission('pos.sell') && (business.data.local_pos_enabled && !['suspended', 'closed'].includes(business.data.status) ? <Link to={workspacePath('/dashboard/admin/sales/create')} className="business-primary-button">New POS sale</Link> : <span className="overview-pos-locked">POS is not available for this business</span>)}</div><div className="overview-shortcuts">{shortcuts.map(item => <Link key={item.path} to={item.path} className="business-card"><item.icon aria-hidden="true" /><div><h3>{item.label}</h3><p>{item.description}</p></div><ArrowUpRightIcon aria-hidden="true" /></Link>)}</div></section>
     </>}
   </div>
 }

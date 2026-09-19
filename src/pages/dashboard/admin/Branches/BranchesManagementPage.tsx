@@ -27,7 +27,7 @@ import {
   updateBranchRequest,
   type BranchResponse
 } from '@api/modules/branches.api'
-import { listUsersRequest } from '@api/modules/users.api'
+import { listBusinessMembers } from '@api/modules/memberships.api'
 
 type BranchFormState = {
   name: string
@@ -147,8 +147,8 @@ const BranchesManagementPage = () => {
   })
 
   const usersQuery = useQuery({
-    queryKey: ['users', 'branch-managers'],
-    queryFn: () => listUsersRequest({ limit: 100 })
+    queryKey: ['business-members', 'branch-managers'],
+    queryFn: listBusinessMembers
   })
 
   const editingBranch = useMemo(
@@ -164,9 +164,9 @@ const BranchesManagementPage = () => {
       },
       ...((usersQuery.data ?? []).map((user) => ({
         label: user.full_name?.trim()
-          ? `${user.full_name} (${user.email})`
-          : `${user.username} (${user.email})`,
-        value: String(user.id)
+          ? `${user.full_name} (${user.email ?? user.username})`
+          : `${user.username} (${user.email ?? 'No email'})`,
+        value: String(user.user_id)
       })) || [])
     ],
     [editingBranch?.manager_name, usersQuery.data]

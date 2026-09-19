@@ -1,12 +1,15 @@
 import type { BusinessStatus } from '../api/modules/businesses.api'
 
 export type WorkspacePrincipal = {
+  experience?: Experience
+  landing_path?: string
   context?: string
   roles?: string[]
   permissions?: string[]
   business_permissions?: string[]
   allowed_branch_ids?: number[]
   business_status?: BusinessStatus | null
+  business_capabilities?: Partial<import('../api/modules/businesses.api').BusinessCapabilities>
   business_memberships?: { status: string }[]
 }
 export type Experience = 'platform' | 'business' | 'employee' | 'account' | 'unauthorized'
@@ -14,17 +17,25 @@ export type Experience = 'platform' | 'business' | 'employee' | 'account' | 'una
 // effective permissions may enable a module; no cross-membership union is used.
 export function experienceFor(user: WorkspacePrincipal): Experience {
   const permissions = user.permissions ?? []
-  const platformGrants = ['platform.admins.manage', 'platform.businesses.read', 'platform.businesses.create', 'platform.businesses.close', 'platform.businesses.review', 'platform.businesses.activate', 'platform.businesses.suspend', 'platform.support.manage', 'platform.audit.read', 'platform.payments.read', 'platform.payments.configure', 'platform.payments.test', 'platform.payments.activate', 'platform.payments.suspend', 'platform.payments.rotate_credentials', 'platform.payments.reconcile']
-  if ((!user.context || user.context === 'platform') && permissions.some(p => platformGrants.includes(p))) return 'platform'
-  const businessGrants = user.business_permissions ?? businessModules.map(m => m.permission).concat(['finance.read', 'finance.manage', 'payments.read', 'content.read'])
-  if ((!user.context || user.context.startsWith('business:')) && permissions.some(p => p !== '*' && businessGrants.includes(p))) {
-    return user.roles?.some(r => ['business_owner', 'business_admin'].includes(r)) ? 'business' : 'employee'
+  const hasPlatformAuthority = permissions.some(p => p.startsWith('platform.'))
+  const businessGrants = user.business_permissions ?? permissions.filter(p =>
+    p !== '*' && !p.startsWith('platform.') && !p.startsWith('self.') && p !== 'content.comment')
+  const hasCustomerAuthority = permissions.includes('self.profile.read')
+  if (user.experience && user.experience !== 'unauthorized') {
+    if (user.experience === 'platform' && user.context === 'platform' && hasPlatformAuthority) return 'platform'
+    if (['business', 'employee'].includes(user.experience) && user.context?.startsWith('business:') && businessGrants.length > 0) return user.experience
+    if (user.experience === 'account' && user.context === 'customer' && hasCustomerAuthority) return 'account'
+    return 'unauthorized'
   }
-  if ((!user.context || user.context === 'customer') && user.roles?.includes('customer') && permissions.includes('self.profile.read')) return 'account'
+  if ((!user.context || user.context === 'platform') && hasPlatformAuthority) return 'platform'
+  if ((!user.context || user.context.startsWith('business:')) && businessGrants.length > 0)
+    return user.roles?.some(role => role === 'business_owner' || role === 'business_admin') ? 'business' : 'employee'
+  if ((!user.context || user.context === 'customer') && hasCustomerAuthority) return 'account'
   return 'unauthorized'
 }
 export function workspaceLanding(user: WorkspacePrincipal) {
   const experience = experienceFor(user)
+  if (user.landing_path && user.landing_path.startsWith(`/${experience}`)) return user.landing_path
   if (experience === 'business' || experience === 'employee') {
     if (['draft', 'pending_verification', 'rejected'].includes(user.business_status ?? '')) return `/${experience}/onboarding`
     if (['suspended', 'closed'].includes(user.business_status ?? '')) return `/${experience}/suspended`
@@ -47,8 +58,8 @@ export const platformModules: WorkspaceModule[] = [
   { path: 'admins', label: 'Platform team', permission: 'platform.admins.manage' },
 ]
 export const businessModules: WorkspaceModule[] = [
-  { path: 'audit', label: 'Audit history', permission: 'business.audit.read' },
-  { path: 'approvals', label: 'Approvals', permission: 'approvals.request', anyPermissions: ['business.audit.read', 'approvals.discount.approve', 'approvals.refund.approve', 'approvals.stock_writeoff.approve'] },
+  { path: 'audit', label: 'Audit history', permission: 'audit.read' },
+  { path: 'approvals', label: 'Approvals', permission: 'approvals.request', anyPermissions: ['audit.read', 'approvals.discount.approve', 'approvals.refund.approve', 'approvals.stock_writeoff.approve'] },
   { path: 'profile', label: 'Business profile', permission: 'business.settings.read' },
   { path: 'members', label: 'Team', permission: 'business.members.read' },
   { path: 'customers', label: 'Customers', permission: 'customers.read' },
@@ -90,6 +101,10 @@ export function canAccessWorkspace(user: WorkspacePrincipal | null, path: string
   if (module.permission === 'pos.sell' && user.allowed_branch_ids?.length === 0) return false
   if (experience !== 'platform') {
     if (module.mutation && ['suspended', 'closed'].includes(user.business_status ?? '')) return false
+    if (module.permission === 'pos.sell' && (
+      !user.business_capabilities?.local_pos_enabled ||
+      !['pending_verification', 'active'].includes(user.business_status ?? '')
+    )) return false
   }
   return true
 }

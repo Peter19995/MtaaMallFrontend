@@ -161,6 +161,7 @@ const ProductManagementPage = () => {
   const canCreate = hasPermission('products.create') && canOperate
   const canEdit = hasPermission('products.update') && canOperate
   const canDelete = hasPermission('products.delete') && canOperate
+  const storefrontEnabled = Boolean(user?.business_capabilities?.storefront_enabled && user?.business_status === 'active')
   const navigate = useNavigate()
   const location = useLocation()
   const queryClient = useQueryClient()
@@ -971,7 +972,7 @@ const ProductManagementPage = () => {
                   </div>
 
                   <div className="flex items-center gap-4">
-                    <label className="flex items-center gap-2 cursor-pointer">
+                    {storefrontEnabled ? <label className="flex items-center gap-2 cursor-pointer">
                       <input
                         type="checkbox"
                         checked={form.isOnOffer}
@@ -979,7 +980,7 @@ const ProductManagementPage = () => {
                         className="w-4 h-4 rounded border-border text-primary focus:ring-primary/20"
                       />
                       <span className="text-sm text-text-secondary">Product is on offer</span>
-                    </label>
+                    </label> : <span className="text-sm text-text-tertiary">Storefront publication is unavailable; this product remains a catalogue draft.</span>}
                     <label className="flex items-center gap-2 cursor-pointer">
                       <input
                         type="checkbox"

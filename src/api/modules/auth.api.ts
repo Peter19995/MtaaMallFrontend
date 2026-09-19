@@ -57,7 +57,40 @@ export type PasswordResetConfirmRequest = {
   new_password: string
 }
 
+export type UserIdentity = {
+  id: number
+  username: string
+  email?: string | null
+  full_name?: string | null
+  phone?: string | null
+  is_active: boolean
+}
+
+export type CustomerProfile = {
+  id: number
+  status: 'active' | 'suspended' | 'closed'
+  email_verification_required: boolean
+}
+
+export type WorkspaceSummary = {
+  context: string
+  type: 'customer' | 'platform' | 'business'
+  label: string
+  status: 'active'
+  selected: boolean
+  membership_id?: number | null
+  role?: string | null
+  business_id?: string | null
+  business_name?: string | null
+  branch_scope?: 'all' | 'selected' | null
+  branch_ids: number[]
+}
+
 export type UserResponse = {
+  identity?: UserIdentity
+  selected_context?: string
+  customer_profile?: CustomerProfile | null
+  workspaces?: WorkspaceSummary[]
   experience?: import('../../utils/experiences').Experience
   landing_path?: string
   membership_id?: number | null
@@ -69,6 +102,7 @@ export type UserResponse = {
   platform_memberships?: import('./memberships.api').Membership[]
   business_id?: string | null
   business_status?: import('./businesses.api').BusinessStatus | null
+  business_capabilities?: Partial<import('./businesses.api').BusinessCapabilities>
   id: number
   email?: string | null
   username: string

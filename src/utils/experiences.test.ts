@@ -2,9 +2,9 @@ import { describe, it, expect } from 'vitest'
 import { experienceFor, workspaceLanding, loginLanding, workspaceMenu, canAccessWorkspace, canonicalDashboardPath } from './experiences'
 import { requestTenantContext } from '../api/config/tenantContext'
 
-const owner = { context: 'business:a', roles: ['business_owner'], permissions: ['business.settings.read', 'business.settings.update', 'products.read', 'products.create', 'pos.sell', 'orders.read'], business_status: 'active' as const }
-const employee = { context: 'business:a', roles: ['sales_staff'], permissions: ['products.read', 'orders.read', 'pos.sell'], business_status: 'active' as const }
-const customer = { context: 'customer', roles: ['customer'], permissions: ['self.profile.read', 'self.orders.read'] }
+const owner = { context: 'business:a', experience: 'business' as const, roles: ['business_owner'], permissions: ['business.settings.read', 'business.settings.update', 'products.read', 'products.create', 'pos.sell', 'orders.read'], business_status: 'active' as const, business_capabilities: { local_pos_enabled: true } }
+const employee = { context: 'business:a', experience: 'employee' as const, roles: ['sales_staff'], permissions: ['products.read', 'orders.read', 'pos.sell'], business_status: 'active' as const, business_capabilities: { local_pos_enabled: true } }
+const customer = { context: 'customer', experience: 'account' as const, roles: ['customer'], permissions: ['self.profile.read', 'self.orders.read'] }
 describe('separate application experiences', () => {
   it('lands platform roles on a platform home even without business review permission', () => {
     expect(workspaceLanding({ context: 'platform', roles: ['platform_auditor'], permissions: ['platform.audit.read'] })).toBe('/platform')
@@ -17,6 +17,11 @@ describe('separate application experiences', () => {
       expect(workspaceLanding({ ...employee, roles: [role] })).toBe('/employee')
     expect(workspaceLanding(customer)).toBe('/account')
   })
+  it('treats role names as labels and never as authority', () => {
+    expect(experienceFor({ context: 'customer', roles: ['root_system_admin'], permissions: ['self.profile.read'] })).toBe('account')
+    expect(experienceFor({ context: 'business:a', roles: ['business_owner'], permissions: [] })).toBe('unauthorized')
+    expect(experienceFor({ context: 'platform', roles: ['customer'], permissions: ['platform.audit.read'] })).toBe('platform')
+  })
   it('uses permissions, not role names or wildcard flags, for menus and guards', () => {
     expect(workspaceLanding({ roles: ['root_system_admin'], permissions: ['*'] })).toBe('/unauthorized')
     expect(workspaceMenu({ ...owner, permissions: [] })).toEqual([])
@@ -28,13 +33,13 @@ describe('separate application experiences', () => {
     expect(canAccessWorkspace({ ...employee, allowed_branch_ids: [] }, '/employee/sales/create')).toBe(false)
   })
   it('keeps local business tools available while online verification is pending', () => {
-    for (const status of ['draft', 'pending_verification', 'rejected'] as const) {
-      const user = { ...owner, business_status: status }
-      expect(workspaceLanding(user)).toBe('/business/onboarding')
-      expect(workspaceMenu(user).map(m => m.path)).toContain('/business/sales/create')
-      expect(canAccessWorkspace(user, '/business/products')).toBe(true)
-      expect(canAccessWorkspace(user, '/business/sales/create')).toBe(true)
-    }
+    const pending = { ...owner, business_status: 'pending_verification' as const }
+    expect(workspaceLanding(pending)).toBe('/business/onboarding')
+    expect(workspaceMenu(pending).map(m => m.path)).toContain('/business/sales/create')
+    expect(canAccessWorkspace(pending, '/business/products')).toBe(true)
+    expect(canAccessWorkspace(pending, '/business/sales/create')).toBe(true)
+    for (const status of ['draft', 'rejected'] as const)
+      expect(canAccessWorkspace({ ...owner, business_status: status }, '/business/sales/create')).toBe(false)
   })
   it('retains permitted historical reads but hides mutation routes when suspended', () => {
     const user = { ...owner, business_status: 'suspended' as const }

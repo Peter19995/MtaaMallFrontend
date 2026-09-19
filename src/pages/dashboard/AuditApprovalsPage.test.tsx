@@ -1,18 +1,19 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { SiteDialogProvider } from '@components/common'
 import AuditApprovalsPage from './AuditApprovalsPage'
 
-const state = vi.hoisted(() => ({ user: { id: '2', context: 'business:one', business_status: 'active', permissions: ['business.audit.read'] }, list: vi.fn(), audit: vi.fn(), decide: vi.fn() }))
+const state = vi.hoisted(() => ({ user: { id: '2', context: 'business:one', business_status: 'active', permissions: ['audit.read'] }, list: vi.fn(), audit: vi.fn(), decide: vi.fn() }))
 vi.mock('@hooks/useAuth', () => ({ useAuth: () => ({ user: state.user }) }))
 vi.mock('@api/modules/audit.api', () => ({ listApprovals: state.list, listAudit: state.audit, decideApproval: state.decide }))
 const request = { id: 'request-1', kind: 'discount', status: 'pending', reason: 'Customer promotion', branch_id: 1, requested_by_user_id: 1, expires_at: '2099-01-01T00:00:00Z', payload: { discount_amount: 20 }, snapshot: { products: [[1, 100]] } }
 function mount(approvals = true) {
-  return render(<QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}><AuditApprovalsPage approvals={approvals} /></QueryClientProvider>)
+  return render(<QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}><SiteDialogProvider><AuditApprovalsPage approvals={approvals} /></SiteDialogProvider></QueryClientProvider>)
 }
 beforeEach(() => {
-  state.user = { id: '2', context: 'business:one', business_status: 'active', permissions: ['business.audit.read'] }
+  state.user = { id: '2', context: 'business:one', business_status: 'active', permissions: ['audit.read'] }
   state.list.mockResolvedValue([request]); state.audit.mockResolvedValue([]); state.decide.mockResolvedValue({ ...request, status: 'executed' })
 })
 afterEach(() => { cleanup(); vi.restoreAllMocks(); vi.clearAllMocks() })
@@ -34,12 +35,14 @@ describe('audit and sensitive approvals', () => {
   })
   it('requires a reason and explicit execution confirmation', async () => {
     state.user.permissions = ['approvals.discount.approve']
-    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false)
     mount(); const button = await screen.findByRole('button', { name: 'Approve & execute' })
     expect((button as HTMLButtonElement).disabled).toBe(true)
     fireEvent.change(screen.getByLabelText('Decision reason request-1'), { target: { value: 'Reviewed promotion' } })
-    fireEvent.click(button); expect(state.decide).not.toHaveBeenCalled()
-    confirm.mockReturnValue(true); fireEvent.click(button)
+    fireEvent.click(button)
+    fireEvent.click(await screen.findByRole('button', { name: 'Cancel' }))
+    expect(state.decide).not.toHaveBeenCalled()
+    fireEvent.click(button)
+    fireEvent.click(within(await screen.findByRole('alertdialog')).getByRole('button', { name: 'Approve & execute' }))
     await waitFor(() => expect(state.decide).toHaveBeenCalledWith('request-1', 'approve', 'Reviewed promotion'))
   })
   it('displays before and after values with no editing controls', async () => {
