@@ -13,11 +13,9 @@ import {
   PhotoIcon,
   CubeIcon,
   TagIcon,
-  CheckCircleIcon,
   XCircleIcon,
   ArrowPathIcon,
   ExclamationTriangleIcon,
-  SparklesIcon,
   DocumentDuplicateIcon,
   EyeIcon,
   EyeSlashIcon,
@@ -41,6 +39,7 @@ import {
   type ProductResponse,
   type ProductUpdate,
   uploadProductImagesRequest,
+  updateProductCatalogueOverridesRequest,
   updateProductRequest
 } from '@api/modules/products.api'
 import { AppTheme, withOpacity } from '@constants/theme'
@@ -163,6 +162,7 @@ const ProductManagementPage = () => {
   const { user, hasPermission } = useAuth()
   const canOperate = !['suspended', 'closed'].includes(user?.business_status ?? '')
   const canCreate = hasPermission('products.create') && canOperate
+  const canPropose = hasPermission('catalog.products.propose') && canOperate
   const canEdit = hasPermission('products.update') && canOperate
   const canDelete = hasPermission('products.delete') && canOperate
   const storefrontEnabled = Boolean(user?.business_capabilities?.storefront_enabled && user?.business_status === 'active')
@@ -173,6 +173,7 @@ const ProductManagementPage = () => {
   const [categoryFilter, setCategoryFilter] = useState(ALL_CATEGORIES)
   const [inStockOnly, setInStockOnly] = useState(false)
   const [showProductForm, setShowProductForm] = useState(false)
+  const [showCreationPaths, setShowCreationPaths] = useState(false)
   const [editingProductId, setEditingProductId] = useState<number | null>(null)
   const [form, setForm] = useState<ProductFormState>(EMPTY_FORM)
   const [formError, setFormError] = useState<string | null>(null)
@@ -259,11 +260,14 @@ const ProductManagementPage = () => {
       }
 
       if (editingProductId) {
+        const isLinkedListing = editingProduct?.catalogue_link_status === 'linked' && Boolean(editingProduct.catalog_product_public_id)
         const updatePayload: ProductUpdate = {
-          name: payload.name.trim(),
-          description: payload.description.trim() || undefined,
+          ...(isLinkedListing ? {} : {
+            name: payload.name.trim(),
+            description: payload.description.trim() || undefined,
+            category_id: categoryId,
+          }),
           tags: tags || undefined,
-          category_id: categoryId,
           stock_quantity: stockQuantity,
           reorder_level: reorderLevel,
           selling_price: sellingPrice,
@@ -274,6 +278,11 @@ const ProductManagementPage = () => {
           max_offer: payload.isOnOffer ? maxOffer : 0
         }
         await updateProductRequest(editingProductId, updatePayload)
+        if (isLinkedListing && editingProduct?.catalog_product_public_id) {
+          await updateProductCatalogueOverridesRequest(editingProductId, editingProduct.catalog_product_public_id, {
+            description_override: payload.description.trim() || null,
+          })
+        }
         await uploadProductImagesRequest(editingProductId, payload.imageFiles)
         const product = await getProductRequest(editingProductId)
         return { product, isEditing }
@@ -346,6 +355,7 @@ const ProductManagementPage = () => {
     () => (productsQuery.data ?? []).find((product) => product.id === editingProductId),
     [editingProductId, productsQuery.data]
   )
+  const catalogueFieldsLocked = editingProduct?.catalogue_link_status === 'linked'
 
   const pendingImagePreviews = useMemo<PendingImagePreview[]>(
     () =>
@@ -404,19 +414,14 @@ const ProductManagementPage = () => {
     setFormError(null)
   }
 
-  const openCreateProduct = () => {
-    setEditingProductId(null)
-    setForm(EMPTY_FORM)
-    setFormError(null)
-    setShowProductForm(true)
-  }
-
   const openEditProduct = (product: ProductResponse) => {
     setEditingProductId(product.id)
     setForm({
       sku: product.sku,
       name: product.name,
-      description: product.description ?? '',
+      description: product.catalogue_link_status === 'linked'
+        ? product.description_override ?? ''
+        : product.description ?? '',
       tags: product.tags ?? '',
       categoryId: product.category_id ? String(product.category_id) : '',
       stockQuantity: String(product.stock_quantity),
@@ -519,7 +524,7 @@ const ProductManagementPage = () => {
     },
     {
       key: 'price',
-      header: 'Pricing',
+      header: 'Business price',
       render: (row) => (
         <div className="text-right">
           {row.is_on_offer && (
@@ -535,51 +540,28 @@ const ProductManagementPage = () => {
       align: 'right'
     },
     {
-      key: 'is_on_offer',
-      header: 'Offer',
+      key: 'is_published',
+      header: 'Publication',
       render: (row) => (
-        <span
-          className={`inline-flex items-center gap-1 rounded-full px-3 py-1 text-xs font-medium ${
-            row.is_on_offer
-              ? 'bg-warning/10 text-warning'
-              : 'bg-background text-text-tertiary'
-          }`}
-        >
-          {row.is_on_offer ? (
-            <>
-              <SparklesIcon className="h-3 w-3" />
-              {formatCurrency(row.max_offer ?? 0)} off
-            </>
-          ) : (
-            'No offer'
-          )}
-        </span>
+        <div className="space-y-1">
+          <span className={`inline-flex rounded-full px-3 py-1 text-xs font-medium ${row.is_published ? 'bg-success/10 text-success' : 'bg-background text-text-tertiary'}`}>
+            {row.is_published ? 'Published' : 'Not published'}
+          </span>
+          <p className="text-xs text-text-tertiary">{row.available_online ? 'Online enabled' : 'POS only'}</p>
+        </div>
       ),
       align: 'center'
     },
     {
-      key: 'is_active',
-      header: 'Status',
+      key: 'catalogue_link_status',
+      header: 'Catalogue link',
       render: (row) => (
-        <span
-          className={`inline-flex items-center gap-1 rounded-full px-3 py-1 text-xs font-medium ${
-            row.is_active
-              ? 'bg-success/10 text-success'
-              : 'bg-error/10 text-error'
-          }`}
-        >
-          {row.is_active ? (
-            <>
-              <CheckCircleIcon className="h-3 w-3" />
-              Active
-            </>
-          ) : (
-            <>
-              <XCircleIcon className="h-3 w-3" />
-              Inactive
-            </>
-          )}
-        </span>
+        <div className="space-y-1">
+          <span className={`inline-flex rounded-full px-3 py-1 text-xs font-medium ${row.catalogue_link_status === 'linked' ? 'bg-primary/10 text-primary-dark' : row.catalogue_link_status === 'private' ? 'bg-secondary/10 text-secondary' : 'bg-warning/10 text-warning'}`}>
+            {(row.catalogue_link_status ?? 'unlinked').replace(/_/g, ' ')}
+          </span>
+          <p className={`text-xs ${row.is_active ? 'text-success' : 'text-error'}`}>{row.is_active ? 'Active listing' : 'Inactive listing'}</p>
+        </div>
       ),
       align: 'center'
     },
@@ -645,7 +627,7 @@ const ProductManagementPage = () => {
           
           {canCreate && <div className="flex gap-2">
             <Button
-              onClick={openCreateProduct}
+              onClick={() => setShowCreationPaths(true)}
               className="flex items-center gap-2"
             >
               <PlusIcon className="h-4 w-4" />
@@ -772,6 +754,20 @@ const ProductManagementPage = () => {
         </div>
       </motion.section>
 
+      <AnimatePresence>
+        {canCreate && showCreationPaths && (
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-[70] flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm" onMouseDown={event => event.target === event.currentTarget && setShowCreationPaths(false)}>
+            <motion.section role="dialog" aria-modal="true" aria-labelledby="creation-path-title" initial={{ opacity: 0, scale: .96, y: 12 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: .96, y: 12 }} className="w-full max-w-2xl rounded-2xl border border-border bg-white p-6 shadow-2xl">
+              <div className="flex items-start justify-between gap-4"><div><p className="text-xs font-bold uppercase tracking-[.16em] text-primary-dark">Add product</p><h2 id="creation-path-title" className="mt-1 text-2xl font-bold text-text">How would you like to start?</h2><p className="mt-2 text-sm text-text-secondary">Searching the shared catalogue first avoids duplicates and is the recommended default.</p></div><button type="button" aria-label="Close" onClick={() => setShowCreationPaths(false)} className="rounded-lg p-2 text-text-tertiary hover:bg-background"><XMarkIcon className="h-5 w-5" /></button></div>
+              <div className="mt-6 grid gap-4 sm:grid-cols-2">
+                <button type="button" onClick={() => navigate(`${location.pathname}/add-from-catalog`)} className="rounded-2xl border-2 border-primary bg-primary/5 p-5 text-left transition hover:-translate-y-0.5 hover:shadow-md"><MagnifyingGlassIcon className="h-7 w-7 text-primary" /><h3 className="mt-4 font-bold text-text">Find existing product</h3><p className="mt-1 text-sm text-text-secondary">Search by product name or scan a barcode, then create your business listing.</p><span className="mt-4 inline-flex text-xs font-bold uppercase tracking-wide text-primary-dark">Recommended</span></button>
+                {canPropose && <button type="button" onClick={() => navigate(`${location.pathname}/proposals`)} className="rounded-2xl border border-border bg-white p-5 text-left transition hover:-translate-y-0.5 hover:border-secondary hover:shadow-md"><DocumentDuplicateIcon className="h-7 w-7 text-secondary" /><h3 className="mt-4 font-bold text-text">Create new product proposal</h3><p className="mt-1 text-sm text-text-secondary">Use this only when no correct product exists in the shared MtaaMall catalogue.</p></button>}
+              </div>
+            </motion.section>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       {/* Product Form */}
       <AnimatePresence>
         {(canCreate || canEdit) && showProductForm && (
@@ -798,6 +794,7 @@ const ProductManagementPage = () => {
                 <button type="button" aria-label="Close product form" onClick={closeProductForm} className="rounded-lg p-2 text-text-tertiary transition hover:bg-background hover:text-text"><XMarkIcon className="h-5 w-5" /></button>
               </div>
               <form onSubmit={onSubmitProduct} className="space-y-4">
+                {editingProductId && <div className="grid gap-3 md:grid-cols-2"><div className="rounded-xl border border-primary/20 bg-primary/5 p-4"><p className="text-xs font-bold uppercase tracking-[.14em] text-primary-dark">Catalogue information</p><p className="mt-1 font-bold text-text">Shared across MtaaMall</p><p className="mt-1 text-xs text-text-secondary">{catalogueFieldsLocked ? 'Name and category come from the approved catalogue and cannot be edited by this business.' : 'This private listing is not yet linked to an approved catalogue product.'}</p></div><div className="rounded-xl border border-secondary/20 bg-secondary/5 p-4"><p className="text-xs font-bold uppercase tracking-[.14em] text-secondary">Your listing</p><p className="mt-1 font-bold text-text">Visible and editable only by this business</p><p className="mt-1 text-xs text-text-secondary">Price, stock, publication, tags, offers and business overrides remain editable.</p></div></div>}
                 <div className="grid gap-4 md:grid-cols-3">
                   <Select
                     label="Category"
@@ -812,6 +809,7 @@ const ProductManagementPage = () => {
                       }))
                     }}
                     required={!editingProductId}
+                    disabled={catalogueFieldsLocked}
                   />
                   {!editingProductId ? (
                     <TextInput
@@ -842,6 +840,7 @@ const ProductManagementPage = () => {
                     value={form.name}
                     onChange={(e) => setForm({ ...form, name: e.target.value })}
                     required
+                    disabled={catalogueFieldsLocked}
                     placeholder="e.g., Premium Cotton Curtains"
                   />
                   <TextInput
@@ -882,7 +881,7 @@ const ProductManagementPage = () => {
 
                 <div className="grid gap-4 md:grid-cols-2">
                   <TextArea
-                    label="Description"
+                    label={catalogueFieldsLocked ? 'Your description override' : 'Description'}
                     value={form.description}
                     onChange={(e) => setForm({ ...form, description: e.target.value })}
                     placeholder="Product description..."

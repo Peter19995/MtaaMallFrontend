@@ -158,11 +158,13 @@ const getInStockVariants = (
   variants: Array<{
     id: number
     sku: string
+    barcode?: string | null
     stock_quantity: number
     options: Record<string, string>
     price: number
+    is_active: boolean
   }>
-) => variants.filter((variant) => Number(variant.stock_quantity ?? 0) > 0)
+) => variants.filter((variant) => variant.is_active && Number(variant.stock_quantity ?? 0) > 0)
 
 const getOrderedVariantOptionNames = (
   productVariantOptions:
@@ -504,7 +506,11 @@ const CreatePosSalePage = () => {
         { label: 'Select product', value: '' },
         ...(productsQuery.data ?? []).map((product) => ({
           label: `${product.name} (${product.sku}) - ${product.stock_quantity} in stock`,
-          value: String(product.id)
+          value: String(product.id),
+          description: [
+            `${formatCurrency(product.price)} selling price`,
+            ...(product.variants ?? []).map((variant) => variant.barcode).filter(Boolean)
+          ].join(' · ')
         }))
       ]
     },
@@ -1619,6 +1625,8 @@ const CreatePosSalePage = () => {
               <div className="space-y-5 p-5">
                 <Select
                   label="Product *"
+                  searchable
+                  searchPlaceholder="Search name, business SKU or scan barcode"
                   options={productOptions}
                   value={itemEditor.draft.productId}
                   onChange={(event) =>
@@ -1633,6 +1641,16 @@ const CreatePosSalePage = () => {
                   disabled={productsQuery.isLoading || !hasSelectableProducts}
                   required
                 />
+                <p className="-mt-3 text-xs text-text-tertiary">
+                  Product not listed after scanning?{' '}
+                  <Link
+                    to={workspacePath('/dashboard/admin/catalogue')}
+                    className="font-semibold text-primary hover:text-primary-dark"
+                  >
+                    Add it from the shared catalogue
+                  </Link>{' '}
+                  and restock it before completing the sale.
+                </p>
 
                 {itemEditor.draft.productId && itemEditorProductQuery.isLoading && (
                   <div className="flex items-center gap-2 rounded-lg bg-background p-3 text-sm text-text-secondary">

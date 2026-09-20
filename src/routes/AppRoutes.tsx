@@ -35,6 +35,7 @@ const PlatformPaymentsOverviewPage = lazy(() => import('@pages/dashboard/admin/P
 const PlatformTransactionsPage = lazy(() => import('@pages/dashboard/admin/PlatformPayments/PlatformPaymentPages').then(module => ({ default: module.PlatformTransactionsPage })))
 const PlatformReconciliationPage = lazy(() => import('@pages/dashboard/admin/PlatformPayments/PlatformPaymentPages').then(module => ({ default: module.PlatformReconciliationPage })))
 const PlatformSettlementsPage = lazy(() => import('@pages/dashboard/admin/PlatformPayments/PlatformPaymentPages').then(module => ({ default: module.PlatformSettlementsPage })))
+const PlatformCatalogPage = lazy(() => import('@pages/dashboard/admin/PlatformCatalog/PlatformCatalogPage'))
 const MyBusinessPage = lazy(() => import('@pages/dashboard/business/MyBusinessPage'))
 const WorkspacesPage = lazy(() => import('@pages/customer/WorkspacesPage'))
 const MembershipManagementPage = lazy(() => import('@pages/dashboard/business/MembershipManagementPage'))
@@ -48,6 +49,12 @@ const ProductManagementPage = lazy(
 )
 const ProductCategoriesPage = lazy(
   () => import('@pages/dashboard/admin/Products/ProductCategoriesPage')
+)
+const BusinessCollectionsPage = lazy(
+  () => import('@pages/dashboard/admin/Products/BusinessCollectionsPage')
+)
+const CatalogSearchPage = lazy(
+  () => import('@pages/dashboard/admin/Products/CatalogSearchPage')
 )
 const ManageProductPage = lazy(
   () => import('@pages/dashboard/admin/Products/ManageProductPage')
@@ -162,6 +169,12 @@ export const AppRoutes = () => {
               <Route path="/platform" element={<WorkspaceHome />} />
               <Route path="/platform/audit" element={<AuditApprovalsPage />} />
               <Route path="/platform/businesses" element={<PlatformBusinessesPage />} />
+              <Route path="/platform/catalog" element={<PlatformCatalogPage view="overview" />} />
+              <Route path="/platform/catalog/proposals" element={<PlatformCatalogPage view="proposals" />} />
+              <Route path="/platform/catalog/products" element={<PlatformCatalogPage view="products" />} />
+              <Route path="/platform/catalog/categories" element={<PlatformCatalogPage view="categories" />} />
+              <Route path="/platform/catalog/brands" element={<PlatformCatalogPage view="brands" />} />
+              <Route path="/platform/catalog/duplicates" element={<PlatformCatalogPage view="duplicates" />} />
               <Route path="/platform/payments" element={<PlatformPaymentsOverviewPage />} />
               <Route path="/platform/payments/mpesa" element={<PlatformMpesaPage />} />
               <Route path="/platform/payments/transactions" element={<PlatformTransactionsPage />} />
@@ -180,7 +193,11 @@ export const AppRoutes = () => {
                 <Route path={`/${experience}/overview`} element={<AdminOverview />} />
                 <Route path={`/${experience}/products`} element={<ProductManagementPage />} />
                 <Route path={`/${experience}/product-categories`} element={<ProductCategoriesPage />} />
-                <Route path={`/${experience}/products/new`} element={<Navigate to={`/${experience}/products`} state={{ openProductForm: true }} replace />} />
+                <Route path={`/${experience}/collections`} element={<BusinessCollectionsPage />} />
+                <Route path={`/${experience}/catalogue`} element={<Navigate to={`/${experience}/products/add-from-catalog`} replace />} />
+                <Route path={`/${experience}/products/add-from-catalog`} element={<CatalogSearchPage />} />
+                <Route path={`/${experience}/products/proposals`} element={<CatalogSearchPage initialView="proposal" />} />
+                <Route path={`/${experience}/products/new`} element={<Navigate to={`/${experience}/products/add-from-catalog`} replace />} />
                 <Route path={`/${experience}/variant-options`} element={<VariantOptionsPage />} />
                 <Route path={`/${experience}/products/:productId`} element={<ManageProductPage />} />
                 <Route path={`/${experience}/services`} element={<ServiceManagementPage />} />

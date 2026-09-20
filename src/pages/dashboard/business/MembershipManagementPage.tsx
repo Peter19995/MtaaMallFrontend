@@ -8,7 +8,7 @@ import BusinessWorkforcePage from './BusinessWorkforcePage'
 import { Select } from '@components/common'
 
 const roles = {
-  platform: ['system_admin', 'business_manager', 'support_agent', 'platform_auditor'],
+  platform: ['system_admin', 'business_manager', 'support_agent', 'platform_auditor', 'catalogue_manager', 'catalogue_reviewer'],
   business: ['business_owner', 'business_admin', 'branch_manager', 'inventory_manager', 'sales_staff', 'accountant', 'project_manager', 'content_manager', 'business_auditor']
 }
 const input = 'mt-1 block w-full rounded-lg border border-slate-200 bg-white px-3 py-2'

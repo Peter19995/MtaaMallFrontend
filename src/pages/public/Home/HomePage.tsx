@@ -15,10 +15,12 @@ import {
   Squares2X2Icon,
 } from "@heroicons/react/24/outline";
 import {
-  listInStockProductsRequest,
   listCategoriesRequest,
-  type ProductResponse,
 } from "@api/modules/products.api";
+import {
+  listMarketplaceProductsRequest,
+  type MarketplaceProduct,
+} from "@api/modules/marketplace.api";
 import { resolveMediaUrl } from "@utils/media";
 import "./home.css";
 
@@ -54,20 +56,26 @@ const benefits = [
     text: "Bring your store online",
   },
 ];
-function ProductTile({ product }: { product: ProductResponse }) {
+function ProductTile({ product }: { product: MarketplaceProduct }) {
   const [failed, setFailed] = useState(false);
-  const image = resolveMediaUrl(
-    product.image_urls?.[0] ?? product.images?.[0]?.image_url,
+  const bestOffer = [...product.offers].sort(
+    (left, right) => Number(left.price) - Number(right.price),
+  )[0];
+  const image = resolveMediaUrl(product.product.image ?? bestOffer?.image);
+  const Icon = categoryIcon(product.product.name);
+  const price = Number(bestOffer?.price ?? 0);
+  const availableQuantity = product.offers.reduce(
+    (total, offer) => total + offer.available_quantity,
+    0,
   );
-  const Icon = categoryIcon(product.category_name ?? "");
-  const price = product.selling_price ?? product.price;
+  const sellerCount = new Set(product.offers.map((offer) => offer.business_id)).size;
   return (
-    <Link className="mall-product" to={catalogLink(product.name)}>
+    <Link className="mall-product" to={catalogLink(product.product.name)}>
       <div className="mall-product-image">
         {image && !failed ? (
           <img
             src={image}
-            alt={product.name}
+            alt={product.product.name}
             loading="lazy"
             onError={() => setFailed(true)}
           />
@@ -82,8 +90,8 @@ function ProductTile({ product }: { product: ProductResponse }) {
         </span>
       </div>
       <div className="mall-product-copy">
-        <p>{product.category_name ?? "Marketplace"}</p>
-        <h3>{product.name}</h3>
+        <p>{product.product.brand ?? "Marketplace"}</p>
+        <h3>{product.product.name}</h3>
         <strong>
           {price > 0
             ? new Intl.NumberFormat("en-KE", {
@@ -95,11 +103,11 @@ function ProductTile({ product }: { product: ProductResponse }) {
         </strong>
         <span
           className={
-            product.stock_quantity > 0 ? "mall-stock" : "mall-unavailable"
+            availableQuantity > 0 ? "mall-stock" : "mall-unavailable"
           }
         >
-          {product.stock_quantity > 0
-            ? "In stock · Explore options"
+          {availableQuantity > 0
+            ? `${sellerCount} seller${sellerCount === 1 ? "" : "s"} · Explore options`
             : "Currently unavailable"}
         </span>
       </div>
@@ -215,7 +223,7 @@ export default function HomePage() {
   const [search, setSearch] = useState("");
   const products = useQuery({
     queryKey: ["home", "mall-products"],
-    queryFn: () => listInStockProductsRequest({ scope: "online", limit: 24 }),
+    queryFn: () => listMarketplaceProductsRequest({ limit: 24 }),
     staleTime: 60000,
   });
   const categories = useQuery({
@@ -224,8 +232,7 @@ export default function HomePage() {
     staleTime: 60000,
   });
   const items = [...(products.data ?? [])]
-    .filter((p) => p.is_active !== false)
-    .sort((a, b) => Number(b.stock_quantity > 0) - Number(a.stock_quantity > 0))
+    .sort((a, b) => b.offers.length - a.offers.length)
     .slice(0, 8);
   const featuredCategories = [
     "Electronics & Appliances",
@@ -401,7 +408,7 @@ export default function HomePage() {
         ) : items.length ? (
           <div className="mall-product-grid">
             {items.map((product) => (
-              <ProductTile key={product.id} product={product} />
+              <ProductTile key={product.product.public_id} product={product} />
             ))}
           </div>
         ) : (

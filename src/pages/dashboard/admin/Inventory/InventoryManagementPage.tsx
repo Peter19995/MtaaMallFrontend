@@ -30,9 +30,13 @@ import {
   ArrowsRightLeftIcon,
   PencilSquareIcon,
   TrashIcon,
+  LinkIcon,
 } from '@heroicons/react/24/outline'
 import { Button, DataTable, Select, TextArea, TextInput, useSiteDialog, type Column } from '@components/common'
-import { getProductRequest, listProductsRequest } from '@api/modules/products.api'
+import { adoptCatalogProductRequest, getProductRequest, listProductsRequest } from '@api/modules/products.api'
+import { searchCatalogProductsRequest, type CatalogProductSearchResult } from '@api/modules/catalog.api'
+import { listTaxRatesRequest } from '@api/modules/finance.api'
+import { useAuth } from '@hooks/useAuth'
 import { listBranchesRequest, type BranchResponse } from '@api/modules/branches.api'
 import {
   createRestockRequest,
@@ -43,6 +47,7 @@ import {
   getStockStatusRequest,
   getStockCountAdjustmentReasonsRequest,
   getSupportedValuationMethodsRequest,
+  listSuppliersRequest,
   type InventoryDashboardAlert,
   type StockCountAdjustmentReason,
   type InventoryValuationMethod,
@@ -63,6 +68,9 @@ type RestockRowState = {
   id: string
   productId: string
   productVariantId: string
+  supplierId: string
+  batchNumber: string
+  expiryDate: string
   quantity: string
   buyingPrice: string
   sellingPrice: string
@@ -126,6 +134,9 @@ const createRestockRow = (): RestockRowState => ({
   id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
   productId: '',
   productVariantId: '',
+  supplierId: '',
+  batchNumber: '',
+  expiryDate: '',
   quantity: '1',
   buyingPrice: '0',
   sellingPrice: '0',
@@ -135,8 +146,7 @@ const createRestockRow = (): RestockRowState => ({
   notes: ''
 })
 
-const restockTargetKey = (row: Pick<RestockRowState, 'productId' | 'productVariantId'>) =>
-  `${row.productId}:${row.productVariantId || 'base'}`
+const restockTargetKey = (row: Pick<RestockRowState, 'productId'>) => row.productId
 
 const hasDuplicateRestockTarget = (
   rows: RestockRowState[],
@@ -244,6 +254,13 @@ const formatVariantOptionsSummary = (variantOptions?: Record<string, string> | n
     .join(' / ')
 }
 
+const suggestedBusinessSku = (product: CatalogProductSearchResult) =>
+  `${product.name}${product.package_quantity ?? ''}${product.package_unit ?? ''}`
+    .toUpperCase()
+    .replace(/[^A-Z0-9]+/g, '-')
+    .replace(/^-|-$/g, '')
+    .slice(0, 100)
+
 const extractApiErrorMessage = (error: unknown, fallback: string): string => {
   if (!isAxiosError(error)) {
     return error instanceof Error ? error.message : fallback
@@ -335,6 +352,9 @@ const inventoryViewCopy: Record<InventoryView, { title: string; description: str
 }
 
 const InventoryManagementPage = ({ view = 'status' }: InventoryManagementPageProps) => {
+  const { hasPermission } = useAuth()
+  const canSearchCatalogue = hasPermission('catalog.products.read')
+  const canAdoptCatalogueProducts = hasPermission('products.create')
   const siteDialog = useSiteDialog()
   const [approvalNotice, setApprovalNotice] = useState('')
   const createStockCountOrRequestApproval = async (payload: Parameters<typeof createStockCountRequest>[0]) => {
@@ -364,6 +384,11 @@ const InventoryManagementPage = ({ view = 'status' }: InventoryManagementPagePro
   const [editingRestockRowId, setEditingRestockRowId] = useState<string | null>(null)
   const [restockItemDraft, setRestockItemDraft] = useState<RestockRowState>(createRestockRow())
   const [restockItemError, setRestockItemError] = useState<string | null>(null)
+  const [catalogSearch, setCatalogSearch] = useState('')
+  const [catalogProduct, setCatalogProduct] = useState<CatalogProductSearchResult | null>(null)
+  const [adoption, setAdoption] = useState({
+    sku: '', sellingPrice: '', costPrice: '', taxRateId: '', variantIds: [] as string[]
+  })
   const [showStockCountForm, setShowStockCountForm] = useState(false)
   const [showStockTransferForm, setShowStockTransferForm] = useState(false)
   const [restockForm, setRestockForm] = useState<RestockFormState>(createEmptyRestockForm())
@@ -384,9 +409,69 @@ const InventoryManagementPage = ({ view = 'status' }: InventoryManagementPagePro
     queryFn: () => listProductsRequest({ limit: 200 })
   })
 
+  const businessProductSearchQuery = useQuery({
+    queryKey: ['products', 'inventory-business-search', catalogSearch.trim()],
+    queryFn: () => listProductsRequest({ search: catalogSearch.trim(), limit: 8 }),
+    enabled: showRestockItemForm && catalogSearch.trim().length >= 2,
+    staleTime: 30_000
+  })
+  const businessProductMatches = businessProductSearchQuery.data ?? []
+
+  const catalogSearchQuery = useQuery({
+    queryKey: ['catalog', 'restock-search', catalogSearch.trim()],
+    queryFn: () => searchCatalogProductsRequest({ q: catalogSearch.trim(), limit: 8 }),
+    enabled:
+      canSearchCatalogue &&
+      showRestockItemForm &&
+      catalogSearch.trim().length >= 2 &&
+      businessProductSearchQuery.isSuccess &&
+      businessProductMatches.length === 0,
+    staleTime: 30_000
+  })
+
+  const adoptionTaxRatesQuery = useQuery({
+    queryKey: ['finance', 'tax-rates', 'restock-adoption'],
+    queryFn: listTaxRatesRequest,
+    enabled: Boolean(catalogProduct) && hasPermission('finance.read')
+  })
+
+  const adoptProductMutation = useMutation({
+    mutationFn: () => adoptCatalogProductRequest({
+      catalog_product_id: catalogProduct!.public_id,
+      business_sku: adoption.sku.trim(),
+      selling_price: adoption.sellingPrice,
+      cost_price: adoption.costPrice || null,
+      tax_rate_id: adoption.taxRateId || null,
+      available_online: false,
+      enabled_catalog_variant_ids: catalogProduct!.variants.length ? adoption.variantIds : null
+    }),
+    onSuccess: (product) => {
+      queryClient.setQueryData(['products', 'inventory-select'], (current: typeof productsQuery.data) => [
+        ...(current ?? []).filter((item) => item.id !== product.id),
+        product
+      ])
+      setRestockItemDraft((current) => ({
+        ...current,
+        productId: String(product.id),
+        productVariantId: '',
+        buyingPrice: adoption.costPrice || '0',
+        sellingPrice: adoption.sellingPrice
+      }))
+      setCatalogProduct(null)
+      setCatalogSearch('')
+      void queryClient.invalidateQueries({ queryKey: ['products'] })
+    }
+  })
+
   const branchesQuery = useQuery({
     queryKey: ['branches', 'inventory-select'],
     queryFn: listBranchesRequest
+  })
+
+  const suppliersQuery = useQuery({
+    queryKey: ['suppliers', 'restock-select'],
+    queryFn: listSuppliersRequest,
+    enabled: view === 'restocks'
   })
 
   const inventoryDashboardQuery = useQuery({
@@ -446,6 +531,18 @@ const InventoryManagementPage = ({ view = 'status' }: InventoryManagementPagePro
       })) || [])
     ],
     [branchesQuery.data]
+  )
+
+  const supplierOptions = useMemo(
+    () => [
+      { label: suppliersQuery.isLoading ? 'Loading suppliers...' : 'No supplier selected', value: '' },
+      ...(suppliersQuery.data ?? []).map((supplier) => ({
+        label: supplier.name,
+        value: String(supplier.id),
+        description: [supplier.phone, supplier.email].filter(Boolean).join(' · ') || undefined
+      }))
+    ],
+    [suppliersQuery.data, suppliersQuery.isLoading]
   )
 
   const stockStatusBranchOptions = useMemo(
@@ -619,7 +716,8 @@ const InventoryManagementPage = ({ view = 'status' }: InventoryManagementPagePro
         ],
         queryFn: () =>
           getProductRequest(productId, {
-            branch_id: selectedRestockBranchId
+            branch_id: selectedRestockBranchId,
+            include_zero_variants: true
           }),
         enabled: isEnabled,
         staleTime: 30_000
@@ -637,7 +735,8 @@ const InventoryManagementPage = ({ view = 'status' }: InventoryManagementPagePro
     ],
     queryFn: () =>
       getProductRequest(restockItemProductId, {
-        branch_id: selectedRestockBranchId
+        branch_id: selectedRestockBranchId,
+        include_zero_variants: true
       }),
     enabled:
       showRestockItemForm &&
@@ -818,6 +917,8 @@ const InventoryManagementPage = ({ view = 'status' }: InventoryManagementPagePro
     setEditingRestockRowId(null)
     setRestockItemDraft(createRestockRow())
     setRestockItemError(null)
+    setCatalogSearch('')
+    setCatalogProduct(null)
     setShowRestockItemForm(true)
   }
 
@@ -833,10 +934,12 @@ const InventoryManagementPage = ({ view = 'status' }: InventoryManagementPagePro
     setEditingRestockRowId(null)
     setRestockItemDraft(createRestockRow())
     setRestockItemError(null)
+    setCatalogSearch('')
+    setCatalogProduct(null)
   }
 
   const updateRestockItemDraft = (
-    field: 'productId' | 'productVariantId' | 'quantity' | 'buyingPrice' | 'sellingPrice' | 'notes',
+    field: 'productId' | 'productVariantId' | 'supplierId' | 'batchNumber' | 'expiryDate' | 'quantity' | 'buyingPrice' | 'sellingPrice' | 'notes',
     value: string
   ) => {
     setRestockItemDraft((current) => {
@@ -949,9 +1052,9 @@ const InventoryManagementPage = ({ view = 'status' }: InventoryManagementPagePro
     stockTransferDestinationAvailable + stockTransferQuantity
 
   const getProductOptionsForRow = () => {
-    const baseProductsAlreadyAdded = new Set(
+    const productsAlreadyAdded = new Set(
       restockForm.rows
-        .filter((row) => row.id !== editingRestockRowId && row.productId && !row.productVariantId)
+        .filter((row) => row.id !== editingRestockRowId && row.productId)
         .map((row) => row.productId)
     )
     return [
@@ -960,10 +1063,10 @@ const InventoryManagementPage = ({ view = 'status' }: InventoryManagementPagePro
         .map((product) => ({
           label: `${product.name} (${product.sku})`,
           value: String(product.id),
-          disabled: baseProductsAlreadyAdded.has(String(product.id)),
-          description: baseProductsAlreadyAdded.has(String(product.id))
+          disabled: productsAlreadyAdded.has(String(product.id)),
+          description: productsAlreadyAdded.has(String(product.id))
             ? 'Already added — use Edit to update it'
-            : undefined
+            : (product.variants ?? []).map((variant) => variant.barcode).filter(Boolean).join(' · ') || undefined
         })) || [])
     ]
   }
@@ -1002,7 +1105,7 @@ const InventoryManagementPage = ({ view = 'status' }: InventoryManagementPagePro
 
       const targetKeys = payload.rows.map(restockTargetKey)
       if (new Set(targetKeys).size !== targetKeys.length) {
-        throw new Error('Each product or product variant can appear only once. Edit the existing item.')
+        throw new Error('Each product can appear only once. Edit the existing item.')
       }
 
       const items = payload.rows.map((row, index) => {
@@ -1046,6 +1149,9 @@ const InventoryManagementPage = ({ view = 'status' }: InventoryManagementPagePro
         return {
           product_id: productId,
           product_variant_id: hasVariants ? productVariantId : undefined,
+          supplier_id: row.supplierId ? Number(row.supplierId) : undefined,
+          batch_number: row.batchNumber.trim() || undefined,
+          expiry_date: row.expiryDate || undefined,
           quantity,
           buying_price: buyingPrice,
           selling_price: sellingPrice,
@@ -1781,6 +1887,15 @@ const InventoryManagementPage = ({ view = 'status' }: InventoryManagementPagePro
                                   <p className="mt-0.5 text-xs text-text-tertiary">
                                     {variant ? formatVariantLabel(variant) : product?.sku ?? ''}
                                   </p>
+                                  {(row.supplierId || row.batchNumber || row.expiryDate) && (
+                                    <p className="mt-1 text-xs text-text-tertiary">
+                                      {[
+                                        suppliersQuery.data?.find((supplier) => String(supplier.id) === row.supplierId)?.name,
+                                        row.batchNumber ? `Batch ${row.batchNumber}` : '',
+                                        row.expiryDate ? `Expires ${row.expiryDate}` : ''
+                                      ].filter(Boolean).join(' · ')}
+                                    </p>
+                                  )}
                                 </td>
                                 <td className="whitespace-nowrap px-4 py-3 text-text-secondary">{row.quantity}</td>
                                 <td className="whitespace-nowrap px-4 py-3 text-text-secondary">
@@ -1913,9 +2028,146 @@ const InventoryManagementPage = ({ view = 'status' }: InventoryManagementPagePro
               </div>
 
               <div className="space-y-4">
+                <div className="rounded-xl border border-border bg-background/50 p-4">
+                  <TextInput
+                    label="Find product or scan barcode"
+                    value={catalogSearch}
+                    onChange={(event) => {
+                      setCatalogSearch(event.target.value)
+                      setCatalogProduct(null)
+                    }}
+                    placeholder="Search this business first, then the shared catalogue"
+                  />
+                  {catalogSearch.trim().length >= 2 && businessProductSearchQuery.isLoading && (
+                    <p className="mt-3 text-sm text-text-tertiary">Searching this business…</p>
+                  )}
+                  {businessProductMatches.length > 0 && (
+                    <div className="mt-3 space-y-2">
+                      <p className="text-xs font-semibold uppercase tracking-wide text-text-tertiary">Already in this business</p>
+                      {businessProductMatches.map((product) => (
+                        <button
+                          type="button"
+                          key={product.id}
+                          onClick={() => {
+                            queryClient.setQueryData(
+                              ['products', 'inventory-select'],
+                              (current: typeof productsQuery.data) => [
+                                ...(current ?? []).filter((item) => item.id !== product.id),
+                                product
+                              ]
+                            )
+                            updateRestockItemDraft('productId', String(product.id))
+                            setCatalogSearch('')
+                          }}
+                          className="flex w-full items-center justify-between rounded-lg border border-border bg-white px-3 py-2 text-left hover:border-primary"
+                        >
+                          <span><strong className="text-text">{product.name}</strong><span className="ml-2 text-xs text-text-tertiary">{product.sku}</span></span>
+                          <span className="text-xs font-semibold text-primary">Select</span>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                  {canSearchCatalogue && catalogSearch.trim().length >= 2 && businessProductMatches.length === 0 && (
+                    <div className="mt-3 space-y-2">
+                      <p className="text-xs font-semibold uppercase tracking-wide text-text-tertiary">Shared catalogue</p>
+                      {catalogSearchQuery.isLoading && <p className="text-sm text-text-tertiary">Searching catalogue…</p>}
+                      {(catalogSearchQuery.data ?? []).map((product) => (
+                        <button
+                          type="button"
+                          key={product.public_id}
+                          disabled={!canAdoptCatalogueProducts}
+                          onClick={() => {
+                            setCatalogProduct(product)
+                            setAdoption({
+                              sku: suggestedBusinessSku(product),
+                              sellingPrice: '',
+                              costPrice: '',
+                              taxRateId: '',
+                              variantIds: product.variants.map((variant) => variant.public_id)
+                            })
+                          }}
+                          className="flex w-full items-center justify-between rounded-lg border border-border bg-white px-3 py-2 text-left hover:border-primary disabled:cursor-not-allowed disabled:opacity-60"
+                        >
+                          <span><strong className="text-text">{product.name}</strong><span className="ml-2 text-xs text-text-tertiary">{product.barcode || product.brand || 'Approved catalogue product'}</span></span>
+                          <span className="flex items-center gap-1 text-xs font-semibold text-primary"><LinkIcon className="h-4 w-4" />{canAdoptCatalogueProducts ? 'Add to business' : 'View only'}</span>
+                        </button>
+                      ))}
+                      {!catalogSearchQuery.isLoading && catalogSearchQuery.data?.length === 0 && (
+                        <p className="text-sm text-text-tertiary">No approved catalogue product found.</p>
+                      )}
+                    </div>
+                  )}
+                </div>
+
+                {catalogProduct && (
+                  <div className="space-y-4 rounded-xl border border-primary/25 bg-primary/5 p-4">
+                    <div>
+                      <p className="text-xs font-bold uppercase tracking-wide text-primary-dark">Add to this business</p>
+                      <h4 className="mt-1 font-semibold text-text">{catalogProduct.name}</h4>
+                      <p className="text-xs text-text-tertiary">Adoption creates a zero-stock business listing. This restock is submitted separately.</p>
+                    </div>
+                    <div className="grid gap-4 md:grid-cols-2">
+                      <TextInput label="Business SKU" required value={adoption.sku} onChange={(event) => setAdoption((current) => ({ ...current, sku: event.target.value }))} />
+                      <TextInput label="Selling price" type="number" min={0} step="0.01" required value={adoption.sellingPrice} onChange={(event) => setAdoption((current) => ({ ...current, sellingPrice: event.target.value }))} />
+                      <TextInput label="Cost price (optional)" type="number" min={0} step="0.01" value={adoption.costPrice} onChange={(event) => setAdoption((current) => ({ ...current, costPrice: event.target.value }))} />
+                      {hasPermission('finance.read') && (
+                        <Select
+                          label="Tax rate (optional)"
+                          searchable
+                          value={adoption.taxRateId}
+                          onChange={(event) => setAdoption((current) => ({ ...current, taxRateId: String(event.target.value) }))}
+                          options={[
+                            { label: adoptionTaxRatesQuery.isLoading ? 'Loading tax rates...' : 'No tax rate', value: '' },
+                            ...(adoptionTaxRatesQuery.data ?? []).map((rate) => ({ label: `${rate.name} · ${rate.rate}%`, value: rate.public_id }))
+                          ]}
+                        />
+                      )}
+                    </div>
+                    {catalogProduct.variants.length > 0 && (
+                      <fieldset>
+                        <legend className="text-sm font-semibold text-text">Enabled variants</legend>
+                        <div className="mt-2 grid gap-2 sm:grid-cols-2">
+                          {catalogProduct.variants.map((variant) => (
+                            <label key={variant.public_id} className="flex items-center gap-2 rounded-lg border border-border bg-white px-3 py-2 text-sm text-text-secondary">
+                              <input
+                                type="checkbox"
+                                className="h-4 w-4 accent-primary"
+                                checked={adoption.variantIds.includes(variant.public_id)}
+                                onChange={(event) => setAdoption((current) => ({
+                                  ...current,
+                                  variantIds: event.target.checked
+                                    ? [...current.variantIds, variant.public_id]
+                                    : current.variantIds.filter((id) => id !== variant.public_id)
+                                }))}
+                              />
+                              {variant.name}
+                            </label>
+                          ))}
+                        </div>
+                      </fieldset>
+                    )}
+                    {adoptProductMutation.isError && (
+                      <p role="alert" className="text-sm text-error">{extractApiErrorMessage(adoptProductMutation.error, 'Could not add product to this business.')}</p>
+                    )}
+                    <div className="flex justify-end gap-2">
+                      <Button type="button" variant="outline" onClick={() => setCatalogProduct(null)}>Cancel</Button>
+                      <Button
+                        type="button"
+                        loading={adoptProductMutation.isPending}
+                        disabled={!adoption.sku.trim() || !adoption.sellingPrice || (catalogProduct.variants.length > 0 && adoption.variantIds.length === 0)}
+                        onClick={() => adoptProductMutation.mutate()}
+                      >
+                        Add and continue restock
+                      </Button>
+                    </div>
+                  </div>
+                )}
+
                 <div className="grid gap-4 md:grid-cols-2">
                   <Select
                     label="Product"
+                    searchable
+                    searchPlaceholder="Search name, business SKU or barcode"
                     options={getProductOptionsForRow()}
                     value={restockItemDraft.productId}
                     onChange={(event) => updateRestockItemDraft('productId', String(event.target.value))}
@@ -1959,6 +2211,29 @@ const InventoryManagementPage = ({ view = 'status' }: InventoryManagementPagePro
                     }
                     disabled={!draftVariants.length}
                     required={draftVariants.length > 0}
+                  />
+                  <Select
+                    label="Supplier (optional)"
+                    searchable
+                    options={supplierOptions}
+                    value={restockItemDraft.supplierId}
+                    onChange={(event) =>
+                      updateRestockItemDraft('supplierId', String(event.target.value))
+                    }
+                  />
+                  <TextInput
+                    label="Batch number (optional)"
+                    maxLength={100}
+                    value={restockItemDraft.batchNumber}
+                    onChange={(event) => updateRestockItemDraft('batchNumber', event.target.value)}
+                    placeholder="Supplier or manufacturer batch"
+                  />
+                  <TextInput
+                    label="Expiry date (optional)"
+                    type="date"
+                    min={restockForm.restockDate}
+                    value={restockItemDraft.expiryDate}
+                    onChange={(event) => updateRestockItemDraft('expiryDate', event.target.value)}
                   />
                   <TextInput
                     label="Quantity"

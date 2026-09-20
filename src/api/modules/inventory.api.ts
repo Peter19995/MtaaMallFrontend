@@ -3,6 +3,9 @@ import api from '@api/config/axios.config'
 export type RestockItemCreate = {
   product_id: number
   product_variant_id?: number
+  supplier_id?: number
+  batch_number?: string
+  expiry_date?: string
   quantity: number
   buying_price: number
   selling_price: number
@@ -23,6 +26,13 @@ export type RestockResponse = {
   branch_name?: string | null
   product_id: number
   product_name: string
+  product_variant_id?: number | null
+  variant_sku?: string | null
+  variant_options?: Record<string, string> | null
+  supplier_id?: number | null
+  supplier_name?: string | null
+  batch_number?: string | null
+  expiry_date?: string | null
   quantity: number
   buying_price: number
   selling_price: number
@@ -36,6 +46,19 @@ export type RestockResponse = {
   category_in_stock_value: number
   category_in_stock_quantity: number
   created_at?: string | null
+}
+
+export type SupplierResponse = {
+  id: number
+  name: string
+  email?: string | null
+  phone?: string | null
+  created_at?: string | null
+}
+
+export const listSuppliersRequest = async (): Promise<SupplierResponse[]> => {
+  const { data } = await api.get<SupplierResponse[]>('/suppliers')
+  return data
 }
 
 export type RestockListParams = {

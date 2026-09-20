@@ -25,6 +25,33 @@ export type ProductImageRecord = {
   alt_text?: string | null
 }
 
+export type BusinessCollectionSummary = {
+  public_id: string
+  name: string
+  slug: string
+  image?: string | null
+}
+
+export type BusinessCollectionResponse = BusinessCollectionSummary & {
+  parent_public_id?: string | null
+  description?: string | null
+  is_active: boolean
+  product_count: number
+  created_at: string
+  updated_at?: string | null
+}
+
+export type BusinessCollectionCreate = {
+  name: string
+  slug?: string | null
+  parent_public_id?: string | null
+  description?: string | null
+  image?: string | null
+  is_active?: boolean
+}
+
+export type BusinessCollectionUpdate = Partial<BusinessCollectionCreate>
+
 export type ProductVariantOptionValueCreate = {
   value: string
   display_value?: string
@@ -64,29 +91,46 @@ export type ProductVariantOptionResponse = {
 
 export type ProductVariantCreate = {
   sku: string
+  barcode?: string | null
   price_override?: number | null
+  cost_price?: number | null
+  compare_at_price?: number | null
+  offer_price?: number | null
   stock_quantity?: number
   weight?: number | null
   image_url?: string | null
   is_active?: boolean
+  available_online?: boolean
   option_value_ids: number[]
 }
 
 export type ProductVariantUpdate = {
   sku?: string | null
+  barcode?: string | null
   price_override?: number | null
+  cost_price?: number | null
+  compare_at_price?: number | null
+  offer_price?: number | null
   stock_quantity?: number | null
   weight?: number | null
   image_url?: string | null
   is_active?: boolean | null
+  available_online?: boolean | null
   option_value_ids?: number[] | null
 }
 
 export type ProductVariantResponse = {
   id: number
+  public_id: string
+  business_product_variant_id: string
   sku: string
+  business_variant_sku: string
+  barcode?: string | null
   price: number
   price_override?: number | null
+  cost_price?: number | null
+  compare_at_price?: number | null
+  offer_price?: number | null
   stock_quantity: number
   weight?: number | null
   image_url?: string | null
@@ -96,6 +140,9 @@ export type ProductVariantResponse = {
   options: Record<string, string>
   option_value_ids: number[]
   created_at?: string | null
+  catalog_variant_public_id?: string | null
+  catalog_variant_name?: string | null
+  catalog_variant_attributes?: Record<string, string>
 }
 
 export type ProductResponse = {
@@ -106,9 +153,18 @@ export type ProductResponse = {
   tags?: string | null
   category_id?: number | null
   category_name?: string | null
+  catalog_category_public_id?: string | null
+  tax_rate_public_id?: string | null
+  catalog_product_public_id?: string | null
+  catalogue_link_status?: 'unlinked' | 'suggested' | 'linked' | 'rejected_match' | 'private'
+  description_override?: string | null
+  primary_image_override?: string | null
+  collections?: BusinessCollectionSummary[]
   stock_quantity: number
   reorder_level: number
   is_active: boolean
+  is_published?: boolean
+  available_online?: boolean
   price: number
   selling_price?: number
   is_on_offer?: boolean
@@ -156,6 +212,18 @@ export type ProductUpdate = {
   max_offer?: number
 }
 
+export type ProductAdoptionCreate = {
+  catalog_product_id: string
+  business_sku: string
+  selling_price: string
+  cost_price?: string | null
+  tax_rate_id?: string | null
+  available_online?: boolean
+  enabled_catalog_variant_ids?: string[] | null
+  description_override?: string | null
+  image_override?: string | null
+}
+
 export type ProductPriceUpdate = {
   selling_price: number
 }
@@ -170,12 +238,14 @@ export type ProductListParams = {
   limit?: number
   search?: string
   category_id?: number
+  catalog_category?: string
   in_stock_only?: boolean
   branch_id?: number
 }
 
 export type ProductGetParams = {
   branch_id?: number
+  include_zero_variants?: boolean
 }
 
 export type InStockProductsScope = 'all' | 'branch' | 'online'
@@ -187,6 +257,7 @@ export type InStockProductsParams = {
   limit?: number
   search?: string
   category_id?: number
+  catalog_category?: string
 }
 
 export type ProductImagesResponse = {
@@ -326,6 +397,71 @@ export const updateCategoryRequest = async (
 
 export const deleteCategoryRequest = async (categoryId: number): Promise<void> => {
   await api.delete(`/products/categories/${categoryId}`)
+}
+
+export const listBusinessCollectionsRequest = async (): Promise<BusinessCollectionResponse[]> => {
+  const { data } = await api.get<BusinessCollectionResponse[]>('/products/collections')
+  return data
+}
+
+export const createBusinessCollectionRequest = async (
+  payload: BusinessCollectionCreate
+): Promise<BusinessCollectionResponse> => {
+  const { data } = await api.post<BusinessCollectionResponse>('/products/collections', payload)
+  return data
+}
+
+export const updateBusinessCollectionRequest = async (
+  publicId: string,
+  payload: BusinessCollectionUpdate
+): Promise<BusinessCollectionResponse> => {
+  const { data } = await api.put<BusinessCollectionResponse>(`/products/collections/${publicId}`, payload)
+  return data
+}
+
+export const deleteBusinessCollectionRequest = async (publicId: string): Promise<void> => {
+  await api.delete(`/products/collections/${publicId}`)
+}
+
+export const assignProductCollectionsRequest = async (
+  productId: number,
+  collectionPublicIds: string[]
+): Promise<ProductResponse> => {
+  const { data } = await api.put<ProductResponse>(`/products/${productId}/collections`, {
+    collection_public_ids: collectionPublicIds,
+  })
+  return data
+}
+
+export const updateProductCatalogueLinkRequest = async (
+  productId: number,
+  catalogProductPublicId: string
+): Promise<ProductResponse> => {
+  const { data } = await api.put<ProductResponse>(`/products/${productId}/catalogue-link`, {
+    catalog_product_public_id: catalogProductPublicId,
+    catalogue_link_status: 'linked',
+  })
+  return data
+}
+
+export const updateProductCatalogueOverridesRequest = async (
+  productId: number,
+  catalogProductPublicId: string,
+  payload: { description_override?: string | null; primary_image_override?: string | null }
+): Promise<ProductResponse> => {
+  const { data } = await api.put<ProductResponse>(`/products/${productId}/catalogue-link`, {
+    catalog_product_public_id: catalogProductPublicId,
+    catalogue_link_status: 'linked',
+    ...payload,
+  })
+  return data
+}
+
+export const adoptCatalogProductRequest = async (
+  payload: ProductAdoptionCreate
+): Promise<ProductResponse> => {
+  const { data } = await api.post<ProductResponse>('/business/products/from-catalog', payload)
+  return data
 }
 
 export const listProductsRequest = async (

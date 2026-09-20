@@ -36,8 +36,9 @@ import brandLogo from '@/assets/mtaamall-logo.svg'
 type MenuEntry = ReturnType<typeof workspaceMenu>[number]
 
 const groupDefinition = (path: string) => {
+  if (path.includes('/platform/catalog')) return { id: 'platform-catalog', label: 'Global Catalogue', icon: CubeIcon, order: 30 }
   if (path.endsWith('/sales') || path.endsWith('/sales/create') || path.endsWith('/payment-modes')) return { id: 'sales', label: 'Sales & Payments', icon: CurrencyDollarIcon, order: 10 }
-  if (path.includes('/products') || path.endsWith('/product-categories') || path.endsWith('/variant-options') || path.includes('/inventory')) return { id: 'catalog', label: 'Catalog & Inventory', icon: CubeIcon, order: 20 }
+  if (path.includes('/products') || path.endsWith('/product-categories') || path.endsWith('/collections') || path.endsWith('/catalogue') || path.endsWith('/variant-options') || path.includes('/inventory')) return { id: 'catalog', label: 'Catalog & Inventory', icon: CubeIcon, order: 20 }
   if (path.endsWith('/branches') || path.endsWith('/projects') || path.endsWith('/services') || path.endsWith('/styling')) return { id: 'operations', label: 'Business Operations', icon: WrenchScrewdriverIcon, order: 30 }
   if (path.endsWith('/members')) return { id: 'hr', label: 'HR', icon: UserGroupIcon, order: 40 }
   if (path.endsWith('/customers')) return { id: 'crm', label: 'CRM', icon: UserGroupIcon, order: 50 }
@@ -66,7 +67,7 @@ const iconFor = (path: string) => {
   if (path.endsWith('/admins') || path.endsWith('/members')) return UserGroupIcon
   if (path.endsWith('/customers')) return UserGroupIcon
   if (path.endsWith('/overview')) return ChartBarIcon
-  if (path.includes('/products') || path.endsWith('/variant-options')) return CubeIcon
+  if (path.includes('/products') || path.endsWith('/collections') || path.endsWith('/catalogue') || path.endsWith('/variant-options')) return CubeIcon
   if (path.endsWith('/branches')) return BuildingOfficeIcon
   if (path.includes('/inventory')) return ServerStackIcon
   if (path.endsWith('/projects')) return WrenchScrewdriverIcon
@@ -74,6 +75,7 @@ const iconFor = (path: string) => {
   if (path.endsWith('/sales')) return CurrencyDollarIcon
   if (path.endsWith('/payment-modes')) return CreditCardIcon
   if (path.includes('/payments') || path.endsWith('/settlements')) return CreditCardIcon
+  if (path.includes('/catalog')) return CubeIcon
   if (path.endsWith('/services')) return SparklesIcon
   if (path.endsWith('/styling')) return SparklesIcon
   if (path.endsWith('/settings')) return Cog6ToothIcon
