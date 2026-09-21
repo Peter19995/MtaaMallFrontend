@@ -77,8 +77,6 @@ export const businessModules: WorkspaceModule[] = [
   { path: 'customers', label: 'Customers', permission: 'customers.read' },
   { path: 'overview', label: 'Reports', permission: 'reports.read' },
   { path: 'products', label: 'Products', permission: 'products.read' },
-  { path: 'products/add-from-catalog', label: 'Add from catalogue', permission: 'products.create', mutation: true },
-  { path: 'products/proposals', label: 'Product proposals', permission: 'catalog.products.propose', mutation: true },
   { path: 'product-categories', label: 'Product categories', permission: 'products.read' },
   { path: 'collections', label: 'Collections', permission: 'products.collections.read' },
   { path: 'variant-options', label: 'Variant options', permission: 'products.update', mutation: true },

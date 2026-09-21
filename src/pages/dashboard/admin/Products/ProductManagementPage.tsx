@@ -16,7 +16,6 @@ import {
   XCircleIcon,
   ArrowPathIcon,
   ExclamationTriangleIcon,
-  DocumentDuplicateIcon,
   EyeIcon,
   EyeSlashIcon,
   ChevronDownIcon,
@@ -28,6 +27,7 @@ import {
   type ProductStockStatusResponse as InventoryProductStockStatusResponse
 } from '@api/modules/inventory.api'
 import {
+  adoptCatalogProductRequest,
   createProductRequest,
   deleteProductRequest,
   generateProductSkuRequest,
@@ -42,6 +42,11 @@ import {
   updateProductCatalogueOverridesRequest,
   updateProductRequest
 } from '@api/modules/products.api'
+import {
+  listCatalogProductsRequest,
+  searchCatalogProductsRequest,
+  type CatalogProductSearchResult,
+} from '@api/modules/catalog.api'
 import { AppTheme, withOpacity } from '@constants/theme'
 import { resolveMediaUrl, resolveMediaUrls } from '@utils/media'
 
@@ -80,6 +85,7 @@ const EMPTY_FORM: ProductFormState = {
 }
 
 const ALL_CATEGORIES = 'all'
+const automaticSku = () => `PRD-${Date.now().toString(36).toUpperCase()}`
 const MAX_PRODUCT_IMAGES = 5
 const MAX_PRODUCT_IMAGE_SIZE = 5 * 1024 * 1024
 const PRODUCT_IMAGE_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp', 'image/gif'])
@@ -162,7 +168,6 @@ const ProductManagementPage = () => {
   const { user, hasPermission } = useAuth()
   const canOperate = !['suspended', 'closed'].includes(user?.business_status ?? '')
   const canCreate = hasPermission('products.create') && canOperate
-  const canPropose = hasPermission('catalog.products.propose') && canOperate
   const canEdit = hasPermission('products.update') && canOperate
   const canDelete = hasPermission('products.delete') && canOperate
   const storefrontEnabled = Boolean(user?.business_capabilities?.storefront_enabled && user?.business_status === 'active')
@@ -173,9 +178,12 @@ const ProductManagementPage = () => {
   const [categoryFilter, setCategoryFilter] = useState(ALL_CATEGORIES)
   const [inStockOnly, setInStockOnly] = useState(false)
   const [showProductForm, setShowProductForm] = useState(false)
-  const [showCreationPaths, setShowCreationPaths] = useState(false)
   const [editingProductId, setEditingProductId] = useState<number | null>(null)
   const [form, setForm] = useState<ProductFormState>(EMPTY_FORM)
+  const [catalogueSearch, setCatalogueSearch] = useState('')
+  const [debouncedCatalogueSearch, setDebouncedCatalogueSearch] = useState('')
+  const [catalogueSuggestionsOpen, setCatalogueSuggestionsOpen] = useState(false)
+  const [selectedCatalogueProduct, setSelectedCatalogueProduct] = useState<CatalogProductSearchResult | null>(null)
   const [formError, setFormError] = useState<string | null>(null)
   const [showFilters, setShowFilters] = useState(false)
   const [previewImage, setPreviewImage] = useState<string | null>(null)
@@ -186,6 +194,33 @@ const ProductManagementPage = () => {
     queryKey: ['products', 'categories'],
     queryFn: listCategoriesRequest
   })
+
+  useEffect(() => {
+    const timer = window.setTimeout(
+      () => setDebouncedCatalogueSearch(catalogueSearch.trim()),
+      250
+    )
+    return () => window.clearTimeout(timer)
+  }, [catalogueSearch])
+
+  const catalogueBrowseQuery = useQuery({
+    queryKey: ['catalog', 'products', 'product-form'],
+    queryFn: () => listCatalogProductsRequest({ limit: 50 }),
+    enabled: showProductForm && !editingProductId && debouncedCatalogueSearch.length < 2,
+  })
+
+  const catalogueSearchQuery = useQuery({
+    queryKey: ['catalog', 'products', 'product-form-search', debouncedCatalogueSearch],
+    queryFn: () => searchCatalogProductsRequest({ q: debouncedCatalogueSearch, limit: 20 }),
+    enabled: showProductForm && !editingProductId && debouncedCatalogueSearch.length >= 2,
+  })
+
+  const catalogueSuggestions = debouncedCatalogueSearch.length >= 2
+    ? catalogueSearchQuery.data ?? []
+    : catalogueBrowseQuery.data ?? []
+  const catalogueSuggestionsLoading = debouncedCatalogueSearch.length >= 2
+    ? catalogueSearchQuery.isFetching
+    : catalogueBrowseQuery.isFetching
 
   const selectedCreateCategoryId = useMemo(() => {
     if (editingProductId) {
@@ -239,13 +274,8 @@ const ProductManagementPage = () => {
       const maxOffer = Number(payload.maxOffer)
       const categoryId = payload.categoryId ? Number(payload.categoryId) : undefined
       const tags = payload.tags.trim()
+      const sku = payload.sku.trim() || automaticSku()
 
-      if (!editingProductId && !categoryId) {
-        throw new Error('Select a category first so the SKU can be generated.')
-      }
-      if (!editingProductId && !payload.sku.trim()) {
-        throw new Error('Wait for the SKU to be generated after selecting a category.')
-      }
       if (Number.isNaN(stockQuantity) || stockQuantity < 0) {
         throw new Error('Stock quantity must be a number greater than or equal to 0.')
       }
@@ -288,8 +318,35 @@ const ProductManagementPage = () => {
         return { product, isEditing }
       }
 
+      if (selectedCatalogueProduct) {
+        const adopted = await adoptCatalogProductRequest({
+          catalog_product_id: selectedCatalogueProduct.public_id,
+          business_sku: sku,
+          selling_price: String(sellingPrice),
+          available_online: storefrontEnabled && payload.availableOnline,
+          description_override:
+            payload.description.trim() && payload.description.trim() !== selectedCatalogueProduct.description?.trim()
+              ? payload.description.trim()
+              : null,
+        })
+        await updateProductRequest(adopted.id, {
+          tags: tags || undefined,
+          stock_quantity: stockQuantity,
+          reorder_level: reorderLevel,
+          selling_price: sellingPrice,
+          is_active: payload.isActive,
+          is_published: storefrontEnabled && payload.isPublished,
+          available_online: storefrontEnabled && payload.availableOnline,
+          is_on_offer: payload.isOnOffer,
+          max_offer: payload.isOnOffer ? maxOffer : 0,
+        })
+        await uploadProductImagesRequest(adopted.id, payload.imageFiles)
+        const product = await getProductRequest(adopted.id)
+        return { product, isEditing }
+      }
+
       const createPayload: ProductCreate = {
-        sku: payload.sku.trim(),
+        sku,
         name: payload.name.trim(),
         description: payload.description.trim() || undefined,
         tags: tags || undefined,
@@ -313,6 +370,9 @@ const ProductManagementPage = () => {
       setForm(EMPTY_FORM)
       setEditingProductId(null)
       setShowProductForm(false)
+      setSelectedCatalogueProduct(null)
+      setCatalogueSearch('')
+      setCatalogueSuggestionsOpen(false)
       setFormError(null)
 
     },
@@ -384,7 +444,10 @@ const ProductManagementPage = () => {
     }
 
     setEditingProductId(null)
-    setForm(EMPTY_FORM)
+    setForm({ ...EMPTY_FORM, sku: automaticSku() })
+    setSelectedCatalogueProduct(null)
+    setCatalogueSearch('')
+    setCatalogueSuggestionsOpen(false)
     setFormError(null)
     setShowProductForm(true)
     navigate(location.pathname, { replace: true })
@@ -411,10 +474,42 @@ const ProductManagementPage = () => {
     setShowProductForm(false)
     setEditingProductId(null)
     setForm(EMPTY_FORM)
+    setSelectedCatalogueProduct(null)
+    setCatalogueSearch('')
+    setCatalogueSuggestionsOpen(false)
     setFormError(null)
   }
 
+  const openCreateProduct = () => {
+    setEditingProductId(null)
+    setForm({ ...EMPTY_FORM, sku: automaticSku() })
+    setSelectedCatalogueProduct(null)
+    setCatalogueSearch('')
+    setCatalogueSuggestionsOpen(true)
+    setFormError(null)
+    setShowProductForm(true)
+  }
+
+  const selectCatalogueProduct = (product: CatalogProductSearchResult) => {
+    const matchingCategory = (categoriesQuery.data ?? []).find(
+      category => category.name.trim().toLocaleLowerCase() === product.category?.trim().toLocaleLowerCase()
+    )
+    setSelectedCatalogueProduct(product)
+    setCatalogueSearch(product.name)
+    setCatalogueSuggestionsOpen(false)
+    setForm(previous => ({
+      ...previous,
+      name: product.name,
+      description: product.description ?? '',
+      categoryId: matchingCategory ? String(matchingCategory.id) : '',
+      sku: matchingCategory ? '' : `CAT-${product.public_id.slice(0, 8).toUpperCase()}`,
+    }))
+  }
+
   const openEditProduct = (product: ProductResponse) => {
+    setSelectedCatalogueProduct(null)
+    setCatalogueSearch('')
+    setCatalogueSuggestionsOpen(false)
     setEditingProductId(product.id)
     setForm({
       sku: product.sku,
@@ -627,7 +722,7 @@ const ProductManagementPage = () => {
           
           {canCreate && <div className="flex gap-2">
             <Button
-              onClick={() => setShowCreationPaths(true)}
+              onClick={openCreateProduct}
               className="flex items-center gap-2"
             >
               <PlusIcon className="h-4 w-4" />
@@ -754,20 +849,6 @@ const ProductManagementPage = () => {
         </div>
       </motion.section>
 
-      <AnimatePresence>
-        {canCreate && showCreationPaths && (
-          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-[70] flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm" onMouseDown={event => event.target === event.currentTarget && setShowCreationPaths(false)}>
-            <motion.section role="dialog" aria-modal="true" aria-labelledby="creation-path-title" initial={{ opacity: 0, scale: .96, y: 12 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: .96, y: 12 }} className="w-full max-w-2xl rounded-2xl border border-border bg-white p-6 shadow-2xl">
-              <div className="flex items-start justify-between gap-4"><div><p className="text-xs font-bold uppercase tracking-[.16em] text-primary-dark">Add product</p><h2 id="creation-path-title" className="mt-1 text-2xl font-bold text-text">How would you like to start?</h2><p className="mt-2 text-sm text-text-secondary">Searching the shared catalogue first avoids duplicates and is the recommended default.</p></div><button type="button" aria-label="Close" onClick={() => setShowCreationPaths(false)} className="rounded-lg p-2 text-text-tertiary hover:bg-background"><XMarkIcon className="h-5 w-5" /></button></div>
-              <div className="mt-6 grid gap-4 sm:grid-cols-2">
-                <button type="button" onClick={() => navigate(`${location.pathname}/add-from-catalog`)} className="rounded-2xl border-2 border-primary bg-primary/5 p-5 text-left transition hover:-translate-y-0.5 hover:shadow-md"><MagnifyingGlassIcon className="h-7 w-7 text-primary" /><h3 className="mt-4 font-bold text-text">Find existing product</h3><p className="mt-1 text-sm text-text-secondary">Search by product name or scan a barcode, then create your business listing.</p><span className="mt-4 inline-flex text-xs font-bold uppercase tracking-wide text-primary-dark">Recommended</span></button>
-                {canPropose && <button type="button" onClick={() => navigate(`${location.pathname}/proposals`)} className="rounded-2xl border border-border bg-white p-5 text-left transition hover:-translate-y-0.5 hover:border-secondary hover:shadow-md"><DocumentDuplicateIcon className="h-7 w-7 text-secondary" /><h3 className="mt-4 font-bold text-text">Create new product proposal</h3><p className="mt-1 text-sm text-text-secondary">Use this only when no correct product exists in the shared MtaaMall catalogue.</p></button>}
-              </div>
-            </motion.section>
-          </motion.div>
-        )}
-      </AnimatePresence>
-
       {/* Product Form */}
       <AnimatePresence>
         {(canCreate || canEdit) && showProductForm && (
@@ -795,9 +876,56 @@ const ProductManagementPage = () => {
               </div>
               <form onSubmit={onSubmitProduct} className="space-y-4">
                 {editingProductId && <div className="grid gap-3 md:grid-cols-2"><div className="rounded-xl border border-primary/20 bg-primary/5 p-4"><p className="text-xs font-bold uppercase tracking-[.14em] text-primary-dark">Catalogue information</p><p className="mt-1 font-bold text-text">Shared across MtaaMall</p><p className="mt-1 text-xs text-text-secondary">{catalogueFieldsLocked ? 'Name and category come from the approved catalogue and cannot be edited by this business.' : 'This private listing is not yet linked to an approved catalogue product.'}</p></div><div className="rounded-xl border border-secondary/20 bg-secondary/5 p-4"><p className="text-xs font-bold uppercase tracking-[.14em] text-secondary">Your listing</p><p className="mt-1 font-bold text-text">Visible and editable only by this business</p><p className="mt-1 text-xs text-text-secondary">Price, stock, publication, tags, offers and business overrides remain editable.</p></div></div>}
+                {!editingProductId ? <div className="relative">
+                  <label htmlFor="product-name" className="mb-1.5 block text-sm font-medium text-text">
+                    Product name <span className="text-error">*</span>
+                  </label>
+                  <div className="relative">
+                    <MagnifyingGlassIcon className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-text-tertiary" />
+                    <input
+                      id="product-name"
+                      value={form.name}
+                      onFocus={() => setCatalogueSuggestionsOpen(true)}
+                      onBlur={() => window.setTimeout(() => setCatalogueSuggestionsOpen(false), 100)}
+                      onChange={event => {
+                        const name = event.target.value
+                        setForm(previous => ({ ...previous, name }))
+                        setCatalogueSearch(name)
+                        if (selectedCatalogueProduct?.name !== name) setSelectedCatalogueProduct(null)
+                        setCatalogueSuggestionsOpen(true)
+                      }}
+                      required
+                      autoComplete="off"
+                      placeholder="Start typing a product name"
+                      className="h-11 w-full rounded-xl border border-border bg-background py-2 pl-10 pr-10 text-sm text-text outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20"
+                    />
+                    {catalogueSuggestionsLoading && <ArrowPathIcon className="absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 animate-spin text-primary" />}
+                  </div>
+                  <p className="mt-1.5 text-xs text-text-tertiary">Choose a suggestion to reuse its approved details, or keep typing to create a private product.</p>
+                  {catalogueSuggestionsOpen && <div className="absolute z-30 mt-2 max-h-72 w-full overflow-y-auto rounded-xl border border-border bg-white p-1 shadow-xl">
+                    {catalogueSuggestionsLoading ? <p className="px-4 py-3 text-sm text-text-secondary">Loading products...</p> : catalogueSuggestions.length > 0 ? catalogueSuggestions.map(product => <button
+                      key={product.public_id}
+                      type="button"
+                      onMouseDown={event => event.preventDefault()}
+                      onClick={() => selectCatalogueProduct(product)}
+                      className="flex w-full items-start justify-between gap-4 rounded-lg px-3 py-3 text-left transition hover:bg-primary/5 focus:bg-primary/5 focus:outline-none"
+                    >
+                      <span><strong className="block text-sm text-text">{product.name}</strong><span className="mt-0.5 block text-xs text-text-secondary">{[product.brand, product.package_quantity && product.package_unit ? `${product.package_quantity} ${product.package_unit}` : null, product.category].filter(Boolean).join(' · ') || 'Approved catalogue product'}</span></span>
+                      <span className="shrink-0 rounded-full bg-success/10 px-2 py-1 text-[11px] font-semibold text-success">Select</span>
+                    </button>) : <div className="px-4 py-3"><p className="text-sm font-medium text-text">No shared product found</p><p className="mt-1 text-xs text-text-secondary">Continue filling the form to create this as a private product.</p></div>}
+                  </div>}
+                  {selectedCatalogueProduct && <div className="mt-3 flex items-center justify-between rounded-xl border border-success/20 bg-success/5 px-4 py-3"><div><p className="text-sm font-semibold text-text">Using {selectedCatalogueProduct.name}</p><p className="text-xs text-text-secondary">Approved shared details will be used. Your price and stock remain private.</p></div><button type="button" className="text-xs font-semibold text-primary hover:underline" onClick={() => { setSelectedCatalogueProduct(null); setCatalogueSuggestionsOpen(true) }}>Change</button></div>}
+                </div> : <TextInput
+                  label="Product name"
+                  value={form.name}
+                  onChange={(e) => setForm({ ...form, name: e.target.value })}
+                  required
+                  disabled={catalogueFieldsLocked}
+                />}
+
                 <div className="grid gap-4 md:grid-cols-3">
                   <Select
-                    label="Category"
+                    label="Category (optional)"
                     options={productFormCategoryOptions}
                     value={form.categoryId}
                     onChange={(e) => {
@@ -808,40 +936,7 @@ const ProductManagementPage = () => {
                         sku: editingProductId ? previous.sku : ''
                       }))
                     }}
-                    required={!editingProductId}
                     disabled={catalogueFieldsLocked}
-                  />
-                  {!editingProductId ? (
-                    <TextInput
-                      label="SKU"
-                      value={form.sku}
-                      readOnly
-                      required
-                      placeholder={
-                        form.categoryId
-                          ? generatedSkuQuery.isLoading
-                            ? 'Generating SKU...'
-                            : 'SKU will be generated'
-                          : 'Select category first'
-                      }
-                      helperText={
-                        form.categoryId
-                          ? generatedSkuQuery.isError
-                            ? 'Could not generate SKU for the selected category.'
-                            : generatedSkuMeta
-                              ? `${generatedSkuMeta.category_name}: ${generatedSkuMeta.sku_prefix} • next #${generatedSkuMeta.next_sequence}`
-                              : 'SKU is generated from the selected category.'
-                          : 'Choose a category to generate the next SKU.'
-                      }
-                    />
-                  ) : null}
-                  <TextInput
-                    label="Product Name"
-                    value={form.name}
-                    onChange={(e) => setForm({ ...form, name: e.target.value })}
-                    required
-                    disabled={catalogueFieldsLocked}
-                    placeholder="e.g., Premium Cotton Curtains"
                   />
                   <TextInput
                     label="Stock Quantity"
@@ -849,14 +944,6 @@ const ProductManagementPage = () => {
                     min={0}
                     value={form.stockQuantity}
                     onChange={(e) => setForm({ ...form, stockQuantity: e.target.value })}
-                    required
-                  />
-                  <TextInput
-                    label="Reorder Level"
-                    type="number"
-                    min={0}
-                    value={form.reorderLevel}
-                    onChange={(e) => setForm({ ...form, reorderLevel: e.target.value })}
                     required
                   />
                   <TextInput
@@ -868,18 +955,13 @@ const ProductManagementPage = () => {
                     onChange={(e) => setForm({ ...form, sellingPrice: e.target.value })}
                     required
                   />
-                  <TextInput
-                    label="Max Offer Amount"
-                    type="number"
-                    min={0}
-                    step="0.01"
-                    value={form.maxOffer}
-                    onChange={(e) => setForm({ ...form, maxOffer: e.target.value })}
-                    disabled={!form.isOnOffer}
-                  />
                 </div>
 
-                <div className="grid gap-4 md:grid-cols-2">
+                <details className="rounded-xl border border-border bg-background/60 px-4 py-3">
+                  <summary className="cursor-pointer text-sm font-semibold text-text">More product details</summary>
+                  <div className="mt-4 grid gap-4 md:grid-cols-2">
+                  <TextInput label="Reorder level" type="number" min={0} value={form.reorderLevel} onChange={(e) => setForm({ ...form, reorderLevel: e.target.value })} />
+                  <TextInput label="Maximum offer amount" type="number" min={0} step="0.01" value={form.maxOffer} onChange={(e) => setForm({ ...form, maxOffer: e.target.value })} disabled={!form.isOnOffer} />
                   <TextArea
                     label={catalogueFieldsLocked ? 'Your description override' : 'Description'}
                     value={form.description}
@@ -887,6 +969,8 @@ const ProductManagementPage = () => {
                     placeholder="Product description..."
                     rows={4}
                   />
+
+                <div className="grid gap-4 md:col-span-2 md:grid-cols-2">
                   <TextArea
                     label="Tags"
                     value={form.tags}
@@ -897,7 +981,7 @@ const ProductManagementPage = () => {
                   />
                 </div>
 
-                <div className="grid gap-4 md:grid-cols-[minmax(0,1fr)_auto]">
+                <div className="grid gap-4 md:col-span-2 md:grid-cols-[minmax(0,1fr)_auto]">
                   <div className="space-y-2">
                     <label htmlFor="product-images" className="block text-xs font-medium text-text-secondary">
                       Upload Images
@@ -1009,6 +1093,8 @@ const ProductManagementPage = () => {
                     </label>
                   </div>
                 </div>
+                  </div>
+                </details>
 
                 {editingProduct && (
                   <div className="bg-background rounded-lg p-3 border border-border">

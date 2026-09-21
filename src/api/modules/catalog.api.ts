@@ -112,6 +112,13 @@ export const listCatalogBrandsRequest = async (): Promise<CatalogBrand[]> => {
   return data
 }
 
+export const listCatalogProductsRequest = async (
+  params?: { skip?: number; limit?: number }
+): Promise<CatalogProductSearchResult[]> => {
+  const { data } = await api.get<CatalogProductSearchResult[]>('/catalog/products', { params })
+  return data
+}
+
 export const searchCatalogProductsRequest = async (
   params: CatalogSearchParams
 ): Promise<CatalogProductSearchResult[]> => {
