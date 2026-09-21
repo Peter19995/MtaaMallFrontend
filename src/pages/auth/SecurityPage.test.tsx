@@ -33,6 +33,13 @@ it('holds unverified customers on email verification without dashboard access', 
   expect(screen.queryByText('Continue to my account')).not.toBeInTheDocument()
 })
 
+it('allows an unverified business user to continue to local operations', async () => {
+  show({ ...state, mfa_required: false, mfa_needed: false, email_required: true, ready: true })
+  expect(await screen.findByText('Local business access is ready')).toBeInTheDocument()
+  expect(screen.getByText('Local operations are available')).toBeInTheDocument()
+  expect(screen.getByText('Continue to my account')).toBeInTheDocument()
+})
+
 it('shows recovery codes once and requires saving them before continuing', async () => {
   show(state)
   vi.mocked(api.post).mockResolvedValueOnce({ data: { secret: 'TESTSETUPKEY' } })

@@ -21,6 +21,8 @@ import { loginLanding } from '@utils/experiences'
 type SecurityState = {
   email?: string
   email_required: boolean
+  email_blocks_access?: boolean
+  online_verification_required?: boolean
   must_change_password: boolean
   mfa_required: boolean
   mfa_enabled: boolean
@@ -158,15 +160,15 @@ export default function SecurityPage() {
 
             <div className="mt-8 rounded-2xl border border-white/10 bg-white/5 p-4">
               <p className="text-sm font-semibold">Why am I seeing this?</p>
-              <p className="mt-2 text-xs leading-5 text-white/60">MtaaMall requires extra protection before granting access to sensitive account or business features.</p>
+              <p className="mt-2 text-xs leading-5 text-white/60">Email verification protects online shopping and platform administration. It does not prevent an authorized business user from operating the local POS.</p>
             </div>
           </aside>
 
           <div className="space-y-5">
             <div className="px-1">
               <p className="text-xs font-bold uppercase tracking-[0.2em] text-secondary">Security centre</p>
-              <h2 className="mt-2 text-2xl font-bold text-text sm:text-3xl">{state?.ready ? 'Your account is protected' : 'Finish securing your account'}</h2>
-              <p className="mt-2 text-sm leading-6 text-text-secondary">Follow the required steps below. Your progress is saved automatically.</p>
+              <h2 className="mt-2 text-2xl font-bold text-text sm:text-3xl">{state?.ready ? state.email_required ? 'Local business access is ready' : 'Your account is protected' : 'Finish securing your account'}</h2>
+              <p className="mt-2 text-sm leading-6 text-text-secondary">Complete contact verification before online checkout. Local POS remains available to authorized business users.</p>
             </div>
 
             {error && (
@@ -219,7 +221,7 @@ export default function SecurityPage() {
             {state && !needsExistingMfa && (
               <>
                 {state.email_required && (
-                  <SecurityCard icon={EnvelopeIcon} title="Verify your email" description="We will send a secure verification link to this address.">
+                  <SecurityCard icon={EnvelopeIcon} title="Verify your email for online sales" description={state.email_blocks_access ? 'Verification is required before continuing.' : 'Verification is required for online checkout, but it does not block local POS operations.'}>
                     <form onSubmit={e => { e.preventDefault(); void run(async () => { await api.post('/auth/security/email/request', { email }); setMessage('If this address is available, verification instructions will be sent. Check your inbox, then refresh below.') }) }}>
                       <label className="block text-sm font-semibold text-text-secondary">Email address<input className={input} type="email" required value={email} onChange={e => setEmail(e.target.value)} placeholder="you@example.com" /></label>
                       <div className="mt-4 flex flex-col gap-3 sm:flex-row">
@@ -270,7 +272,7 @@ export default function SecurityPage() {
 
             {state?.ready && !codes.length && (
               <div className="rounded-2xl border border-success/30 bg-success-light/30 p-5 sm:flex sm:items-center sm:justify-between sm:gap-5">
-                <div className="flex items-start gap-3"><CheckCircleIcon className="h-6 w-6 shrink-0 text-success" /><div><p className="font-bold text-text">Security setup complete</p><p className="mt-1 text-sm text-text-secondary">You can safely continue to your MtaaMall account.</p></div></div>
+                <div className="flex items-start gap-3"><CheckCircleIcon className="h-6 w-6 shrink-0 text-success" /><div><p className="font-bold text-text">{state.email_required ? 'Local operations are available' : 'Security setup complete'}</p><p className="mt-1 text-sm text-text-secondary">{state.email_required ? 'You can use your business workspace and local POS now. Verify your email before using online checkout.' : 'You can safely continue to your MtaaMall account.'}</p></div></div>
                 <button className={`${primaryButton} mt-4 shrink-0 sm:mt-0`} disabled={busy} onClick={() => void run(async () => { const user = await refreshIdentity(); navigate(loginLanding(user), { replace: true }) })}>Continue to my account <ArrowRightIcon className="h-4 w-4" /></button>
               </div>
             )}
