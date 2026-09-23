@@ -360,9 +360,12 @@ export const listProductVariantOptionsRequest = async (
 
 export const attachVariantOptionToProductRequest = async (
   productId: number,
-  optionId: number
+  optionId: number,
+  valueIds: number[]
 ): Promise<void> => {
-  await api.post(`/products/${productId}/variant-options/${optionId}`)
+  await api.post(`/products/${productId}/variant-options/${optionId}`, {
+    value_ids: valueIds
+  })
 }
 
 export const detachVariantOptionFromProductRequest = async (
@@ -593,6 +596,20 @@ export const updateProductVariantRequest = async (
   const { data } = await api.put<ProductVariantResponse>(
     `/products/${productId}/variants/${variantId}`,
     payload
+  )
+  return data
+}
+
+export const uploadProductVariantImageRequest = async (
+  productId: number,
+  variantId: number,
+  file: File
+): Promise<ProductVariantResponse> => {
+  const formData = new FormData()
+  formData.append('file', file)
+  const { data } = await api.post<ProductVariantResponse>(
+    `/products/${productId}/variants/${variantId}/image`,
+    formData
   )
   return data
 }

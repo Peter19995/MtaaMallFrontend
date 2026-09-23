@@ -32,6 +32,14 @@ describe('separate application experiences', () => {
     expect(canAccessWorkspace(employee, '/employee/products/123')).toBe(false)
     expect(canAccessWorkspace({ ...employee, allowed_branch_ids: [] }, '/employee/sales/create')).toBe(false)
   })
+  it('allows product inheritance only with the product creation permission', () => {
+    expect(canAccessWorkspace(owner, '/business/products/add-from-catalog')).toBe(true)
+    expect(canAccessWorkspace(owner, '/business/catalogue')).toBe(true)
+    expect(canAccessWorkspace(owner, '/business/product-categories/inherit')).toBe(true)
+    expect(canAccessWorkspace({ ...owner, permissions: ['products.read'] }, '/business/products/add-from-catalog')).toBe(false)
+    expect(canAccessWorkspace({ ...owner, permissions: ['products.read'] }, '/business/product-categories/inherit')).toBe(false)
+    expect(canAccessWorkspace(employee, '/employee/products/add-from-catalog')).toBe(false)
+  })
   it('keeps local business tools available while online verification is pending', () => {
     const pending = { ...owner, business_status: 'pending_verification' as const }
     expect(workspaceLanding(pending)).toBe('/business/onboarding')
@@ -58,6 +66,13 @@ describe('separate application experiences', () => {
       '/business/inventory/alerts'
     ])
     expect(canAccessWorkspace(inventoryUser, '/business/inventory/restocks')).toBe(true)
+    expect(canAccessWorkspace(inventoryUser, '/business/inventory/restocks/new')).toBe(false)
+
+    const restockUser = {
+      ...inventoryUser,
+      permissions: [...(inventoryUser.permissions ?? []), 'inventory.restock'],
+    }
+    expect(canAccessWorkspace(restockUser, '/business/inventory/restocks/new')).toBe(true)
     expect(canAccessWorkspace({ ...inventoryUser, permissions: [] }, '/business/inventory/alerts')).toBe(false)
   })
   it('protects each platform payment route with its named permission', () => {

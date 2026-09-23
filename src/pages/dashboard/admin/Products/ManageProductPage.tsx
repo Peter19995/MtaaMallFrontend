@@ -38,6 +38,7 @@ import {
   type ProductResponse,
   uploadProductImagesRequest,
   updateProductRequest,
+  uploadProductVariantImageRequest,
   type ProductUpdate
 } from '@api/modules/products.api'
 import { AppTheme, withOpacity } from '@constants/theme'
@@ -82,6 +83,24 @@ const getProductTags = (tags?: string | null): string[] =>
     .split(',')
     .map((tag) => tag.trim())
     .filter(Boolean)
+
+const formatVariantLabel = (variant: { sku: string; options: Record<string, string> }): string => {
+  const values = Object.values(variant.options ?? {}).filter(Boolean)
+  return values.length > 0 ? values.join(' / ') : variant.sku
+}
+
+const variantActionErrorMessage = (error: unknown): string => {
+  const response = (error as { response?: { data?: unknown } } | null)?.response
+  const payload = response?.data
+  if (payload && typeof payload === 'object') {
+    const detail = (payload as { detail?: unknown }).detail
+    if (typeof detail === 'string' && detail.trim()) return detail
+  }
+  if (error instanceof Error && error.message && !/^Request failed with status code/i.test(error.message)) {
+    return error.message
+  }
+  return 'Could not update the product variants. Check that the option has at least one value.'
+}
 
 // Animation variants
 const fadeInUp = {
@@ -145,6 +164,7 @@ const ManageProductPage = () => {
   const [uploadProgress, setUploadProgress] = useState(0)
   const [selectedVariantOptionId, setSelectedVariantOptionId] = useState('')
   const [variantActionError, setVariantActionError] = useState<string | null>(null)
+  const [variantImageFiles, setVariantImageFiles] = useState<Record<number, File | null>>({})
 
   const productQuery = useQuery({
     queryKey: ['products', 'details', productId],
@@ -340,12 +360,12 @@ const ManageProductPage = () => {
   })
 
   const attachVariantOptionMutation = useMutation({
-    mutationFn: async (optionId: number) => {
+    mutationFn: async ({ optionId, valueIds }: { optionId: number; valueIds: number[] }) => {
       if (!Number.isFinite(productId) || productId <= 0) {
         throw new Error('Invalid product ID.')
       }
 
-      return attachVariantOptionToProductRequest(productId, optionId)
+      return attachVariantOptionToProductRequest(productId, optionId, valueIds)
     },
     onSuccess: () => {
       setVariantActionError(null)
@@ -354,8 +374,8 @@ const ManageProductPage = () => {
       queryClient.invalidateQueries({ queryKey: ['products', 'details', productId] })
       queryClient.invalidateQueries({ queryKey: ['products', 'list'] })
     },
-    onError: (error: Error) => {
-      setVariantActionError(error.message || 'Could not attach variant option to product.')
+    onError: (error: unknown) => {
+      setVariantActionError(variantActionErrorMessage(error))
     }
   })
 
@@ -375,6 +395,20 @@ const ManageProductPage = () => {
     },
     onError: (error: Error) => {
       setVariantActionError(error.message || 'Could not detach variant option from product.')
+    }
+  })
+
+  const uploadVariantImageMutation = useMutation({
+    mutationFn: ({ variantId, file }: { variantId: number; file: File }) =>
+      uploadProductVariantImageRequest(productId, variantId, file),
+    onSuccess: (updatedVariant) => {
+      setVariantActionError(null)
+      setVariantImageFiles((current) => ({ ...current, [updatedVariant.id]: null }))
+      queryClient.invalidateQueries({ queryKey: ['products', 'details', productId] })
+      queryClient.invalidateQueries({ queryKey: ['products', 'list'] })
+    },
+    onError: (error: unknown) => {
+      setVariantActionError(variantActionErrorMessage(error))
     }
   })
 
@@ -450,7 +484,14 @@ const ManageProductPage = () => {
       return
     }
 
-    attachVariantOptionMutation.mutate(optionId)
+    const option = variantOptions.find((candidate) => candidate.id === optionId)
+    const valueIds = option?.values.map((value) => value.id) ?? []
+    if (valueIds.length === 0) {
+      setVariantActionError('This variant option has no values. Add values before attaching it.')
+      return
+    }
+
+    attachVariantOptionMutation.mutate({ optionId, valueIds })
   }
 
   if (!Number.isFinite(productId) || productId <= 0) {
@@ -945,6 +986,88 @@ const ManageProductPage = () => {
                             </p>
                           </div>
                         </div>
+                      </div>
+
+                      <div className="rounded-xl border border-border bg-white p-5">
+                        <div>
+                          <h3 className="text-sm font-semibold text-text">Variant Images</h3>
+                          <p className="mt-1 text-xs text-text-secondary">
+                            Upload a separate image for each generated option combination, such as Red / Large.
+                          </p>
+                        </div>
+
+                        {(productQuery.data.variants?.length ?? 0) > 0 ? (
+                          <div className="mt-4 grid gap-4 lg:grid-cols-2">
+                            {productQuery.data.variants?.map((variant) => {
+                              const selectedFile = variantImageFiles[variant.id]
+                              const isUploading = uploadVariantImageMutation.isPending &&
+                                uploadVariantImageMutation.variables?.variantId === variant.id
+                              return (
+                                <div key={variant.id} className="rounded-xl border border-border bg-background/60 p-4">
+                                  <div className="flex gap-4">
+                                    <div className="flex h-20 w-20 shrink-0 items-center justify-center overflow-hidden rounded-xl border border-border bg-white">
+                                      {variant.image_url ? (
+                                        <img
+                                          src={resolveMediaUrl(variant.image_url) ?? variant.image_url}
+                                          alt={formatVariantLabel(variant)}
+                                          className="h-full w-full object-cover"
+                                        />
+                                      ) : (
+                                        <PhotoIcon className="h-8 w-8 text-text-tertiary/40" />
+                                      )}
+                                    </div>
+                                    <div className="min-w-0 flex-1">
+                                      <p className="font-semibold text-text">{formatVariantLabel(variant)}</p>
+                                      <p className="mt-1 text-xs text-text-tertiary">SKU: {variant.sku}</p>
+                                      <label className="mt-3 block cursor-pointer">
+                                        <span className="sr-only">Choose image for {formatVariantLabel(variant)}</span>
+                                        <input
+                                          type="file"
+                                          accept="image/jpeg,image/png,image/webp,image/gif"
+                                          className="block w-full cursor-pointer text-xs text-text-secondary file:mr-3 file:rounded-lg file:border-0 file:bg-primary/10 file:px-3 file:py-2 file:text-xs file:font-semibold file:text-primary"
+                                          onChange={(event) => {
+                                            const file = event.target.files?.[0] ?? null
+                                            if (file && (!file.type.startsWith('image/') || file.size > 5 * 1024 * 1024)) {
+                                              setVariantActionError('Select a JPG, PNG, WEBP or GIF image no larger than 5 MB.')
+                                              event.target.value = ''
+                                              return
+                                            }
+                                            setVariantActionError(null)
+                                            setVariantImageFiles((current) => ({ ...current, [variant.id]: file }))
+                                          }}
+                                        />
+                                      </label>
+                                    </div>
+                                  </div>
+                                  <div className="mt-3 flex items-center justify-between gap-3">
+                                    <span className="truncate text-xs text-text-tertiary">
+                                      {selectedFile?.name ?? (variant.image_url ? 'Current image saved' : 'No image selected')}
+                                    </span>
+                                    <Button
+                                      type="button"
+                                      size="sm"
+                                      disabled={!selectedFile}
+                                      loading={isUploading}
+                                      onClick={() => selectedFile && uploadVariantImageMutation.mutate({
+                                        variantId: variant.id,
+                                        file: selectedFile
+                                      })}
+                                    >
+                                      {variant.image_url ? 'Replace Image' : 'Upload Image'}
+                                    </Button>
+                                  </div>
+                                </div>
+                              )
+                            })}
+                          </div>
+                        ) : (
+                          <div className="mt-4 rounded-xl border border-dashed border-border bg-background px-4 py-8 text-center">
+                            <PhotoIcon className="mx-auto h-9 w-9 text-text-tertiary/40" />
+                            <p className="mt-3 text-sm text-text-secondary">
+                              Attach variant options first. Images can be added after variants are generated.
+                            </p>
+                          </div>
+                        )}
                       </div>
 
                       <div className="rounded-xl border border-border bg-white p-5">

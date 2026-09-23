@@ -3,6 +3,7 @@ import { requestApproval } from '@api/modules/audit.api'
 import { useMutation, useQueries, useQuery, useQueryClient } from '@tanstack/react-query'
 import { isAxiosError } from 'axios'
 import { motion, AnimatePresence } from 'framer-motion'
+import { useNavigate } from 'react-router-dom'
 import {
   PlusIcon,
   MagnifyingGlassIcon,
@@ -37,6 +38,7 @@ import { adoptCatalogProductRequest, getProductRequest, listProductsRequest } fr
 import { searchCatalogProductsRequest, type CatalogProductSearchResult } from '@api/modules/catalog.api'
 import { listTaxRatesRequest } from '@api/modules/finance.api'
 import { useAuth } from '@hooks/useAuth'
+import { useWorkspacePath } from '@hooks/useWorkspacePath'
 import { listBranchesRequest, type BranchResponse } from '@api/modules/branches.api'
 import {
   createRestockRequest,
@@ -68,6 +70,7 @@ type RestockRowState = {
   id: string
   productId: string
   productVariantId: string
+  variantSelections: Record<string, string>
   supplierId: string
   batchNumber: string
   expiryDate: string
@@ -89,6 +92,7 @@ type StockCountFormState = {
 type StockCountRowState = {
   id: string
   productId: string
+  productVariantId: string
   physicalStock: string
   applyAdjustment: boolean
   adjustmentReason: string
@@ -134,6 +138,7 @@ const createRestockRow = (): RestockRowState => ({
   id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
   productId: '',
   productVariantId: '',
+  variantSelections: {},
   supplierId: '',
   batchNumber: '',
   expiryDate: '',
@@ -146,20 +151,14 @@ const createRestockRow = (): RestockRowState => ({
   notes: ''
 })
 
-const restockTargetKey = (row: Pick<RestockRowState, 'productId'>) => row.productId
-
-const hasDuplicateRestockTarget = (
-  rows: RestockRowState[],
-  candidate: RestockRowState,
-  excludedRowId: string | null = null
-) =>
-  rows.some(
-    (row) => row.id !== excludedRowId && restockTargetKey(row) === restockTargetKey(candidate)
-  )
+const restockTargetKey = (
+  row: Pick<RestockRowState, 'productId' | 'productVariantId'>
+) => `${row.productId}:${row.productVariantId || 'base'}`
 
 const createStockCountRow = (): StockCountRowState => ({
   id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
   productId: '',
+  productVariantId: '',
   physicalStock: '0',
   applyAdjustment: false,
   adjustmentReason: '',
@@ -326,7 +325,7 @@ const staggerContainer = {
   }
 }
 
-export type InventoryView = 'status' | 'restocks' | 'stock-counts' | 'alerts'
+export type InventoryView = 'status' | 'restocks' | 'create-restock' | 'stock-counts' | 'alerts'
 
 type InventoryManagementPageProps = {
   view?: InventoryView
@@ -341,6 +340,10 @@ const inventoryViewCopy: Record<InventoryView, { title: string; description: str
     title: 'Restocks',
     description: 'Record incoming stock and review recent restocking activity.'
   },
+  'create-restock': {
+    title: 'Create New Restock',
+    description: 'Receive stock by product and exact variant into an authorized branch.'
+  },
   'stock-counts': {
     title: 'Stock Counts',
     description: 'Record physical counts and review recent inventory variances.'
@@ -352,6 +355,10 @@ const inventoryViewCopy: Record<InventoryView, { title: string; description: str
 }
 
 const InventoryManagementPage = ({ view = 'status' }: InventoryManagementPageProps) => {
+  const navigate = useNavigate()
+  const workspacePath = useWorkspacePath()
+  const isCreateRestockPage = view === 'create-restock'
+  const isRestockWorkflow = view === 'restocks' || isCreateRestockPage
   const { hasPermission } = useAuth()
   const canSearchCatalogue = hasPermission('catalog.products.read')
   const canAdoptCatalogueProducts = hasPermission('products.create')
@@ -379,7 +386,7 @@ const InventoryManagementPage = ({ view = 'status' }: InventoryManagementPagePro
   const queryClient = useQueryClient()
   const statusLimit = 50
   const recentLimit = 10
-  const [showRestockForm, setShowRestockForm] = useState(false)
+  const [showRestockForm, setShowRestockForm] = useState(isCreateRestockPage)
   const [showRestockItemForm, setShowRestockItemForm] = useState(false)
   const [editingRestockRowId, setEditingRestockRowId] = useState<string | null>(null)
   const [restockItemDraft, setRestockItemDraft] = useState<RestockRowState>(createRestockRow())
@@ -471,7 +478,7 @@ const InventoryManagementPage = ({ view = 'status' }: InventoryManagementPagePro
   const suppliersQuery = useQuery({
     queryKey: ['suppliers', 'restock-select'],
     queryFn: listSuppliersRequest,
-    enabled: view === 'restocks'
+    enabled: isRestockWorkflow
   })
 
   const inventoryDashboardQuery = useQuery({
@@ -572,16 +579,23 @@ const InventoryManagementPage = ({ view = 'status' }: InventoryManagementPagePro
     [valuationMethodsQuery.data]
   )
 
-  const stockCountAdjustmentReasonOptions = useMemo(
-    () => [
-      { label: 'Select adjustment reason', value: '' },
-      ...((stockCountAdjustmentReasonsQuery.data ?? []).map((reason) => ({
-        label: reason.name,
-        value: reason.reason
-      })) || [])
-    ],
-    [stockCountAdjustmentReasonsQuery.data]
-  )
+  const getStockCountAdjustmentReasonOptions = (variance: number | null) => {
+    const allowedReasons = variance === null || variance === 0
+      ? []
+      : variance < 0
+        ? ['sale_correction', 'restock_correction', 'lost', 'damaged', 'theft']
+        : ['restock_correction']
+
+    return [
+      {
+        label: variance === 0 ? 'No adjustment needed' : 'Select adjustment reason',
+        value: ''
+      },
+      ...(stockCountAdjustmentReasonsQuery.data ?? [])
+        .filter((reason) => allowedReasons.includes(reason.reason))
+        .map((reason) => ({ label: reason.name, value: reason.reason }))
+    ]
+  }
 
   const stockStatusProductOptions = useMemo(
     () => [
@@ -747,12 +761,37 @@ const InventoryManagementPage = ({ view = 'status' }: InventoryManagementPagePro
     staleTime: 30_000
   })
 
-  const stockCountRowStockQueries = useQueries({
+  const stockCountRowProductQueries = useQueries({
     queries: stockCountForm.rows.map((row) => {
       const productId = Number(row.productId)
+      return {
+        queryKey: [
+          'products',
+          'stock-count-details',
+          selectedStockCountBranchId ?? 'none',
+          productId || 'none'
+        ],
+        queryFn: () => getProductRequest(productId, {
+          branch_id: selectedStockCountBranchId,
+          include_zero_variants: true
+        }),
+        enabled: Number.isFinite(productId) && productId > 0 && Boolean(selectedStockCountBranchId),
+        staleTime: 30_000
+      }
+    })
+  })
+
+  const stockCountRowStockQueries = useQueries({
+    queries: stockCountForm.rows.map((row, index) => {
+      const productId = Number(row.productId)
+      const productVariantId = Number(row.productVariantId)
+      const product = stockCountRowProductQueries[index]?.data
+      const hasVariants = (product?.variants?.length ?? 0) > 0
       const isEnabled =
         Number.isFinite(productId) &&
         productId > 0 &&
+        Boolean(product) &&
+        (!hasVariants || (Number.isFinite(productVariantId) && productVariantId > 0)) &&
         typeof selectedStockCountBranchId === 'number' &&
         selectedStockCountBranchId > 0
 
@@ -762,16 +801,21 @@ const InventoryManagementPage = ({ view = 'status' }: InventoryManagementPagePro
           'stock-status',
           'stock-count-row',
           selectedStockCountBranchId ?? 'none',
-          productId || 'none'
+          productId || 'none',
+          productVariantId || 'base'
         ],
         queryFn: async () => {
           const response = await getStockStatusRequest({
             branch_id: selectedStockCountBranchId,
             product_id: productId,
+            product_variant_id: hasVariants ? productVariantId : undefined,
             limit: 1
           })
 
-          return response.find((item) => item.product_id === productId) ?? response[0] ?? null
+          return response.find((item) =>
+            item.product_id === productId &&
+            (!hasVariants || item.product_variant_id === productVariantId)
+          ) ?? response[0] ?? null
         },
         enabled: isEnabled,
         staleTime: 30_000
@@ -890,6 +934,7 @@ const InventoryManagementPage = ({ view = 'status' }: InventoryManagementPagePro
     rowId: string,
     field:
       | 'productId'
+      | 'productVariantId'
       | 'physicalStock'
       | 'adjustmentReason'
       | 'adjustmentReference'
@@ -899,7 +944,11 @@ const InventoryManagementPage = ({ view = 'status' }: InventoryManagementPagePro
       | 'notes',
     value: string
   ) => {
-    updateStockCountRow(rowId, (row) => ({ ...row, [field]: value }))
+    updateStockCountRow(rowId, (row) => ({
+      ...row,
+      [field]: value,
+      ...(field === 'productId' ? { productVariantId: '' } : {})
+    }))
   }
 
   const updateStockCountRowAdjustment = (rowId: string, applyAdjustment: boolean) => {
@@ -944,7 +993,10 @@ const InventoryManagementPage = ({ view = 'status' }: InventoryManagementPagePro
   ) => {
     setRestockItemDraft((current) => {
       const next = { ...current, [field]: value } as RestockRowState
-      if (field === 'productId') next.productVariantId = ''
+      if (field === 'productId') {
+        next.productVariantId = ''
+        next.variantSelections = {}
+      }
       return field === 'quantity' || field === 'sellingPrice' ? syncMaxOffer(next) : next
     })
   }
@@ -960,11 +1012,6 @@ const InventoryManagementPage = ({ view = 'status' }: InventoryManagementPagePro
     if (variants.length > 0 && !restockItemDraft.productVariantId) {
       return setRestockItemError('Select the exact product variant.')
     }
-    if (hasDuplicateRestockTarget(restockForm.rows, restockItemDraft, editingRestockRowId)) {
-      return setRestockItemError(
-        'This product is already on the restock list. Use its Edit action to update it.'
-      )
-    }
     if (toSafeNumber(restockItemDraft.quantity) < 1) {
       return setRestockItemError('Quantity must be 1 or more.')
     }
@@ -972,14 +1019,20 @@ const InventoryManagementPage = ({ view = 'status' }: InventoryManagementPagePro
       return setRestockItemError('Buying and selling prices must be 0 or more.')
     }
 
-    setRestockForm((current) => ({
-      ...current,
-      rows: editingRestockRowId
-        ? current.rows.map((row) =>
-            row.id === editingRestockRowId ? { ...restockItemDraft, id: editingRestockRowId } : row
-          )
-        : [...current.rows, restockItemDraft]
-    }))
+    setRestockForm((current) => {
+      const duplicate = current.rows.find(
+        (row) => row.id !== editingRestockRowId && restockTargetKey(row) === restockTargetKey(restockItemDraft)
+      )
+      const targetRowId = editingRestockRowId ?? duplicate?.id
+      return {
+        ...current,
+        rows: targetRowId
+          ? current.rows.map((row) =>
+              row.id === targetRowId ? { ...restockItemDraft, id: targetRowId } : row
+            )
+          : [...current.rows, restockItemDraft]
+      }
+    })
     closeRestockItemForm()
   }
 
@@ -1060,14 +1113,20 @@ const InventoryManagementPage = ({ view = 'status' }: InventoryManagementPagePro
     return [
       { label: 'Select product', value: '' },
       ...((productsQuery.data ?? [])
-        .map((product) => ({
-          label: `${product.name} (${product.sku})`,
-          value: String(product.id),
-          disabled: productsAlreadyAdded.has(String(product.id)),
-          description: productsAlreadyAdded.has(String(product.id))
-            ? 'Already added — use Edit to update it'
-            : (product.variants ?? []).map((variant) => variant.barcode).filter(Boolean).join(' · ') || undefined
-        })) || [])
+        .map((product) => {
+          const alreadyAdded = productsAlreadyAdded.has(String(product.id))
+          const hasVariants = (product.variants?.length ?? 0) > 0
+          return {
+            label: `${product.name} (${product.sku})`,
+            value: String(product.id),
+            disabled: alreadyAdded && !hasVariants,
+            description: alreadyAdded && !hasVariants
+              ? 'Already added — adding it again updates the existing line'
+              : hasVariants
+                ? `${product.variants?.length} variant${product.variants?.length === 1 ? '' : 's'} available`
+                : undefined
+          }
+        }) || [])
     ]
   }
 
@@ -1080,15 +1139,17 @@ const InventoryManagementPage = ({ view = 'status' }: InventoryManagementPagePro
 
     return [
       { label: 'Select product', value: '' },
-      ...((productsQuery.data ?? [])
-        .filter((product) => {
-          const productId = String(product.id)
-          return productId === currentProductId || !selectedInOtherRows.has(productId)
-        })
-        .map((product) => ({
+      ...((productsQuery.data ?? []).map((product) => {
+        const productId = String(product.id)
+        const alreadySelected = selectedInOtherRows.has(productId)
+        const hasVariants = (product.variants?.length ?? 0) > 0
+        return {
           label: `${product.name} (${product.sku})`,
-          value: String(product.id)
-        })) || [])
+          value: productId,
+          disabled: productId !== currentProductId && alreadySelected && !hasVariants,
+          description: hasVariants ? `${product.variants?.length} variants available` : undefined
+        }
+      }) || [])
     ]
   }
 
@@ -1105,7 +1166,7 @@ const InventoryManagementPage = ({ view = 'status' }: InventoryManagementPagePro
 
       const targetKeys = payload.rows.map(restockTargetKey)
       if (new Set(targetKeys).size !== targetKeys.length) {
-        throw new Error('Each product can appear only once. Edit the existing item.')
+        throw new Error('Each product variant can appear only once. Edit the existing item.')
       }
 
       const items = payload.rows.map((row, index) => {
@@ -1172,6 +1233,7 @@ const InventoryManagementPage = ({ view = 'status' }: InventoryManagementPagePro
       setShowRestockForm(false)
       queryClient.invalidateQueries({ queryKey: ['inventory', 'dashboard'] })
       queryClient.invalidateQueries({ queryKey: ['products', 'inventory-select'] })
+      if (isCreateRestockPage) navigate(workspacePath('/dashboard/admin/inventory/restocks'))
     },
     onError: (error: Error) => {
       setRestockError(error.message || 'Could not create restock.')
@@ -1189,8 +1251,18 @@ const InventoryManagementPage = ({ view = 'status' }: InventoryManagementPagePro
         throw new Error('Add at least one product row.')
       }
 
+      const countTargets = payload.rows.map((row) =>
+        `${row.productId}:${row.productVariantId || 'base'}`
+      )
+      if (new Set(countTargets).size !== countTargets.length) {
+        throw new Error('Each product variant can appear only once in a stock count.')
+      }
+
       const requests = payload.rows.map((row, index) => {
         const productId = Number(row.productId)
+        const productVariantId = row.productVariantId ? Number(row.productVariantId) : undefined
+        const rowProduct = stockCountRowProductQueries[index]?.data
+        const hasVariants = (rowProduct?.variants?.length ?? 0) > 0
         const physicalStock = Number(row.physicalStock)
         const hasAdjustmentBuyingPrice =
           row.applyAdjustment && row.adjustmentBuyingPrice.trim() !== ''
@@ -1212,8 +1284,40 @@ const InventoryManagementPage = ({ view = 'status' }: InventoryManagementPagePro
         if (!productId) {
           throw new Error(`Row ${index + 1}: select a product.`)
         }
+        if (!rowProduct) {
+          throw new Error(`Row ${index + 1}: product details are still loading.`)
+        }
+        if (hasVariants && !productVariantId) {
+          throw new Error(`Row ${index + 1}: select the exact product variant.`)
+        }
+        if (hasVariants && !rowProduct.variants?.some((variant) => variant.id === productVariantId)) {
+          throw new Error(`Row ${index + 1}: selected variant is not valid for this product.`)
+        }
         if (Number.isNaN(physicalStock) || physicalStock < 0) {
           throw new Error(`Row ${index + 1}: physical stock must be 0 or more.`)
+        }
+        const currentQuantity = stockCountRowStockQueries[index]?.data?.stock_quantity
+        const variance = typeof currentQuantity === 'number'
+          ? physicalStock - currentQuantity
+          : null
+        if (row.applyAdjustment && variance !== null && variance < 0 && ![
+          'sale_correction',
+          'restock_correction',
+          'lost',
+          'damaged',
+          'theft'
+        ].includes(adjustmentReason ?? '')) {
+          throw new Error(
+            `Row ${index + 1}: select Sale Correction, Restock Correction, Lost Items, Damaged Items, or Theft.`
+          )
+        }
+        if (
+          row.applyAdjustment &&
+          variance !== null &&
+          variance > 0 &&
+          adjustmentReason !== 'restock_correction'
+        ) {
+          throw new Error(`Row ${index + 1}: positive variance must use Restock Correction.`)
         }
         if (
           hasAdjustmentBuyingPrice &&
@@ -1230,6 +1334,7 @@ const InventoryManagementPage = ({ view = 'status' }: InventoryManagementPagePro
 
         return createStockCountOrRequestApproval({
           product_id: productId,
+          product_variant_id: hasVariants ? productVariantId : undefined,
           branch_id: branchId,
           count_date: payload.countDate,
           physical_stock: physicalStock,
@@ -1253,8 +1358,8 @@ const InventoryManagementPage = ({ view = 'status' }: InventoryManagementPagePro
       setShowStockCountForm(false)
       queryClient.invalidateQueries({ queryKey: ['inventory', 'dashboard'] })
     },
-    onError: (error: Error) => {
-      setStockCountError(error.message || 'Could not create stock count.')
+    onError: (error: unknown) => {
+      setStockCountError(extractApiErrorMessage(error, 'Could not create stock count.'))
     }
   })
 
@@ -1553,6 +1658,33 @@ const InventoryManagementPage = ({ view = 'status' }: InventoryManagementPagePro
           {row.variance > 0 ? '+' : ''}{row.variance}
         </span>
       )
+    },
+    {
+      key: 'adjustment_effect',
+      header: 'Recorded As',
+      render: (row) => {
+        const reasonName = stockCountAdjustmentReasonsQuery.data?.find(
+          (reason) => reason.reason === row.adjustment_reason
+        )?.name
+        const label = row.adjustment_effect === 'sale'
+          ? `Sale${row.correction_sale_id ? ` #${row.correction_sale_id}` : ''}`
+          : row.adjustment_effect === 'restock_correction' || row.adjustment_effect === 'stock_top_up'
+            ? 'Restock correction'
+            : row.adjustment_effect === 'inventory_loss'
+              ? `${reasonName ?? 'Inventory'} loss`
+            : row.adjustment_effect === 'stock_adjustment'
+              ? 'Stock adjustment'
+              : 'Count only'
+        return <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${
+          row.adjustment_effect === 'sale'
+            ? 'bg-primary/10 text-primary'
+            : row.adjustment_effect === 'restock_correction' || row.adjustment_effect === 'stock_top_up'
+              ? 'bg-success/10 text-success'
+              : row.adjustment_effect === 'inventory_loss'
+                ? 'bg-error/10 text-error'
+              : 'bg-background text-text-secondary'
+        }`}>{label}</span>
+      }
     }
   ]
 
@@ -1605,6 +1737,7 @@ const InventoryManagementPage = ({ view = 'status' }: InventoryManagementPagePro
     setShowRestockForm(false)
     setRestockForm(createEmptyRestockForm(defaultInventoryBranchId))
     setRestockError(null)
+    if (isCreateRestockPage) navigate(workspacePath('/dashboard/admin/inventory/restocks'))
   }
 
   const onSubmitStockCount = (event: FormEvent) => {
@@ -1626,6 +1759,26 @@ const InventoryManagementPage = ({ view = 'status' }: InventoryManagementPagePro
   const draftSelectedVariant = draftVariants.find(
     (variant) => String(variant.id) === restockItemDraft.productVariantId
   )
+  const draftVariantOptionNames = Array.from(
+    new Set(draftVariants.flatMap((variant) => Object.keys(variant.options ?? {})))
+  )
+  const selectDraftVariant = (variantId: string, selections?: Record<string, string>) => {
+    const variant = draftVariants.find((item) => String(item.id) === variantId)
+    setRestockItemDraft((current) => syncMaxOffer({
+      ...current,
+      productVariantId: variantId,
+      variantSelections: selections ?? variant?.options ?? {},
+      buyingPrice: variant?.cost_price != null ? String(variant.cost_price) : current.buyingPrice,
+      sellingPrice: variant ? String(variant.price_override ?? variant.price) : current.sellingPrice
+    }))
+  }
+  const selectDraftVariantOption = (optionName: string, value: string) => {
+    const selections = { ...restockItemDraft.variantSelections, [optionName]: value }
+    const exactVariant = draftVariants.find((variant) =>
+      draftVariantOptionNames.every((name) => variant.options?.[name] === selections[name])
+    )
+    selectDraftVariant(exactVariant ? String(exactVariant.id) : '', selections)
+  }
   const draftQuantity = toSafeNumber(restockItemDraft.quantity)
   const draftBuyingTotal = draftQuantity * toSafeNumber(restockItemDraft.buyingPrice)
   const draftSellingTotal = draftQuantity * toSafeNumber(restockItemDraft.sellingPrice)
@@ -1672,11 +1825,17 @@ const InventoryManagementPage = ({ view = 'status' }: InventoryManagementPagePro
               {showStockTransferForm ? 'Close Transfer' : 'New Transfer'}
             </Button>}
             {view === 'restocks' && <Button
-              onClick={() => setShowRestockForm(!showRestockForm)}
+              onClick={() => navigate(workspacePath('/dashboard/admin/inventory/restocks/new'))}
               className="flex items-center gap-2 bg-gradient-to-r from-primary to-secondary text-white"
             >
               <PlusIcon className="h-4 w-4" />
-              {showRestockForm ? 'Close Restock' : 'New Restock'}
+              New Restock
+            </Button>}
+            {isCreateRestockPage && <Button
+              variant="outline"
+              onClick={closeRestockForm}
+            >
+              Back to Restocks
             </Button>}
           </div>
         </div>
@@ -1768,23 +1927,25 @@ const InventoryManagementPage = ({ view = 'status' }: InventoryManagementPagePro
 
       {/* Restock Form */}
       <AnimatePresence>
-        {view === 'restocks' && showRestockForm && (
+        {isRestockWorkflow && showRestockForm && (
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm"
-            onClick={closeRestockForm}
+            className={isCreateRestockPage ? 'mb-6' : 'fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm'}
+            onClick={isCreateRestockPage ? undefined : closeRestockForm}
           >
             <motion.div
               role="dialog"
-              aria-modal="true"
+              aria-modal={isCreateRestockPage ? undefined : true}
               aria-labelledby="restock-form-title"
               initial={{ opacity: 0, y: 18, scale: 0.97 }}
               animate={{ opacity: 1, y: 0, scale: 1 }}
               exit={{ opacity: 0, y: 18, scale: 0.97 }}
               transition={{ duration: 0.18 }}
-              className="max-h-[90vh] w-full max-w-5xl overflow-y-auto rounded-2xl border border-border bg-white p-4 shadow-2xl sm:p-6"
+              className={isCreateRestockPage
+                ? 'w-full rounded-2xl border border-border bg-white p-4 shadow-sm sm:p-6'
+                : 'max-h-[90vh] w-full max-w-5xl overflow-y-auto rounded-2xl border border-border bg-white p-4 shadow-2xl sm:p-6'}
               onClick={(event) => event.stopPropagation()}
             >
               <div className="mb-5 flex items-start justify-between gap-4">
@@ -1801,7 +1962,7 @@ const InventoryManagementPage = ({ view = 'status' }: InventoryManagementPagePro
                     </p>
                   </div>
                 </div>
-                <button
+                {!isCreateRestockPage && <button
                   type="button"
                   aria-label="Close restock form"
                   onClick={closeRestockForm}
@@ -1809,7 +1970,7 @@ const InventoryManagementPage = ({ view = 'status' }: InventoryManagementPagePro
                   className="rounded-lg p-2 text-text-tertiary transition-colors hover:bg-background hover:text-text disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   <XMarkIcon className="h-5 w-5" />
-                </button>
+                </button>}
               </div>
 
               <form onSubmit={onSubmitRestock} className="space-y-4">
@@ -1990,7 +2151,7 @@ const InventoryManagementPage = ({ view = 'status' }: InventoryManagementPagePro
       </AnimatePresence>
 
       <AnimatePresence>
-        {view === 'restocks' && showRestockForm && showRestockItemForm && (
+        {isRestockWorkflow && showRestockForm && showRestockItemForm && (
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
@@ -2173,7 +2334,28 @@ const InventoryManagementPage = ({ view = 'status' }: InventoryManagementPagePro
                     onChange={(event) => updateRestockItemDraft('productId', String(event.target.value))}
                     required
                   />
-                  <Select
+                  {draftVariantOptionNames.length > 0 ? draftVariantOptionNames.map((optionName) => {
+                    const compatibleVariants = draftVariants.filter((variant) =>
+                      draftVariantOptionNames.every((name) =>
+                        name === optionName || !restockItemDraft.variantSelections[name] ||
+                        variant.options?.[name] === restockItemDraft.variantSelections[name]
+                      )
+                    )
+                    const values = Array.from(new Set(
+                      compatibleVariants.map((variant) => variant.options?.[optionName]).filter(Boolean)
+                    )) as string[]
+                    return <Select
+                      key={optionName}
+                      label={optionName}
+                      options={[
+                        { label: `Select ${optionName.toLowerCase()}`, value: '' },
+                        ...values.map((value) => ({ label: value, value }))
+                      ]}
+                      value={restockItemDraft.variantSelections[optionName] ?? ''}
+                      onChange={(event) => selectDraftVariantOption(optionName, String(event.target.value))}
+                      required
+                    />
+                  }) : <Select
                     label="Variant"
                     options={[
                       {
@@ -2188,30 +2370,14 @@ const InventoryManagementPage = ({ view = 'status' }: InventoryManagementPagePro
                       },
                       ...draftVariants.map((variant) => ({
                         label: formatVariantLabel(variant),
-                        value: String(variant.id),
-                        disabled: restockForm.rows.some(
-                          (row) =>
-                            row.id !== editingRestockRowId &&
-                            row.productId === restockItemDraft.productId &&
-                            row.productVariantId === String(variant.id)
-                        ),
-                        description: restockForm.rows.some(
-                          (row) =>
-                            row.id !== editingRestockRowId &&
-                            row.productId === restockItemDraft.productId &&
-                            row.productVariantId === String(variant.id)
-                        )
-                          ? 'Already added — use Edit to update it'
-                          : undefined
+                        value: String(variant.id)
                       }))
                     ]}
                     value={restockItemDraft.productVariantId}
-                    onChange={(event) =>
-                      updateRestockItemDraft('productVariantId', String(event.target.value))
-                    }
+                    onChange={(event) => selectDraftVariant(String(event.target.value))}
                     disabled={!draftVariants.length}
                     required={draftVariants.length > 0}
-                  />
+                  />}
                   <Select
                     label="Supplier (optional)"
                     searchable
@@ -2655,6 +2821,9 @@ const InventoryManagementPage = ({ view = 'status' }: InventoryManagementPagePro
                 <div className="space-y-3">
                   {stockCountForm.rows.map((row, index) => {
                     const rowStockQuery = stockCountRowStockQueries[index]
+                    const rowProductQuery = stockCountRowProductQueries[index]
+                    const rowProduct = rowProductQuery?.data
+                    const rowVariants = rowProduct?.variants ?? []
                     const currentStock = rowStockQuery?.data ?? null
                     const physicalStock = toSafeNumber(row.physicalStock)
                     const variance = currentStock ? physicalStock - currentStock.stock_quantity : null
@@ -2685,7 +2854,7 @@ const InventoryManagementPage = ({ view = 'status' }: InventoryManagementPagePro
                           </Button>
                         </div>
 
-                        <div className="grid gap-4 md:grid-cols-3">
+                        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
                           <Select
                             label="Product"
                             options={getProductOptionsForStockCountRow(row.id, row.productId)}
@@ -2694,6 +2863,44 @@ const InventoryManagementPage = ({ view = 'status' }: InventoryManagementPagePro
                               updateStockCountRowField(row.id, 'productId', String(event.target.value))
                             }
                             required
+                          />
+                          <Select
+                            label="Variant"
+                            options={[
+                              {
+                                label: !row.productId
+                                  ? 'Select a product first'
+                                  : rowProductQuery?.isLoading
+                                    ? 'Loading variants...'
+                                    : rowVariants.length
+                                      ? 'Select exact variant'
+                                      : 'Base product (no variants)',
+                                value: ''
+                              },
+                              ...rowVariants.map((variant) => {
+                                const alreadySelected = stockCountForm.rows.some((other) =>
+                                  other.id !== row.id &&
+                                  other.productId === row.productId &&
+                                  other.productVariantId === String(variant.id)
+                                )
+                                return {
+                                  label: formatVariantLabel(variant),
+                                  value: String(variant.id),
+                                  disabled: alreadySelected,
+                                  description: alreadySelected ? 'Already added to this count' : undefined
+                                }
+                              })
+                            ]}
+                            value={row.productVariantId}
+                            onChange={(event) =>
+                              updateStockCountRowField(
+                                row.id,
+                                'productVariantId',
+                                String(event.target.value)
+                              )
+                            }
+                            disabled={!rowVariants.length}
+                            required={rowVariants.length > 0}
                           />
                           <TextInput
                             label="Physical Stock"
@@ -2728,6 +2935,15 @@ const InventoryManagementPage = ({ view = 'status' }: InventoryManagementPagePro
                             <p className="text-xs text-text-tertiary">
                               Select a product to see current stock in {selectedStockCountBranchName}.
                             </p>
+                          ) : rowProductQuery?.isLoading ? (
+                            <div className="flex items-center gap-2 text-xs text-text-secondary">
+                              <ArrowPathIcon className="h-3.5 w-3.5 animate-spin" />
+                              Loading product variants...
+                            </div>
+                          ) : rowVariants.length > 0 && !row.productVariantId ? (
+                            <p className="text-xs text-text-tertiary">
+                              Select the exact variant to load its stock in {selectedStockCountBranchName}.
+                            </p>
                           ) : rowStockQuery?.isLoading ? (
                             <div className="flex items-center gap-2 text-xs text-text-secondary">
                               <ArrowPathIcon className="h-3.5 w-3.5 animate-spin" />
@@ -2743,6 +2959,12 @@ const InventoryManagementPage = ({ view = 'status' }: InventoryManagementPagePro
                                 Current stock in {currentStock.branch_name ?? selectedStockCountBranchName}:{' '}
                                 <strong className="text-text">{currentStock.stock_quantity}</strong>
                               </span>
+                              {formatVariantOptionsSummary(currentStock.variant_options) && <span>
+                                Variant:{' '}
+                                <strong className="text-text">
+                                  {formatVariantOptionsSummary(currentStock.variant_options)}
+                                </strong>
+                              </span>}
                               <span>
                                 Business stock:{' '}
                                 <strong className="text-text">
@@ -2789,7 +3011,7 @@ const InventoryManagementPage = ({ view = 'status' }: InventoryManagementPagePro
                           <div className="mt-3 grid gap-4 md:grid-cols-2">
                             <Select
                               label="Adjustment Reason"
-                              options={stockCountAdjustmentReasonOptions}
+                              options={getStockCountAdjustmentReasonOptions(variance)}
                               value={row.adjustmentReason}
                               onChange={(event) =>
                                 updateStockCountRowField(
@@ -2798,7 +3020,31 @@ const InventoryManagementPage = ({ view = 'status' }: InventoryManagementPagePro
                                   String(event.target.value)
                                 )
                               }
+                              disabled={variance === null || variance === 0}
                             />
+                            {row.adjustmentReason === 'sale_correction' && variance !== null && variance !== 0 && (
+                              <div className={`rounded-lg border px-3 py-2 text-xs md:col-span-2 ${
+                                variance < 0
+                                  ? 'border-primary/20 bg-primary/5 text-primary-dark'
+                                  : 'border-success/20 bg-success/5 text-success'
+                              }`}>
+                                {variance < 0
+                                  ? `${Math.abs(variance)} missing unit${Math.abs(variance) === 1 ? '' : 's'} will be recorded as a completed sale correction using the entered or current selling price.`
+                                  : `${variance} extra unit${variance === 1 ? '' : 's'} will be recorded as a stock top-up, not as a sale.`}
+                              </div>
+                            )}
+                            {row.adjustmentReason === 'restock_correction' && variance !== null && variance !== 0 && (
+                              <div className="rounded-lg border border-success/20 bg-success/5 px-3 py-2 text-xs text-success md:col-span-2">
+                                {variance > 0
+                                  ? `${variance} unit${variance === 1 ? '' : 's'} will be added to stock as a restock correction.`
+                                  : `${Math.abs(variance)} unit${Math.abs(variance) === 1 ? '' : 's'} will be removed from stock as a restock correction. No sale will be created.`}
+                              </div>
+                            )}
+                            {['lost', 'damaged', 'theft'].includes(row.adjustmentReason) && variance !== null && variance < 0 && (
+                              <div className="rounded-lg border border-error/20 bg-error/5 px-3 py-2 text-xs text-error md:col-span-2">
+                                {Math.abs(variance)} unit{Math.abs(variance) === 1 ? '' : 's'} will be removed from stock and recorded as an inventory loss. No sale will be created.
+                              </div>
+                            )}
                             <TextInput
                               label="Adjustment Reference (optional)"
                               value={row.adjustmentReference}
@@ -2838,6 +3084,7 @@ const InventoryManagementPage = ({ view = 'status' }: InventoryManagementPagePro
                                   event.target.value
                                 )
                               }
+                              helperText="For a negative sale correction, this becomes the sale unit price. Leave blank to use the current variant or product price."
                             />
                           </div>
                         )}

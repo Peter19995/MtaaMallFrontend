@@ -106,6 +106,14 @@ export function canAccessWorkspace(user: WorkspacePrincipal | null, path: string
   const modules = experience === 'platform' ? platformModules : businessModules
   const module = experience === 'platform' && /^businesses\/[^/]+\/payments$/.test(suffix)
     ? { path: suffix, label: 'Business POS payments', permission: 'platform.payments.read' }
+    : ['catalogue', 'products/add-from-catalog', 'products/new'].includes(suffix)
+    ? { path: suffix, label: 'Inherit products', permission: 'products.create', mutation: true }
+    : suffix === 'product-categories/inherit'
+    ? { path: suffix, label: 'Inherit product categories', permission: 'products.create', mutation: true }
+    : suffix === 'inventory/restocks/new'
+    ? { path: suffix, label: 'Create restock', permission: 'inventory.restock', mutation: true }
+    : suffix === 'products/proposals'
+    ? { path: suffix, label: 'Product proposals', permission: 'catalog.products.propose', mutation: true }
     : /^products\/\d+$/.test(suffix)
     ? { path: suffix, label: 'Manage product', permission: 'products.update', mutation: true }
     : [...modules].sort((a, b) => b.path.length - a.path.length)

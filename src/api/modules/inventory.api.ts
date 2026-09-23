@@ -101,6 +101,8 @@ export type StockCountResponse = {
   accounting_entry_id?: number | null
   accounting_entry_number?: string | null
   accounting_amount?: number | null
+  correction_sale_id?: number | null
+  adjustment_effect?: 'sale' | 'restock_correction' | 'inventory_loss' | 'stock_top_up' | 'stock_adjustment' | null
   location: string
   notes?: string | null
   category_id?: number | null
@@ -170,6 +172,7 @@ export type ProductStockStatusResponse = {
 export type StockStatusListParams = {
   branch_id?: number
   product_id?: number
+  product_variant_id?: number
   skip?: number
   limit?: number
 }
@@ -237,8 +240,6 @@ export type StockCountAdjustmentReason =
   | 'lost'
   | 'damaged'
   | 'theft'
-  | 'found'
-  | 'other'
 
 export type InventoryValuationMethodInfoResponse = {
   method: InventoryValuationMethod

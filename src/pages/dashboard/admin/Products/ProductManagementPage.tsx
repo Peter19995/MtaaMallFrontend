@@ -27,13 +27,16 @@ import {
   type ProductStockStatusResponse as InventoryProductStockStatusResponse
 } from '@api/modules/inventory.api'
 import {
-  adoptCatalogProductRequest,
   createProductRequest,
   deleteProductRequest,
   generateProductSkuRequest,
   getProductRequest,
+  attachVariantOptionToProductRequest,
+  detachVariantOptionFromProductRequest,
   listCategoriesRequest,
+  listProductVariantOptionsRequest,
   listProductsRequest,
+  listVariantOptionsRequest,
   type GeneratedProductSkuResponse,
   type ProductCreate,
   type ProductResponse,
@@ -42,11 +45,6 @@ import {
   updateProductCatalogueOverridesRequest,
   updateProductRequest
 } from '@api/modules/products.api'
-import {
-  listCatalogProductsRequest,
-  searchCatalogProductsRequest,
-  type CatalogProductSearchResult,
-} from '@api/modules/catalog.api'
 import { AppTheme, withOpacity } from '@constants/theme'
 import { resolveMediaUrl, resolveMediaUrls } from '@utils/media'
 
@@ -101,6 +99,29 @@ export const productImageSelectionError = (files: File[], totalImageCount: numbe
   const oversized = files.find(file => file.size > MAX_PRODUCT_IMAGE_SIZE)
   if (oversized) return `${oversized.name} is larger than 5 MB.`
   return null
+}
+
+export const filterProductsByTypedName = <T extends { name: string }>(products: T[], query: string): T[] => {
+  const normalizedQuery = query.trim().toLocaleLowerCase()
+  if (!normalizedQuery) return products
+  return products.filter(product => product.name.toLocaleLowerCase().includes(normalizedQuery))
+}
+
+export const productSaveErrorMessage = (error: unknown): string => {
+  const response = (error as { response?: { status?: number; data?: unknown } } | null)?.response
+  const payload = response?.data
+  if (typeof payload === 'string' && payload.trim()) return payload
+  if (payload && typeof payload === 'object') {
+    const detail = (payload as { detail?: unknown; message?: unknown }).detail
+    const message = (payload as { detail?: unknown; message?: unknown }).message
+    if (typeof detail === 'string' && detail.trim()) return detail
+    if (typeof message === 'string' && message.trim()) return message
+  }
+  if (response?.status === 409) return 'This product already exists in your business.'
+  if (error instanceof Error && error.message && !/^Request failed with status code/i.test(error.message)) {
+    return error.message
+  }
+  return 'Could not save product.'
 }
 
 const formatCurrency = (amount: number): string =>
@@ -180,10 +201,7 @@ const ProductManagementPage = () => {
   const [showProductForm, setShowProductForm] = useState(false)
   const [editingProductId, setEditingProductId] = useState<number | null>(null)
   const [form, setForm] = useState<ProductFormState>(EMPTY_FORM)
-  const [catalogueSearch, setCatalogueSearch] = useState('')
-  const [debouncedCatalogueSearch, setDebouncedCatalogueSearch] = useState('')
-  const [catalogueSuggestionsOpen, setCatalogueSuggestionsOpen] = useState(false)
-  const [selectedCatalogueProduct, setSelectedCatalogueProduct] = useState<CatalogProductSearchResult | null>(null)
+  const [selectedVariantOptionIds, setSelectedVariantOptionIds] = useState<number[]>([])
   const [formError, setFormError] = useState<string | null>(null)
   const [showFilters, setShowFilters] = useState(false)
   const [previewImage, setPreviewImage] = useState<string | null>(null)
@@ -195,32 +213,27 @@ const ProductManagementPage = () => {
     queryFn: listCategoriesRequest
   })
 
+  const variantOptionsQuery = useQuery({
+    queryKey: ['products', 'variant-options'],
+    queryFn: listVariantOptionsRequest,
+    enabled: showProductForm,
+  })
+
+  const editingVariantOptionsQuery = useQuery({
+    queryKey: ['products', 'details', editingProductId, 'variant-options', 'form'],
+    queryFn: () => listProductVariantOptionsRequest(editingProductId as number),
+    enabled: showProductForm && editingProductId !== null,
+  })
+
   useEffect(() => {
-    const timer = window.setTimeout(
-      () => setDebouncedCatalogueSearch(catalogueSearch.trim()),
-      250
-    )
-    return () => window.clearTimeout(timer)
-  }, [catalogueSearch])
+    if (!editingProductId || !editingVariantOptionsQuery.data) return
+    setSelectedVariantOptionIds(editingVariantOptionsQuery.data.map(option => option.id))
+  }, [editingProductId, editingVariantOptionsQuery.data])
 
-  const catalogueBrowseQuery = useQuery({
-    queryKey: ['catalog', 'products', 'product-form'],
-    queryFn: () => listCatalogProductsRequest({ limit: 50 }),
-    enabled: showProductForm && !editingProductId && debouncedCatalogueSearch.length < 2,
-  })
-
-  const catalogueSearchQuery = useQuery({
-    queryKey: ['catalog', 'products', 'product-form-search', debouncedCatalogueSearch],
-    queryFn: () => searchCatalogProductsRequest({ q: debouncedCatalogueSearch, limit: 20 }),
-    enabled: showProductForm && !editingProductId && debouncedCatalogueSearch.length >= 2,
-  })
-
-  const catalogueSuggestions = debouncedCatalogueSearch.length >= 2
-    ? catalogueSearchQuery.data ?? []
-    : catalogueBrowseQuery.data ?? []
-  const catalogueSuggestionsLoading = debouncedCatalogueSearch.length >= 2
-    ? catalogueSearchQuery.isFetching
-    : catalogueBrowseQuery.isFetching
+  const originallyAttachedVariantOptionIds = useMemo(
+    () => new Set((editingVariantOptionsQuery.data ?? []).map(option => option.id)),
+    [editingVariantOptionsQuery.data],
+  )
 
   const selectedCreateCategoryId = useMemo(() => {
     if (editingProductId) {
@@ -314,34 +327,25 @@ const ProductManagementPage = () => {
           })
         }
         await uploadProductImagesRequest(editingProductId, payload.imageFiles)
+        const attachedOptions = await listProductVariantOptionsRequest(editingProductId)
+        const attachedIds = new Set(attachedOptions.map(option => option.id))
+        for (const optionId of selectedVariantOptionIds) {
+          if (!attachedIds.has(optionId)) {
+            const valueIds = variantOptionsQuery.data
+              ?.find(option => option.id === optionId)
+              ?.values.map(value => value.id) ?? []
+            if (valueIds.length === 0) throw new Error('Selected variant option has no values.')
+            await attachVariantOptionToProductRequest(editingProductId, optionId, valueIds)
+          }
+        }
+        if (canDelete) {
+          for (const optionId of attachedIds) {
+            if (!selectedVariantOptionIds.includes(optionId)) {
+              await detachVariantOptionFromProductRequest(editingProductId, optionId)
+            }
+          }
+        }
         const product = await getProductRequest(editingProductId)
-        return { product, isEditing }
-      }
-
-      if (selectedCatalogueProduct) {
-        const adopted = await adoptCatalogProductRequest({
-          catalog_product_id: selectedCatalogueProduct.public_id,
-          business_sku: sku,
-          selling_price: String(sellingPrice),
-          available_online: storefrontEnabled && payload.availableOnline,
-          description_override:
-            payload.description.trim() && payload.description.trim() !== selectedCatalogueProduct.description?.trim()
-              ? payload.description.trim()
-              : null,
-        })
-        await updateProductRequest(adopted.id, {
-          tags: tags || undefined,
-          stock_quantity: stockQuantity,
-          reorder_level: reorderLevel,
-          selling_price: sellingPrice,
-          is_active: payload.isActive,
-          is_published: storefrontEnabled && payload.isPublished,
-          available_online: storefrontEnabled && payload.availableOnline,
-          is_on_offer: payload.isOnOffer,
-          max_offer: payload.isOnOffer ? maxOffer : 0,
-        })
-        await uploadProductImagesRequest(adopted.id, payload.imageFiles)
-        const product = await getProductRequest(adopted.id)
         return { product, isEditing }
       }
 
@@ -362,22 +366,27 @@ const ProductManagementPage = () => {
       }
 
       const product = await createProductRequest(createPayload, payload.imageFiles)
+      for (const optionId of selectedVariantOptionIds) {
+        const valueIds = variantOptionsQuery.data
+          ?.find(option => option.id === optionId)
+          ?.values.map(value => value.id) ?? []
+        if (valueIds.length === 0) throw new Error('Selected variant option has no values.')
+        await attachVariantOptionToProductRequest(product.id, optionId, valueIds)
+      }
       return { product, isEditing }
     },
     onSuccess: ({ product }) => {
       queryClient.invalidateQueries({ queryKey: ['products', 'list'] })
       queryClient.setQueryData(['products', 'details', product.id], product)
       setForm(EMPTY_FORM)
+      setSelectedVariantOptionIds([])
       setEditingProductId(null)
       setShowProductForm(false)
-      setSelectedCatalogueProduct(null)
-      setCatalogueSearch('')
-      setCatalogueSuggestionsOpen(false)
       setFormError(null)
 
     },
-    onError: (error: Error) => {
-      setFormError(error.message || 'Could not save product.')
+    onError: (error: unknown) => {
+      setFormError(productSaveErrorMessage(error))
     }
   })
 
@@ -445,9 +454,6 @@ const ProductManagementPage = () => {
 
     setEditingProductId(null)
     setForm({ ...EMPTY_FORM, sku: automaticSku() })
-    setSelectedCatalogueProduct(null)
-    setCatalogueSearch('')
-    setCatalogueSuggestionsOpen(false)
     setFormError(null)
     setShowProductForm(true)
     navigate(location.pathname, { replace: true })
@@ -474,43 +480,21 @@ const ProductManagementPage = () => {
     setShowProductForm(false)
     setEditingProductId(null)
     setForm(EMPTY_FORM)
-    setSelectedCatalogueProduct(null)
-    setCatalogueSearch('')
-    setCatalogueSuggestionsOpen(false)
+    setSelectedVariantOptionIds([])
     setFormError(null)
   }
 
   const openCreateProduct = () => {
     setEditingProductId(null)
     setForm({ ...EMPTY_FORM, sku: automaticSku() })
-    setSelectedCatalogueProduct(null)
-    setCatalogueSearch('')
-    setCatalogueSuggestionsOpen(true)
+    setSelectedVariantOptionIds([])
     setFormError(null)
     setShowProductForm(true)
   }
 
-  const selectCatalogueProduct = (product: CatalogProductSearchResult) => {
-    const matchingCategory = (categoriesQuery.data ?? []).find(
-      category => category.name.trim().toLocaleLowerCase() === product.category?.trim().toLocaleLowerCase()
-    )
-    setSelectedCatalogueProduct(product)
-    setCatalogueSearch(product.name)
-    setCatalogueSuggestionsOpen(false)
-    setForm(previous => ({
-      ...previous,
-      name: product.name,
-      description: product.description ?? '',
-      categoryId: matchingCategory ? String(matchingCategory.id) : '',
-      sku: matchingCategory ? '' : `CAT-${product.public_id.slice(0, 8).toUpperCase()}`,
-    }))
-  }
-
   const openEditProduct = (product: ProductResponse) => {
-    setSelectedCatalogueProduct(null)
-    setCatalogueSearch('')
-    setCatalogueSuggestionsOpen(false)
     setEditingProductId(product.id)
+    setSelectedVariantOptionIds((product.variant_options ?? []).map(option => option.id))
     setForm({
       sku: product.sku,
       name: product.name,
@@ -666,6 +650,16 @@ const ProductManagementPage = () => {
       align: 'right',
       render: (row) => (
         <div className="flex justify-end gap-2">
+          {canEdit && <button
+            type="button"
+            className="inline-flex items-center gap-1.5 rounded-lg bg-primary/10 px-2.5 py-2 text-xs font-semibold text-primary-dark transition-all hover:bg-primary/20"
+            onClick={() => navigate(`${location.pathname}/${row.id}`, { state: { initialTab: 'variants' } })}
+            title={`Manage variants for ${row.name}`}
+            aria-label={`Manage variants for ${row.name}`}
+          >
+            <TagIcon className="h-4 w-4" />
+            Variants
+          </button>}
           <button
             type="button"
             className="p-2 text-text-secondary hover:text-primary hover:bg-primary/5 rounded-lg transition-all"
@@ -721,6 +715,14 @@ const ProductManagementPage = () => {
           </div>
           
           {canCreate && <div className="flex gap-2">
+            <Button
+              variant="outline"
+              onClick={() => navigate(`${location.pathname}/add-from-catalog`)}
+              className="flex items-center gap-2"
+            >
+              <CubeIcon className="h-4 w-4" />
+              Inherit products
+            </Button>
             <Button
               onClick={openCreateProduct}
               className="flex items-center gap-2"
@@ -876,55 +878,23 @@ const ProductManagementPage = () => {
               </div>
               <form onSubmit={onSubmitProduct} className="space-y-4">
                 {editingProductId && <div className="grid gap-3 md:grid-cols-2"><div className="rounded-xl border border-primary/20 bg-primary/5 p-4"><p className="text-xs font-bold uppercase tracking-[.14em] text-primary-dark">Catalogue information</p><p className="mt-1 font-bold text-text">Shared across MtaaMall</p><p className="mt-1 text-xs text-text-secondary">{catalogueFieldsLocked ? 'Name and category come from the approved catalogue and cannot be edited by this business.' : 'This private listing is not yet linked to an approved catalogue product.'}</p></div><div className="rounded-xl border border-secondary/20 bg-secondary/5 p-4"><p className="text-xs font-bold uppercase tracking-[.14em] text-secondary">Your listing</p><p className="mt-1 font-bold text-text">Visible and editable only by this business</p><p className="mt-1 text-xs text-text-secondary">Price, stock, publication, tags, offers and business overrides remain editable.</p></div></div>}
-                {!editingProductId ? <div className="relative">
-                  <label htmlFor="product-name" className="mb-1.5 block text-sm font-medium text-text">
-                    Product name <span className="text-error">*</span>
-                  </label>
-                  <div className="relative">
-                    <MagnifyingGlassIcon className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-text-tertiary" />
-                    <input
-                      id="product-name"
-                      value={form.name}
-                      onFocus={() => setCatalogueSuggestionsOpen(true)}
-                      onBlur={() => window.setTimeout(() => setCatalogueSuggestionsOpen(false), 100)}
-                      onChange={event => {
-                        const name = event.target.value
-                        setForm(previous => ({ ...previous, name }))
-                        setCatalogueSearch(name)
-                        if (selectedCatalogueProduct?.name !== name) setSelectedCatalogueProduct(null)
-                        setCatalogueSuggestionsOpen(true)
-                      }}
-                      required
-                      autoComplete="off"
-                      placeholder="Start typing a product name"
-                      className="h-11 w-full rounded-xl border border-border bg-background py-2 pl-10 pr-10 text-sm text-text outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20"
-                    />
-                    {catalogueSuggestionsLoading && <ArrowPathIcon className="absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 animate-spin text-primary" />}
-                  </div>
-                  <p className="mt-1.5 text-xs text-text-tertiary">Choose a suggestion to reuse its approved details, or keep typing to create a private product.</p>
-                  {catalogueSuggestionsOpen && <div className="absolute z-30 mt-2 max-h-72 w-full overflow-y-auto rounded-xl border border-border bg-white p-1 shadow-xl">
-                    {catalogueSuggestionsLoading ? <p className="px-4 py-3 text-sm text-text-secondary">Loading products...</p> : catalogueSuggestions.length > 0 ? catalogueSuggestions.map(product => <button
-                      key={product.public_id}
-                      type="button"
-                      onMouseDown={event => event.preventDefault()}
-                      onClick={() => selectCatalogueProduct(product)}
-                      className="flex w-full items-start justify-between gap-4 rounded-lg px-3 py-3 text-left transition hover:bg-primary/5 focus:bg-primary/5 focus:outline-none"
-                    >
-                      <span><strong className="block text-sm text-text">{product.name}</strong><span className="mt-0.5 block text-xs text-text-secondary">{[product.brand, product.package_quantity && product.package_unit ? `${product.package_quantity} ${product.package_unit}` : null, product.category].filter(Boolean).join(' · ') || 'Approved catalogue product'}</span></span>
-                      <span className="shrink-0 rounded-full bg-success/10 px-2 py-1 text-[11px] font-semibold text-success">Select</span>
-                    </button>) : <div className="px-4 py-3"><p className="text-sm font-medium text-text">No shared product found</p><p className="mt-1 text-xs text-text-secondary">Continue filling the form to create this as a private product.</p></div>}
-                  </div>}
-                  {selectedCatalogueProduct && <div className="mt-3 flex items-center justify-between rounded-xl border border-success/20 bg-success/5 px-4 py-3"><div><p className="text-sm font-semibold text-text">Using {selectedCatalogueProduct.name}</p><p className="text-xs text-text-secondary">Approved shared details will be used. Your price and stock remain private.</p></div><button type="button" className="text-xs font-semibold text-primary hover:underline" onClick={() => { setSelectedCatalogueProduct(null); setCatalogueSuggestionsOpen(true) }}>Change</button></div>}
-                </div> : <TextInput
+                <TextInput
+                  id="product-name"
                   label="Product name"
                   value={form.name}
                   onChange={(e) => setForm({ ...form, name: e.target.value })}
+                  onKeyDown={event => {
+                    if (event.key !== 'Enter') return
+                    event.preventDefault()
+                    document.getElementById('product-category')?.focus()
+                  }}
                   required
                   disabled={catalogueFieldsLocked}
-                />}
+                />
 
                 <div className="grid gap-4 md:grid-cols-3">
                   <Select
+                    id="product-category"
                     label="Category (optional)"
                     options={productFormCategoryOptions}
                     value={form.categoryId}
@@ -957,32 +927,81 @@ const ProductManagementPage = () => {
                   />
                 </div>
 
+                <section className="rounded-xl border border-border bg-background/60 p-4">
+                  <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                    <div>
+                      <h3 className="text-sm font-semibold text-text">Product variants</h3>
+                      <p className="mt-1 text-xs text-text-secondary">Select one or more option groups. For example, attach both Color and Size to generate their combinations.</p>
+                    </div>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => navigate(`${location.pathname.replace(/\/products$/, '')}/variant-options`)}
+                    >
+                      Manage variant options
+                    </Button>
+                  </div>
+
+                  {variantOptionsQuery.isLoading || editingVariantOptionsQuery.isLoading ? (
+                    <p className="mt-4 inline-flex items-center gap-2 text-sm text-text-secondary"><ArrowPathIcon className="h-4 w-4 animate-spin" />Loading variant options...</p>
+                  ) : (variantOptionsQuery.data?.length ?? 0) === 0 ? (
+                    <p className="mt-4 rounded-lg border border-dashed border-border bg-white px-4 py-5 text-center text-sm text-text-secondary">No variant options exist yet. Create options such as Color or Size first.</p>
+                  ) : (
+                    <div className="mt-4 grid gap-3 md:grid-cols-2">
+                      {variantOptionsQuery.data?.map(option => {
+                        const checked = selectedVariantOptionIds.includes(option.id)
+                        const wasAttached = originallyAttachedVariantOptionIds.has(option.id)
+                        const cannotChange = editingProductId
+                          ? (wasAttached ? !canDelete : !canCreate)
+                          : !canCreate
+                        return <label key={option.id} className={`flex items-start gap-3 rounded-xl border bg-white p-3 ${cannotChange ? 'cursor-not-allowed opacity-60' : 'cursor-pointer'} ${checked ? 'border-primary/40 ring-1 ring-primary/10' : 'border-border'}`}>
+                          <input
+                            type="checkbox"
+                            checked={checked}
+                            disabled={cannotChange}
+                            onChange={event => setSelectedVariantOptionIds(current => event.target.checked
+                              ? [...current, option.id]
+                              : current.filter(id => id !== option.id))}
+                            className="mt-1 h-4 w-4 accent-primary"
+                          />
+                          <span className="min-w-0">
+                            <span className="block text-sm font-semibold text-text">{option.option_name}</span>
+                            <span className="mt-1 block text-xs text-text-secondary">{option.values.map(value => value.value).join(', ') || 'No values configured'}</span>
+                          </span>
+                        </label>
+                      })}
+                    </div>
+                  )}
+                </section>
+
                 <details className="rounded-xl border border-border bg-background/60 px-4 py-3">
                   <summary className="cursor-pointer text-sm font-semibold text-text">More product details</summary>
-                  <div className="mt-4 grid gap-4 md:grid-cols-2">
-                  <TextInput label="Reorder level" type="number" min={0} value={form.reorderLevel} onChange={(e) => setForm({ ...form, reorderLevel: e.target.value })} />
-                  <TextInput label="Maximum offer amount" type="number" min={0} step="0.01" value={form.maxOffer} onChange={(e) => setForm({ ...form, maxOffer: e.target.value })} disabled={!form.isOnOffer} />
-                  <TextArea
-                    label={catalogueFieldsLocked ? 'Your description override' : 'Description'}
-                    value={form.description}
-                    onChange={(e) => setForm({ ...form, description: e.target.value })}
-                    placeholder="Product description..."
-                    rows={4}
-                  />
+                  <div className="mt-4 space-y-5">
+                    <div className="grid gap-4 md:grid-cols-2">
+                      <TextInput label="Reorder level" type="number" min={0} value={form.reorderLevel} onChange={(e) => setForm({ ...form, reorderLevel: e.target.value })} />
+                      <TextInput label="Maximum offer amount" type="number" min={0} step="0.01" value={form.maxOffer} onChange={(e) => setForm({ ...form, maxOffer: e.target.value })} disabled={!form.isOnOffer} />
+                    </div>
 
-                <div className="grid gap-4 md:col-span-2 md:grid-cols-2">
-                  <TextArea
-                    label="Tags"
-                    value={form.tags}
-                    onChange={(e) => setForm({ ...form, tags: e.target.value })}
-                    placeholder="pillows, bedding, bedroom"
-                    helperText="Comma-separated tags stored as one backend string."
-                    rows={4}
-                  />
-                </div>
+                    <div className="grid gap-4 lg:grid-cols-2">
+                      <TextArea
+                        label={catalogueFieldsLocked ? 'Your description override' : 'Description'}
+                        value={form.description}
+                        onChange={(e) => setForm({ ...form, description: e.target.value })}
+                        placeholder="Product description..."
+                        rows={4}
+                      />
+                      <TextArea
+                        label="Tags"
+                        value={form.tags}
+                        onChange={(e) => setForm({ ...form, tags: e.target.value })}
+                        placeholder="pillows, bedding, bedroom"
+                        helperText="Comma-separated tags stored as one backend string."
+                        rows={4}
+                      />
+                    </div>
 
-                <div className="grid gap-4 md:col-span-2 md:grid-cols-[minmax(0,1fr)_auto]">
-                  <div className="space-y-2">
+                    <div className="space-y-2 rounded-xl border border-border bg-white p-4">
                     <label htmlFor="product-images" className="block text-xs font-medium text-text-secondary">
                       Upload Images
                     </label>
@@ -1007,7 +1026,7 @@ const ProductManagementPage = () => {
                         }
                         e.target.value = ''
                       }}
-                      className="w-full px-3 py-2 bg-background border border-border rounded-lg text-sm"
+                      className="block w-full cursor-pointer rounded-lg border border-border bg-background px-3 py-2 text-sm text-text file:mr-4 file:rounded-lg file:border-0 file:bg-primary/10 file:px-4 file:py-2 file:text-xs file:font-semibold file:text-primary-dark hover:file:bg-primary/20"
                     />
                     <p className="text-xs text-text-tertiary">
                       JPG, PNG, WEBP or GIF only. Maximum 5 images per product and 5 MB per image.
@@ -1064,35 +1083,35 @@ const ProductManagementPage = () => {
                     )}
                   </div>
 
-                  <div className="flex items-center gap-4">
-                    <label className="flex items-center gap-2 cursor-pointer">
+                  <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                    <label className={`flex min-w-0 items-start gap-3 rounded-xl border border-border bg-white p-3 ${storefrontEnabled ? 'cursor-pointer' : 'cursor-not-allowed opacity-60'}`}>
                       <input type="checkbox" disabled={!storefrontEnabled} checked={form.isPublished} onChange={(e) => setForm({ ...form, isPublished: e.target.checked })} className="w-4 h-4 rounded border-border text-primary focus:ring-primary/20" />
-                      <span className="text-sm text-text-secondary">Published to marketplace</span>
+                      <span className="text-sm leading-5 text-text-secondary">Published to marketplace</span>
                     </label>
-                    <label className="flex items-center gap-2 cursor-pointer">
+                    <label className={`flex min-w-0 items-start gap-3 rounded-xl border border-border bg-white p-3 ${storefrontEnabled ? 'cursor-pointer' : 'cursor-not-allowed opacity-60'}`}>
                       <input type="checkbox" disabled={!storefrontEnabled} checked={form.availableOnline} onChange={(e) => setForm({ ...form, availableOnline: e.target.checked })} className="w-4 h-4 rounded border-border text-primary focus:ring-primary/20" />
-                      <span className="text-sm text-text-secondary">Available for online orders</span>
+                      <span className="text-sm leading-5 text-text-secondary">Available for online orders</span>
                     </label>
-                    {storefrontEnabled ? <label className="flex items-center gap-2 cursor-pointer">
+                    {storefrontEnabled && <label className="flex min-w-0 cursor-pointer items-start gap-3 rounded-xl border border-border bg-white p-3">
                       <input
                         type="checkbox"
                         checked={form.isOnOffer}
                         onChange={(e) => setForm({ ...form, isOnOffer: e.target.checked })}
                         className="w-4 h-4 rounded border-border text-primary focus:ring-primary/20"
                       />
-                      <span className="text-sm text-text-secondary">Product is on offer</span>
-                    </label> : <span className="text-sm text-text-tertiary">Storefront publication is unavailable; this product remains a catalogue draft.</span>}
-                    <label className="flex items-center gap-2 cursor-pointer">
+                      <span className="text-sm leading-5 text-text-secondary">Product is on offer</span>
+                    </label>}
+                    <label className="flex min-w-0 cursor-pointer items-start gap-3 rounded-xl border border-border bg-white p-3">
                       <input
                         type="checkbox"
                         checked={form.isActive}
                         onChange={(e) => setForm({ ...form, isActive: e.target.checked })}
                         className="w-4 h-4 rounded border-border text-primary focus:ring-primary/20"
                       />
-                      <span className="text-sm text-text-secondary">Product is active</span>
+                      <span className="text-sm leading-5 text-text-secondary">Product is active</span>
                     </label>
                   </div>
-                </div>
+                  {!storefrontEnabled && <p className="rounded-xl border border-warning/20 bg-warning/5 px-4 py-3 text-sm text-text-tertiary">Storefront publication is unavailable; this product remains a catalogue draft.</p>}
                   </div>
                 </details>
 
@@ -1356,6 +1375,19 @@ const ProductManagementPage = () => {
                 >
                   Close
                 </Button>
+                {canEdit && <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => {
+                    const product = selectedProduct
+                    setSelectedProduct(null)
+                    navigate(`${location.pathname}/${product.id}`, { state: { initialTab: 'variants' } })
+                  }}
+                  className="inline-flex items-center gap-2"
+                >
+                  <TagIcon className="h-4 w-4" />
+                  Manage variants
+                </Button>}
                 {canEdit && <Button
                   type="button"
                   onClick={() => {

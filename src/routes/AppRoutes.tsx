@@ -50,11 +50,17 @@ const ProductManagementPage = lazy(
 const ProductCategoriesPage = lazy(
   () => import('@pages/dashboard/admin/Products/ProductCategoriesPage')
 )
+const InheritProductCategoriesPage = lazy(
+  () => import('@pages/dashboard/admin/Products/InheritProductCategoriesPage')
+)
 const BusinessCollectionsPage = lazy(
   () => import('@pages/dashboard/admin/Products/BusinessCollectionsPage')
 )
 const CatalogSearchPage = lazy(
   () => import('@pages/dashboard/admin/Products/CatalogSearchPage')
+)
+const InheritProductsPage = lazy(
+  () => import('@pages/dashboard/admin/Products/InheritProductsPage')
 )
 const ManageProductPage = lazy(
   () => import('@pages/dashboard/admin/Products/ManageProductPage')
@@ -193,9 +199,10 @@ export const AppRoutes = () => {
                 <Route path={`/${experience}/overview`} element={<AdminOverview />} />
                 <Route path={`/${experience}/products`} element={<ProductManagementPage />} />
                 <Route path={`/${experience}/product-categories`} element={<ProductCategoriesPage />} />
+                <Route path={`/${experience}/product-categories/inherit`} element={<InheritProductCategoriesPage />} />
                 <Route path={`/${experience}/collections`} element={<BusinessCollectionsPage />} />
                 <Route path={`/${experience}/catalogue`} element={<Navigate to={`/${experience}/products/add-from-catalog`} replace />} />
-                <Route path={`/${experience}/products/add-from-catalog`} element={<CatalogSearchPage />} />
+                <Route path={`/${experience}/products/add-from-catalog`} element={<InheritProductsPage />} />
                 <Route path={`/${experience}/products/proposals`} element={<CatalogSearchPage initialView="proposal" />} />
                 <Route path={`/${experience}/products/new`} element={<Navigate to={`/${experience}/products/add-from-catalog`} replace />} />
                 <Route path={`/${experience}/variant-options`} element={<VariantOptionsPage />} />
@@ -205,6 +212,7 @@ export const AppRoutes = () => {
                 <Route path={`/${experience}/customers`} element={<CustomersManagementPage />} />
                 <Route path={`/${experience}/inventory`} element={<InventoryManagementPage view="status" />} />
                 <Route path={`/${experience}/inventory/restocks`} element={<InventoryManagementPage view="restocks" />} />
+                <Route path={`/${experience}/inventory/restocks/new`} element={<InventoryManagementPage view="create-restock" />} />
                 <Route path={`/${experience}/inventory/stock-counts`} element={<InventoryManagementPage view="stock-counts" />} />
                 <Route path={`/${experience}/inventory/alerts`} element={<InventoryManagementPage view="alerts" />} />
                 <Route path={`/${experience}/projects`} element={<ProjectsOperationsPage />} />

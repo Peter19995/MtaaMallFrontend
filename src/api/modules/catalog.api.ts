@@ -48,7 +48,7 @@ export type CatalogProductSearchResult = {
   description?: string | null
   approval_status: string
   businesses_using: number
-  match_type: 'browse' | 'exact_identifier' | 'exact_manufacturer' | 'exact_product' | 'fuzzy'
+  match_type: 'browse' | 'exact_identifier' | 'exact_manufacturer' | 'exact_product' | 'contains' | 'fuzzy'
   match_score: number
   requires_confirmation: boolean
 }
