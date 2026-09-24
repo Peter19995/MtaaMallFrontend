@@ -1003,14 +1003,10 @@ const InventoryManagementPage = ({ view = 'status' }: InventoryManagementPagePro
 
   const saveRestockItemDraft = () => {
     const product = restockItemProductQuery.data
-    const variants = product?.variants ?? []
     if (!restockForm.branchId) return setRestockItemError('Select a branch first.')
     if (!restockItemDraft.productId) return setRestockItemError('Select a product.')
     if (restockItemProductQuery.isLoading || !product) {
       return setRestockItemError('Product details are still loading. Try again.')
-    }
-    if (variants.length > 0 && !restockItemDraft.productVariantId) {
-      return setRestockItemError('Select the exact product variant.')
     }
     if (toSafeNumber(restockItemDraft.quantity) < 1) {
       return setRestockItemError('Quantity must be 1 or more.')
@@ -1185,11 +1181,9 @@ const InventoryManagementPage = ({ view = 'status' }: InventoryManagementPagePro
         if (!rowProduct) {
           throw new Error(`Row ${index + 1}: product details are still loading. Try again.`)
         }
-        if (hasVariants && !productVariantId) {
-          throw new Error(`Row ${index + 1}: select the exact variant to restock.`)
-        }
         if (
           hasVariants &&
+          productVariantId !== undefined &&
           !rowProduct.variants?.some((variant) => variant.id === productVariantId)
         ) {
           throw new Error(`Row ${index + 1}: selected variant is not valid for this product.`)
@@ -1209,7 +1203,7 @@ const InventoryManagementPage = ({ view = 'status' }: InventoryManagementPagePro
 
         return {
           product_id: productId,
-          product_variant_id: hasVariants ? productVariantId : undefined,
+          product_variant_id: productVariantId,
           supplier_id: row.supplierId ? Number(row.supplierId) : undefined,
           batch_number: row.batchNumber.trim() || undefined,
           expiry_date: row.expiryDate || undefined,
@@ -1773,7 +1767,9 @@ const InventoryManagementPage = ({ view = 'status' }: InventoryManagementPagePro
     }))
   }
   const selectDraftVariantOption = (optionName: string, value: string) => {
-    const selections = { ...restockItemDraft.variantSelections, [optionName]: value }
+    const selections = { ...restockItemDraft.variantSelections }
+    if (value) selections[optionName] = value
+    else delete selections[optionName]
     const exactVariant = draftVariants.find((variant) =>
       draftVariantOptionNames.every((name) => variant.options?.[name] === selections[name])
     )
@@ -2346,14 +2342,13 @@ const InventoryManagementPage = ({ view = 'status' }: InventoryManagementPagePro
                     )) as string[]
                     return <Select
                       key={optionName}
-                      label={optionName}
+                      label={`${optionName} (optional)`}
                       options={[
                         { label: `Select ${optionName.toLowerCase()}`, value: '' },
                         ...values.map((value) => ({ label: value, value }))
                       ]}
                       value={restockItemDraft.variantSelections[optionName] ?? ''}
                       onChange={(event) => selectDraftVariantOption(optionName, String(event.target.value))}
-                      required
                     />
                   }) : <Select
                     label="Variant"

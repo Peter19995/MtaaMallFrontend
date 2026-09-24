@@ -305,11 +305,12 @@ const ProductManagementPage = () => {
       if (editingProductId) {
         const isLinkedListing = editingProduct?.catalogue_link_status === 'linked' && Boolean(editingProduct.catalog_product_public_id)
         const updatePayload: ProductUpdate = {
-          ...(isLinkedListing ? {} : {
-            name: payload.name.trim(),
-            description: payload.description.trim() || undefined,
-            category_id: categoryId,
-          }),
+          // A catalogue link identifies the shared source product; it does not
+          // make this tenant-owned listing read-only. These values customize
+          // only the active business's copy.
+          name: payload.name.trim(),
+          description: payload.description.trim() || undefined,
+          category_id: categoryId,
           tags: tags || undefined,
           stock_quantity: stockQuantity,
           reorder_level: reorderLevel,
@@ -424,7 +425,7 @@ const ProductManagementPage = () => {
     () => (productsQuery.data ?? []).find((product) => product.id === editingProductId),
     [editingProductId, productsQuery.data]
   )
-  const catalogueFieldsLocked = editingProduct?.catalogue_link_status === 'linked'
+  const isCatalogueLinked = editingProduct?.catalogue_link_status === 'linked'
 
   const pendingImagePreviews = useMemo<PendingImagePreview[]>(
     () =>
@@ -877,7 +878,7 @@ const ProductManagementPage = () => {
                 <button type="button" aria-label="Close product form" onClick={closeProductForm} className="rounded-lg p-2 text-text-tertiary transition hover:bg-background hover:text-text"><XMarkIcon className="h-5 w-5" /></button>
               </div>
               <form onSubmit={onSubmitProduct} className="space-y-4">
-                {editingProductId && <div className="grid gap-3 md:grid-cols-2"><div className="rounded-xl border border-primary/20 bg-primary/5 p-4"><p className="text-xs font-bold uppercase tracking-[.14em] text-primary-dark">Catalogue information</p><p className="mt-1 font-bold text-text">Shared across MtaaMall</p><p className="mt-1 text-xs text-text-secondary">{catalogueFieldsLocked ? 'Name and category come from the approved catalogue and cannot be edited by this business.' : 'This private listing is not yet linked to an approved catalogue product.'}</p></div><div className="rounded-xl border border-secondary/20 bg-secondary/5 p-4"><p className="text-xs font-bold uppercase tracking-[.14em] text-secondary">Your listing</p><p className="mt-1 font-bold text-text">Visible and editable only by this business</p><p className="mt-1 text-xs text-text-secondary">Price, stock, publication, tags, offers and business overrides remain editable.</p></div></div>}
+                {editingProductId && <div className="grid gap-3 md:grid-cols-2"><div className="rounded-xl border border-primary/20 bg-primary/5 p-4"><p className="text-xs font-bold uppercase tracking-[.14em] text-primary-dark">Catalogue source</p><p className="mt-1 font-bold text-text">{isCatalogueLinked ? 'Linked to MtaaMall catalogue' : 'Private business product'}</p><p className="mt-1 text-xs text-text-secondary">{isCatalogueLinked ? 'The shared source remains unchanged when you edit this product.' : 'This product is not linked to a shared catalogue product.'}</p></div><div className="rounded-xl border border-secondary/20 bg-secondary/5 p-4"><p className="text-xs font-bold uppercase tracking-[.14em] text-secondary">Your business listing</p><p className="mt-1 font-bold text-text">Editable for this business</p><p className="mt-1 text-xs text-text-secondary">Name, category, description, price, stock, publication, tags and offers can all be customized.</p></div></div>}
                 <TextInput
                   id="product-name"
                   label="Product name"
@@ -889,7 +890,6 @@ const ProductManagementPage = () => {
                     document.getElementById('product-category')?.focus()
                   }}
                   required
-                  disabled={catalogueFieldsLocked}
                 />
 
                 <div className="grid gap-4 md:grid-cols-3">
@@ -906,7 +906,6 @@ const ProductManagementPage = () => {
                         sku: editingProductId ? previous.sku : ''
                       }))
                     }}
-                    disabled={catalogueFieldsLocked}
                   />
                   <TextInput
                     label="Stock Quantity"
@@ -931,7 +930,7 @@ const ProductManagementPage = () => {
                   <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
                     <div>
                       <h3 className="text-sm font-semibold text-text">Product variants</h3>
-                      <p className="mt-1 text-xs text-text-secondary">Select one or more option groups. For example, attach both Color and Size to generate their combinations.</p>
+                      <p className="mt-1 text-xs text-text-secondary">Select one or more option groups. Color and Size generate Color-only, Size-only, and every Color × Size combination.</p>
                     </div>
                     <Button
                       type="button"
@@ -985,7 +984,7 @@ const ProductManagementPage = () => {
 
                     <div className="grid gap-4 lg:grid-cols-2">
                       <TextArea
-                        label={catalogueFieldsLocked ? 'Your description override' : 'Description'}
+                        label={isCatalogueLinked ? 'Business description' : 'Description'}
                         value={form.description}
                         onChange={(e) => setForm({ ...form, description: e.target.value })}
                         placeholder="Product description..."

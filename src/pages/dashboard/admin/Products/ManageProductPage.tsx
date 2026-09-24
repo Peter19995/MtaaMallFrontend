@@ -1,4 +1,5 @@
 import { useWorkspacePath } from '@hooks/useWorkspacePath'
+import { useAuth } from '@hooks/useAuth'
 import { FormEvent, useEffect, useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useLocation, useNavigate, useParams } from 'react-router-dom'
@@ -146,6 +147,8 @@ type PendingImagePreview = {
 
 const ManageProductPage = () => {
   const workspacePath = useWorkspacePath()
+  const { hasPermission } = useAuth()
+  const canUpdateProduct = hasPermission('products.update')
   const queryClient = useQueryClient()
   const navigate = useNavigate()
   const location = useLocation()
@@ -981,8 +984,9 @@ const ManageProductPage = () => {
                           <div>
                             <h3 className="text-sm font-semibold text-text">Backend Variant Flow</h3>
                             <p className="mt-1 text-sm text-text-secondary">
-                              Attach reusable option groups like Size or Color to this product. The
-                              backend will generate the valid variant combinations automatically.
+                              Attach reusable option groups like Size or Color to this product. For
+                              Color and Size, the system generates Color-only, Size-only, and every
+                              Color × Size combination automatically.
                             </p>
                           </div>
                         </div>
@@ -992,7 +996,7 @@ const ManageProductPage = () => {
                         <div>
                           <h3 className="text-sm font-semibold text-text">Variant Images</h3>
                           <p className="mt-1 text-xs text-text-secondary">
-                            Upload a separate image for each generated option combination, such as Red / Large.
+                            Upload a separate image for each standalone option or combination, such as Red, Large, or Red / Large.
                           </p>
                         </div>
 
@@ -1019,7 +1023,7 @@ const ManageProductPage = () => {
                                     <div className="min-w-0 flex-1">
                                       <p className="font-semibold text-text">{formatVariantLabel(variant)}</p>
                                       <p className="mt-1 text-xs text-text-tertiary">SKU: {variant.sku}</p>
-                                      <label className="mt-3 block cursor-pointer">
+                                      {canUpdateProduct && <label className="mt-3 block cursor-pointer">
                                         <span className="sr-only">Choose image for {formatVariantLabel(variant)}</span>
                                         <input
                                           type="file"
@@ -1036,14 +1040,14 @@ const ManageProductPage = () => {
                                             setVariantImageFiles((current) => ({ ...current, [variant.id]: file }))
                                           }}
                                         />
-                                      </label>
+                                      </label>}
                                     </div>
                                   </div>
                                   <div className="mt-3 flex items-center justify-between gap-3">
                                     <span className="truncate text-xs text-text-tertiary">
                                       {selectedFile?.name ?? (variant.image_url ? 'Current image saved' : 'No image selected')}
                                     </span>
-                                    <Button
+                                    {canUpdateProduct && <Button
                                       type="button"
                                       size="sm"
                                       disabled={!selectedFile}
@@ -1054,7 +1058,7 @@ const ManageProductPage = () => {
                                       })}
                                     >
                                       {variant.image_url ? 'Replace Image' : 'Upload Image'}
-                                    </Button>
+                                    </Button>}
                                   </div>
                                 </div>
                               )
