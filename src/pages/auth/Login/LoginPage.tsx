@@ -29,6 +29,10 @@ type LoginLocationState = {
 
 const getErrorMessage = (error: unknown): string => {
   if (axios.isAxiosError(error)) {
+    if (error.response?.status === 401) {
+      return 'Invalid username or password.'
+    }
+
     const apiDetail = error.response?.data?.detail
 
     if (typeof apiDetail === 'string' && apiDetail.trim()) {

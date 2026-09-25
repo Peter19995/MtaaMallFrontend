@@ -3,6 +3,7 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import '@testing-library/jest-dom/vitest'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
+import axios from 'axios'
 import { loginRequest, getMeRequest } from '@api/modules/auth.api'
 import LoginPage from './LoginPage'
 
@@ -24,6 +25,38 @@ it('accepts lowercase usernames without altering passwords or stored username sp
   fireEvent.submit(identifier.closest('form')!)
   await waitFor(() => expect(loginRequest).toHaveBeenCalledWith({ username: 'osltd', password: 'SecurePass1!' }))
   await waitFor(() => expect(getMeRequest).toHaveBeenCalledWith())
+})
+
+it('shows invalid credentials on the login screen without redirecting', async () => {
+  vi.mocked(loginRequest).mockRejectedValue(
+    new axios.AxiosError(
+      'Request failed with status code 401',
+      'ERR_BAD_REQUEST',
+      undefined,
+      undefined,
+      {
+        status: 401,
+        statusText: 'Unauthorized',
+        headers: {},
+        config: { headers: {} } as any,
+        data: { detail: 'Incorrect username or password' },
+      },
+    ),
+  )
+
+  render(<MemoryRouter initialEntries={['/login']}><Routes>
+    <Route path="/login" element={<LoginPage />} />
+    <Route path="/" element={<p>Home page</p>} />
+  </Routes></MemoryRouter>)
+
+  fireEvent.change(screen.getByLabelText('Username, email or phone'), { target: { value: 'wrong-user' } })
+  fireEvent.change(screen.getByLabelText('Password'), { target: { value: 'wrong-password' } })
+  fireEvent.submit(screen.getByLabelText('Username, email or phone').closest('form')!)
+
+  expect(await screen.findByText('Invalid username or password.')).toBeInTheDocument()
+  expect(screen.getByText(/Welcome back to/i)).toBeInTheDocument()
+  expect(screen.queryByText('Home page')).not.toBeInTheDocument()
+  expect(getMeRequest).not.toHaveBeenCalled()
 })
 
 it.each([

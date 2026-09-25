@@ -21,6 +21,8 @@ import {
   MinusCircleIcon,
   PencilIcon,
   TrashIcon,
+  MagnifyingGlassIcon,
+  PhotoIcon,
 } from '@heroicons/react/24/outline'
 import { CheckCircleIcon as CheckCircleSolid } from '@heroicons/react/24/solid'
 import { Button, Select, TextInput, useSiteDialog } from '@components/common'
@@ -29,7 +31,7 @@ import {
   getDefaultCashCustomerRequest,
   listCustomersRequest
 } from '@api/modules/customers.api'
-import { getProductRequest, listInStockProductsRequest } from '@api/modules/products.api'
+import { getProductRequest, listInStockProductsRequest, type ProductResponse } from '@api/modules/products.api'
 import {
   createPosSaleRequest,
   getPosMpesaAvailabilityRequest,
@@ -39,6 +41,7 @@ import {
 } from '@api/modules/pos.api'
 import { AppTheme, withOpacity } from '@constants/theme'
 import { requiresExternalPosPayment } from '@utils/paymentModes'
+import { resolveMediaUrl } from '@utils/media'
 
 type SaleItemRowState = {
   id: string
@@ -326,6 +329,9 @@ const CreatePosSalePage = () => {
     draft: SaleItemRowState
   } | null>(null)
   const [itemEditorError, setItemEditorError] = useState<string | null>(null)
+  const [productSearch, setProductSearch] = useState('')
+  const [selectedCategory, setSelectedCategory] = useState('all')
+  const [isCheckingOut, setIsCheckingOut] = useState(false)
 
   const selectedBranchId = useMemo(
     () => parseOptionalNumber(createSaleForm.branchId),
@@ -532,6 +538,34 @@ const CreatePosSalePage = () => {
     })
     return stockMap
   }, [productsQuery.data])
+
+  const productCategories = useMemo(
+    () => [
+      'all',
+      ...Array.from(
+        new Set(
+          (productsQuery.data ?? [])
+            .map((product) => product.category_name?.trim())
+            .filter((category): category is string => Boolean(category))
+        )
+      ).sort((left, right) => left.localeCompare(right))
+    ],
+    [productsQuery.data]
+  )
+
+  const visibleProducts = useMemo(() => {
+    const term = productSearch.trim().toLowerCase()
+    return (productsQuery.data ?? []).filter((product) => {
+      const matchesCategory = selectedCategory === 'all' || product.category_name === selectedCategory
+      const matchesSearch =
+        !term ||
+        product.name.toLowerCase().includes(term) ||
+        product.sku.toLowerCase().includes(term) ||
+        product.category_name?.toLowerCase().includes(term) ||
+        product.description?.toLowerCase().includes(term)
+      return matchesCategory && matchesSearch
+    })
+  }, [productsQuery.data, productSearch, selectedCategory])
 
   const activePaymentModes = useMemo(
     () => (paymentModesQuery.data ?? []).filter((mode) => mode.is_active),
@@ -984,6 +1018,7 @@ const CreatePosSalePage = () => {
       })
       setShowSuccessModal(true)
       setCreateSaleForm(createEmptySaleForm(createSaleForm.branchId))
+      setIsCheckingOut(false)
       queryClient.invalidateQueries({ queryKey: ['pos', 'sales'] })
       queryClient.invalidateQueries({ queryKey: ['pos', 'daily-summary'] })
       queryClient.invalidateQueries({ queryKey: ['reports', 'summary'] })
@@ -1039,11 +1074,6 @@ const CreatePosSalePage = () => {
     setLastCreatedSaleId(null)
     setLastCreatedSaleSummary(null)
     createPosSaleMutation.mutate(createSaleForm)
-  }
-
-  const openAddItem = () => {
-    setItemEditorError(null)
-    setItemEditor({ mode: 'add', draft: createSaleItemRow() })
   }
 
   const openEditItem = (item: SaleItemRowState) => {
@@ -1142,18 +1172,79 @@ const CreatePosSalePage = () => {
       return
     }
 
-    setCreateSaleForm((previous) => ({
-      ...previous,
-      items:
-        itemEditor.mode === 'add'
-          ? [...previous.items, itemEditor.draft]
-          : previous.items.map((row) =>
-              row.id === itemEditor.draft.id ? itemEditor.draft : row
-            )
-    }))
+    setCreateSaleForm((previous) => {
+      if (itemEditor.mode === 'edit') {
+        return {
+          ...previous,
+          items: previous.items.map((row) =>
+            row.id === itemEditor.draft.id ? itemEditor.draft : row
+          )
+        }
+      }
+
+      const existing = previous.items.find(
+        (row) =>
+          row.productId === itemEditor.draft.productId &&
+          row.productVariantId === itemEditor.draft.productVariantId
+      )
+      if (!existing) return { ...previous, items: [...previous.items, itemEditor.draft] }
+
+      const combinedQuantity = Math.min(
+        Number(existing.quantity) + editorQuantity,
+        editorAvailableStock
+      )
+      return {
+        ...previous,
+        items: previous.items.map((row) =>
+          row.id === existing.id ? { ...row, quantity: String(combinedQuantity) } : row
+        )
+      }
+    })
     setItemEditor(null)
     setItemEditorError(null)
   }
+
+  const addProductToSale = (productId: number) => {
+    const product = (productsQuery.data ?? []).find((item) => item.id === productId)
+    if (!product) return
+
+    if ((product.variants?.length ?? 0) > 0) {
+      setItemEditorError(null)
+      setItemEditor({
+        mode: 'add',
+        draft: { ...createSaleItemRow(), productId: String(product.id) }
+      })
+      return
+    }
+
+    setCreateSaleForm((previous) => {
+      const existing = previous.items.find(
+        (item) => item.productId === String(product.id) && !item.productVariantId
+      )
+      if (!existing) {
+        return {
+          ...previous,
+          items: [...previous.items, { ...createSaleItemRow(), productId: String(product.id) }]
+        }
+      }
+      const nextQuantity = Math.min(Number(existing.quantity) + 1, product.stock_quantity)
+      return {
+        ...previous,
+        items: previous.items.map((item) =>
+          item.id === existing.id ? { ...item, quantity: String(nextQuantity) } : item
+        )
+      }
+    })
+  }
+
+  const productImage = (product: ProductResponse) =>
+    resolveMediaUrl(
+      product.primary_image_override ||
+      product.image_urls?.[0] ||
+      product.images?.[0]?.image_url ||
+      product.images?.[0]?.file_url ||
+      product.images?.[0]?.url
+    )
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-background via-white to-background p-6">
@@ -1183,7 +1274,7 @@ const CreatePosSalePage = () => {
               Create POS Sale
             </h1>
             <p className="text-sm text-text-secondary mt-1">
-              Select branch and items, then payment is processed immediately after sale creation.
+              Browse branch products, add them to the cart, then choose cash or M-Pesa at checkout.
             </p>
           </div>
           
@@ -1249,27 +1340,51 @@ const CreatePosSalePage = () => {
           </div>
 
           <form onSubmit={onCreateSale} className="p-4 space-y-6">
-            {/* Sale Header Fields */}
-            <div className="grid gap-4 md:grid-cols-5">
-              <div className="md:col-span-1">
+            {/* Branch is selected before shopping so prices and stock stay branch-specific. */}
+            <div className="grid gap-4 md:grid-cols-3">
+              <div>
                 <Select
                   label="Branch *"
                   options={branchOptions}
                   value={createSaleForm.branchId}
-                  onChange={(event) =>
+                  onChange={(event) => {
+                    setIsCheckingOut(false)
+                    setSelectedCategory('all')
                     setCreateSaleForm((previous) => ({
                       ...previous,
                       branchId: String(event.target.value),
                       paymentModeId: '',
                       items: []
                     }))
-                  }
+                  }}
                   disabled={branchesQuery.isLoading}
                   required
                 />
               </div>
-              
-              <div className="md:col-span-1">
+
+              <div className="md:col-span-2 flex items-end">
+                <p className="rounded-xl border border-primary/15 bg-primary/5 px-4 py-3 text-sm text-text-secondary">
+                  {selectedBranchId
+                    ? `${(productsQuery.data ?? []).length} in-stock products available in this branch.`
+                    : 'Select a branch to load its available products and prices.'}
+                </p>
+              </div>
+            </div>
+
+            {isCheckingOut && (
+              <div className="rounded-2xl border border-primary/20 bg-gradient-to-br from-primary/5 to-secondary/5 p-5">
+                <div className="mb-4 flex items-center justify-between gap-3">
+                  <div>
+                    <p className="text-xs font-bold uppercase tracking-[0.16em] text-primary">Checkout</p>
+                    <h3 className="mt-1 text-lg font-bold text-text">Customer and payment</h3>
+                    <p className="text-sm text-text-secondary">Choose cash or M-Pesa. M-Pesa will ask for the phone that receives the STK Push.</p>
+                  </div>
+                  <Button type="button" variant="ghost" size="sm" onClick={() => setIsCheckingOut(false)}>
+                    Continue shopping
+                  </Button>
+                </div>
+                <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+              <div>
                 <Select
                   label="Customer"
                   options={customerOptions}
@@ -1287,8 +1402,8 @@ const CreatePosSalePage = () => {
                   }
                 />
               </div>
-              
-              <div className="md:col-span-1">
+
+              <div>
                 <Select
                   label="Payment Mode *"
                   options={paymentModeOptions}
@@ -1301,7 +1416,7 @@ const CreatePosSalePage = () => {
                 />
               </div>
 
-              {requiresPhoneForPayment && <div className="md:col-span-1">
+              {requiresPhoneForPayment && <div>
                 <TextInput
                   label="Customer M-Pesa Number *"
                   type="tel"
@@ -1317,8 +1432,8 @@ const CreatePosSalePage = () => {
                   icon={<PhoneIcon className="h-4 w-4 text-text-tertiary" />}
                 />
               </div>}
-              
-              <div className="md:col-span-1">
+
+              <div>
                 <TextInput
                   label="Discount Amount"
                   type="number"
@@ -1333,11 +1448,94 @@ const CreatePosSalePage = () => {
               </div>
 
               {branchHasMpesaMode && posMpesaAvailabilityQuery.data?.available === false && (
-                <div className="md:col-span-5 rounded-xl border border-warning/30 bg-warning/10 px-4 py-3 text-sm text-text-secondary">
+                <div className="md:col-span-2 lg:col-span-4 rounded-xl border border-warning/30 bg-warning/10 px-4 py-3 text-sm text-text-secondary">
                   {posMpesaAvailabilityQuery.data.message}
                 </div>
               )}
-            </div>
+                </div>
+              </div>
+            )}
+
+            {/* Product shelf */}
+            <section className="space-y-4">
+              <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+                <div>
+                  <h3 className="text-lg font-bold text-text">Products</h3>
+                  <p className="text-sm text-text-secondary">Select products just like the online shop.</p>
+                </div>
+                <div className="flex flex-col gap-2 sm:flex-row">
+                  <div className="relative min-w-64">
+                    <MagnifyingGlassIcon className="pointer-events-none absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 text-text-tertiary" />
+                    <input
+                      aria-label="Search POS products"
+                      value={productSearch}
+                      onChange={(event) => setProductSearch(event.target.value)}
+                      placeholder="Search name, SKU or category"
+                      className="h-11 w-full rounded-xl border border-border bg-white pl-10 pr-4 text-sm text-text outline-none transition focus:border-primary focus:ring-4 focus:ring-primary/10"
+                    />
+                  </div>
+                  <Select
+                    aria-label="Filter POS products by category"
+                    value={selectedCategory}
+                    onChange={(event) => setSelectedCategory(String(event.target.value))}
+                    disabled={!selectedBranchId}
+                  >
+                    {productCategories.map((category) => (
+                      <option key={category} value={category}>{category === 'all' ? 'All categories' : category}</option>
+                    ))}
+                  </Select>
+                </div>
+              </div>
+
+              {!selectedBranchId ? (
+                <div className="rounded-2xl border-2 border-dashed border-border bg-background/50 px-6 py-12 text-center text-sm text-text-secondary">
+                  Select a branch to start shopping.
+                </div>
+              ) : productsQuery.isLoading ? (
+                <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+                  {[1, 2, 3, 4].map((item) => <div key={item} className="h-72 animate-pulse rounded-2xl bg-background" />)}
+                </div>
+              ) : visibleProducts.length === 0 ? (
+                <div className="rounded-2xl border border-border bg-background/50 px-6 py-12 text-center">
+                  <ShoppingBagIcon className="mx-auto h-9 w-9 text-text-tertiary" />
+                  <p className="mt-3 font-semibold text-text">No matching products</p>
+                  <p className="mt-1 text-sm text-text-secondary">Try another search or category.</p>
+                </div>
+              ) : (
+                <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+                  {visibleProducts.map((product) => {
+                    const image = productImage(product)
+                    const cartQuantity = createSaleForm.items
+                      .filter((item) => item.productId === String(product.id))
+                      .reduce((total, item) => total + Number(item.quantity || 0), 0)
+                    return (
+                      <article key={product.id} className="group overflow-hidden rounded-2xl border border-border bg-white shadow-sm transition hover:-translate-y-0.5 hover:border-primary/30 hover:shadow-md">
+                        <div className="relative aspect-[4/3] overflow-hidden bg-gradient-to-br from-primary/5 to-secondary/10">
+                          {image ? (
+                            <img src={image} alt={product.name} className="h-full w-full object-cover transition duration-300 group-hover:scale-105" />
+                          ) : (
+                            <div className="grid h-full place-items-center"><PhotoIcon className="h-12 w-12 text-primary/30" /></div>
+                          )}
+                          <span className="absolute left-3 top-3 rounded-full bg-white/90 px-2.5 py-1 text-xs font-bold text-text shadow-sm">{product.stock_quantity} in stock</span>
+                          {cartQuantity > 0 && <span className="absolute right-3 top-3 rounded-full bg-primary px-2.5 py-1 text-xs font-bold text-white shadow-sm">{cartQuantity} in cart</span>}
+                        </div>
+                        <div className="p-4">
+                          <p className="text-xs font-semibold uppercase tracking-wide text-text-tertiary">{product.category_name || 'General'}</p>
+                          <h4 className="mt-1 line-clamp-2 min-h-12 font-bold text-text">{product.name}</h4>
+                          <p className="mt-1 truncate text-xs text-text-tertiary">SKU {product.sku}</p>
+                          <div className="mt-4 flex items-end justify-between gap-3">
+                            <div><p className="text-xs text-text-tertiary">Selling price</p><p className="text-lg font-bold text-primary">{formatCurrency(product.selling_price ?? product.price)}</p></div>
+                            <Button type="button" size="sm" onClick={() => addProductToSale(product.id)} className="shrink-0 bg-gradient-to-r from-primary to-secondary text-white">
+                              <PlusIcon className="mr-1 h-4 w-4" /> Add to cart
+                            </Button>
+                          </div>
+                        </div>
+                      </article>
+                    )
+                  })}
+                </div>
+              )}
+            </section>
 
             {/* Items Section */}
             <div className="space-y-4">
@@ -1345,13 +1543,13 @@ const CreatePosSalePage = () => {
                 <div>
                   <h3 className="flex items-center gap-2 text-sm font-semibold text-text">
                     <ShoppingBagIcon className="h-4 w-4 text-primary" />
-                    Sale Items
+                    Cart
                     <span className="rounded-full bg-primary/10 px-2 py-0.5 text-xs text-primary">
                       {createSaleForm.items.length}
                     </span>
                   </h3>
                   <p className="mt-1 text-xs text-text-tertiary">
-                    Add products one at a time, then edit them directly from the list.
+                    Review quantities and variants before checkout.
                   </p>
                 </div>
                 <div className="flex gap-2">
@@ -1367,38 +1565,23 @@ const CreatePosSalePage = () => {
                       Clear All
                     </Button>
                   )}
-                  <Button
-                    type="button"
-                    size="sm"
-                    onClick={openAddItem}
-                    disabled={!selectedBranchId || productsQuery.isLoading || !hasSelectableProducts}
-                    className="bg-gradient-to-r from-primary to-secondary text-white"
-                  >
-                    <PlusIcon className="mr-1 h-4 w-4" />
-                    Add Item
-                  </Button>
                 </div>
               </div>
 
               {createSaleForm.items.length === 0 ? (
-                <button
-                  type="button"
-                  onClick={openAddItem}
-                  disabled={!selectedBranchId || productsQuery.isLoading || !hasSelectableProducts}
-                  className="flex w-full flex-col items-center justify-center rounded-xl border-2 border-dashed border-border bg-background/50 px-6 py-10 text-center transition hover:border-primary/50 hover:bg-primary/5 disabled:cursor-not-allowed disabled:opacity-60"
-                >
+                <div className="flex w-full flex-col items-center justify-center rounded-xl border-2 border-dashed border-border bg-background/50 px-6 py-10 text-center">
                   <span className="grid h-12 w-12 place-items-center rounded-xl bg-primary/10 text-primary">
                     <ShoppingBagIcon className="h-6 w-6" />
                   </span>
                   <span className="mt-3 font-semibold text-text">
-                    {selectedBranchId ? 'Add the first sale item' : 'Select a branch first'}
+                    {selectedBranchId ? 'Your cart is empty' : 'Select a branch first'}
                   </span>
                   <span className="mt-1 text-sm text-text-secondary">
                     {selectedBranchId
-                      ? 'Choose a product, its options, and quantity in a simple popup.'
+                      ? 'Use Add to cart on a product above.'
                       : 'Products and stock are loaded for the selected branch.'}
                   </span>
-                </button>
+                </div>
               ) : (
                 <div className="overflow-hidden rounded-xl border border-border">
                   <div className="hidden grid-cols-[minmax(0,2fr)_minmax(140px,1fr)_128px_120px_120px] gap-3 bg-background px-4 py-3 text-xs font-semibold uppercase tracking-wide text-text-tertiary md:grid">
@@ -1546,28 +1729,43 @@ const CreatePosSalePage = () => {
                   </div>
                 </div>
               </motion.div>
-            {/* Form Actions */}
+            {/* Checkout actions */}
             <div className="flex justify-end gap-3 pt-4 border-t border-border">
               <Link to={workspacePath('/dashboard/admin/sales')}>
                 <Button type="button" variant="outline">
                   Cancel
                 </Button>
               </Link>
-              <Button
-                type="submit"
-                loading={createPosSaleMutation.isPending}
-                disabled={
-                  !selectedBranchId ||
-                  !hasSelectablePaymentModes ||
-                  !hasSelectableProducts ||
-                  (requiresPhoneForPayment && createSaleForm.paymentPhoneNumber.trim().length < 9) ||
-                  hasMissingVariantSelections ||
-                  createSaleForm.items.every((item) => !item.productId)
-                }
-                className="bg-gradient-to-r from-primary to-secondary text-white min-w-[160px]"
-              >
-                {createPosSaleMutation.isPending ? 'Processing...' : 'Create & Process Payment'}
-              </Button>
+              {!isCheckingOut ? (
+                <Button
+                  type="button"
+                  onClick={() => setIsCheckingOut(true)}
+                  disabled={!selectedBranchId || hasMissingVariantSelections || createSaleForm.items.length === 0}
+                  className="min-w-[160px] bg-gradient-to-r from-primary to-secondary text-white"
+                >
+                  Checkout · {formatCurrency(saleEstimate.total)}
+                </Button>
+              ) : (
+                <Button
+                  type="submit"
+                  loading={createPosSaleMutation.isPending}
+                  disabled={
+                    !selectedBranchId ||
+                    !hasSelectablePaymentModes ||
+                    !hasSelectableProducts ||
+                    (requiresPhoneForPayment && createSaleForm.paymentPhoneNumber.trim().length < 9) ||
+                    hasMissingVariantSelections ||
+                    createSaleForm.items.every((item) => !item.productId)
+                  }
+                  className="min-w-[190px] bg-gradient-to-r from-primary to-secondary text-white"
+                >
+                  {createPosSaleMutation.isPending
+                    ? 'Processing...'
+                    : requiresPhoneForPayment
+                      ? `Send STK Push · ${formatCurrency(saleEstimate.total)}`
+                      : `Complete Cash Sale · ${formatCurrency(saleEstimate.total)}`}
+                </Button>
+              )}
             </div>
           </form>
         </div>
