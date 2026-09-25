@@ -718,11 +718,11 @@ const ProductManagementPage = () => {
           {canCreate && <div className="flex gap-2">
             <Button
               variant="outline"
-              onClick={() => navigate(`${location.pathname}/add-from-catalog`)}
+              onClick={() => navigate(`${location.pathname}/import`)}
               className="flex items-center gap-2"
             >
               <CubeIcon className="h-4 w-4" />
-              Inherit products
+              Import products
             </Button>
             <Button
               onClick={openCreateProduct}

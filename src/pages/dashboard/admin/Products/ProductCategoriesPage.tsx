@@ -138,7 +138,7 @@ const ProductCategoriesPage = () => {
   return <div className="space-y-6">
     <header className="flex flex-col justify-between gap-4 sm:flex-row sm:items-end">
       <div><p className="text-xs font-bold uppercase tracking-[0.16em] text-primary-dark">Catalog setup</p><h2 className="mt-1 text-2xl font-bold text-text sm:text-3xl">Product categories</h2><p className="mt-2 text-sm text-text-secondary">A category only needs a name. Add a description when it is useful.</p></div>
-      {canCreate && <div className="flex flex-wrap gap-2"><Button variant="outline" onClick={() => navigate(`${location.pathname}/inherit`)} className="flex items-center gap-2"><TagIcon className="h-4 w-4" />Inherit categories</Button><Button onClick={openCreate} className="flex items-center gap-2"><PlusIcon className="h-4 w-4" />Add category</Button></div>}
+      {canCreate && <div className="flex flex-wrap gap-2"><Button variant="outline" onClick={() => navigate(`${location.pathname}/import`)} className="flex items-center gap-2"><TagIcon className="h-4 w-4" />Import categories</Button><Button onClick={openCreate} className="flex items-center gap-2"><PlusIcon className="h-4 w-4" />Add category</Button></div>}
     </header>
 
     <section className="rounded-2xl border border-border bg-white shadow-sm">

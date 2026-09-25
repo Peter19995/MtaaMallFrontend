@@ -199,12 +199,14 @@ export const AppRoutes = () => {
                 <Route path={`/${experience}/overview`} element={<AdminOverview />} />
                 <Route path={`/${experience}/products`} element={<ProductManagementPage />} />
                 <Route path={`/${experience}/product-categories`} element={<ProductCategoriesPage />} />
-                <Route path={`/${experience}/product-categories/inherit`} element={<InheritProductCategoriesPage />} />
+                <Route path={`/${experience}/product-categories/import`} element={<InheritProductCategoriesPage />} />
+                <Route path={`/${experience}/product-categories/inherit`} element={<Navigate to={`/${experience}/product-categories/import`} replace />} />
                 <Route path={`/${experience}/collections`} element={<BusinessCollectionsPage />} />
-                <Route path={`/${experience}/catalogue`} element={<Navigate to={`/${experience}/products/add-from-catalog`} replace />} />
-                <Route path={`/${experience}/products/add-from-catalog`} element={<InheritProductsPage />} />
+                <Route path={`/${experience}/catalogue`} element={<Navigate to={`/${experience}/products/import`} replace />} />
+                <Route path={`/${experience}/products/import`} element={<InheritProductsPage />} />
+                <Route path={`/${experience}/products/add-from-catalog`} element={<Navigate to={`/${experience}/products/import`} replace />} />
                 <Route path={`/${experience}/products/proposals`} element={<CatalogSearchPage initialView="proposal" />} />
-                <Route path={`/${experience}/products/new`} element={<Navigate to={`/${experience}/products/add-from-catalog`} replace />} />
+                <Route path={`/${experience}/products/new`} element={<Navigate to={`/${experience}/products/import`} replace />} />
                 <Route path={`/${experience}/variant-options`} element={<VariantOptionsPage />} />
                 <Route path={`/${experience}/products/:productId`} element={<ManageProductPage />} />
                 <Route path={`/${experience}/services`} element={<ServiceManagementPage />} />

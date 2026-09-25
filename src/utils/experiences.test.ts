@@ -32,13 +32,13 @@ describe('separate application experiences', () => {
     expect(canAccessWorkspace(employee, '/employee/products/123')).toBe(false)
     expect(canAccessWorkspace({ ...employee, allowed_branch_ids: [] }, '/employee/sales/create')).toBe(false)
   })
-  it('allows product inheritance only with the product creation permission', () => {
-    expect(canAccessWorkspace(owner, '/business/products/add-from-catalog')).toBe(true)
+  it('allows product importing only with the product creation permission', () => {
+    expect(canAccessWorkspace(owner, '/business/products/import')).toBe(true)
     expect(canAccessWorkspace(owner, '/business/catalogue')).toBe(true)
-    expect(canAccessWorkspace(owner, '/business/product-categories/inherit')).toBe(true)
-    expect(canAccessWorkspace({ ...owner, permissions: ['products.read'] }, '/business/products/add-from-catalog')).toBe(false)
-    expect(canAccessWorkspace({ ...owner, permissions: ['products.read'] }, '/business/product-categories/inherit')).toBe(false)
-    expect(canAccessWorkspace(employee, '/employee/products/add-from-catalog')).toBe(false)
+    expect(canAccessWorkspace(owner, '/business/product-categories/import')).toBe(true)
+    expect(canAccessWorkspace({ ...owner, permissions: ['products.read'] }, '/business/products/import')).toBe(false)
+    expect(canAccessWorkspace({ ...owner, permissions: ['products.read'] }, '/business/product-categories/import')).toBe(false)
+    expect(canAccessWorkspace(employee, '/employee/products/import')).toBe(false)
   })
   it('keeps local business tools available while online verification is pending', () => {
     const pending = { ...owner, business_status: 'pending_verification' as const }

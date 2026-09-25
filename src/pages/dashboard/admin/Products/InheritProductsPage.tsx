@@ -117,7 +117,7 @@ const InheritProductsPage = () => {
   const inheritMutation = useMutation({
     mutationFn: async () => {
       const selected = Object.entries(selections)
-      if (!selected.length) throw new Error('Select at least one product to inherit.')
+      if (!selected.length) throw new Error('Select at least one product to import.')
 
       const inherited: Array<{ publicId: string; name: string }> = []
       const failed: string[] = []
@@ -165,16 +165,16 @@ const InheritProductsPage = () => {
       setSelections(current => Object.fromEntries(
         Object.entries(current).filter(([id]) => !inheritedPublicIds.has(id)),
       ))
-      const messages = [`${inherited.length} product(s) inherited successfully.`]
-      if (failed.length) messages.push(`Could not inherit: ${failed.join(', ')}.`)
+      const messages = [`${inherited.length} product(s) imported successfully.`]
+      if (failed.length) messages.push(`Could not import: ${failed.join(', ')}.`)
       if (updateWarnings.length) messages.push(`Review stock or pricing for: ${updateWarnings.join(', ')}.`)
       setNotice(messages.join(' '))
     },
-    onError: error => setNotice((error as Error).message || 'Could not inherit products.'),
+    onError: error => setNotice((error as Error).message || 'Could not import products.'),
   })
 
   if (!hasPermission('products.create')) {
-    return <div className="rounded-2xl border border-error/20 bg-error/10 p-5 text-sm text-error">You do not have permission to inherit products.</div>
+    return <div className="rounded-2xl border border-error/20 bg-error/10 p-5 text-sm text-error">You do not have permission to import products.</div>
   }
 
   const loading = catalogueQuery.isLoading || businessProductsQuery.isLoading
@@ -188,7 +188,7 @@ const InheritProductsPage = () => {
             <ArrowLeftIcon className="h-4 w-4" /> Back to products
           </Link>
           <p className="text-xs font-bold uppercase tracking-[0.16em] text-primary-dark">Shared catalogue</p>
-          <h1 className="mt-1 text-2xl font-bold text-text sm:text-3xl">Inherit products</h1>
+          <h1 className="mt-1 text-2xl font-bold text-text sm:text-3xl">Import products</h1>
           <p className="mt-2 max-w-3xl text-sm text-text-secondary">Select multiple existing products and enter the stock and pricing values for your business.</p>
         </div>
         <Button
@@ -196,7 +196,7 @@ const InheritProductsPage = () => {
           loading={inheritMutation.isPending}
           disabled={!selectedCount}
         >
-          Inherit {selectedCount || ''} selected product{selectedCount === 1 ? '' : 's'}
+          Import {selectedCount || ''} selected product{selectedCount === 1 ? '' : 's'}
         </Button>
       </header>
 
@@ -221,7 +221,7 @@ const InheritProductsPage = () => {
         ) : failedToLoad ? (
           <p role="alert" className="m-4 rounded-xl bg-error/10 px-4 py-3 text-sm text-error">Could not load shared products.</p>
         ) : products.length === 0 ? (
-          <div className="py-20 text-center"><p className="font-semibold text-text">No products available to inherit</p><p className="mt-1 text-sm text-text-secondary">Try another search, or the matching products already belong to this business.</p></div>
+          <div className="py-20 text-center"><p className="font-semibold text-text">No products available to import</p><p className="mt-1 text-sm text-text-secondary">Try another search, or the matching products already belong to this business.</p></div>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full min-w-[1180px] border-collapse text-left text-sm">
@@ -280,7 +280,7 @@ const InheritProductsPage = () => {
       <div className="sticky bottom-4 flex items-center justify-between rounded-2xl border border-border bg-white/95 p-4 shadow-lg backdrop-blur">
         <p className="text-sm font-medium text-text-secondary">{selectedCount} product{selectedCount === 1 ? '' : 's'} selected</p>
         <Button onClick={() => inheritMutation.mutate()} loading={inheritMutation.isPending} disabled={!selectedCount}>
-          Inherit selected products
+          Import selected products
         </Button>
       </div>
     </div>

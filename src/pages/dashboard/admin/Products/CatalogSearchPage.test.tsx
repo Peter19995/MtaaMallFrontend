@@ -119,7 +119,7 @@ describe("business catalogue workflow", () => {
   it("starts with search, distinguishes shared and business fields, and adopts the selected product", async () => {
     mount();
     expect(
-      screen.getByRole("heading", { name: "Find existing product" }),
+      screen.getByRole("heading", { name: "Import existing product" }),
     ).toBeInTheDocument();
     expect(
       screen.queryByRole("dialog", { name: "Propose a new product" }),

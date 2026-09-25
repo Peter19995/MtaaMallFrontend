@@ -54,7 +54,7 @@ const InheritProductCategoriesPage = () => {
 
   const inheritMutation = useMutation({
     mutationFn: async () => {
-      if (!selectedIds.size) throw new Error('Select at least one category to inherit.')
+      if (!selectedIds.size) throw new Error('Select at least one category to import.')
       const inherited: Array<{ publicId: string; name: string }> = []
       const failed: string[] = []
       for (const publicId of selectedIds) {
@@ -77,15 +77,15 @@ const InheritProductCategoriesPage = () => {
       setInheritedIds(current => new Set([...current, ...completedIds]))
       setSelectedIds(current => new Set([...current].filter(id => !completedIds.has(id))))
       void queryClient.invalidateQueries({ queryKey: ['products', 'categories'] })
-      const messages = [`${inherited.length} categor${inherited.length === 1 ? 'y' : 'ies'} inherited successfully.`]
-      if (failed.length) messages.push(`Could not inherit: ${failed.join(', ')}.`)
+      const messages = [`${inherited.length} categor${inherited.length === 1 ? 'y' : 'ies'} imported successfully.`]
+      if (failed.length) messages.push(`Could not import: ${failed.join(', ')}.`)
       setNotice(messages.join(' '))
     },
-    onError: error => setNotice((error as Error).message || 'Could not inherit categories.'),
+    onError: error => setNotice((error as Error).message || 'Could not import categories.'),
   })
 
   if (!hasPermission('products.create')) {
-    return <div className="rounded-2xl border border-error/20 bg-error/10 p-5 text-sm text-error">You do not have permission to inherit product categories.</div>
+    return <div className="rounded-2xl border border-error/20 bg-error/10 p-5 text-sm text-error">You do not have permission to import product categories.</div>
   }
 
   const loading = sharedCategoriesQuery.isLoading || businessCategoriesQuery.isLoading
@@ -96,10 +96,10 @@ const InheritProductCategoriesPage = () => {
       <div>
         <Link to={`${workspaceBase}/product-categories`} className="mb-3 inline-flex items-center gap-2 text-sm font-semibold text-primary hover:text-primary-dark"><ArrowLeftIcon className="h-4 w-4" />Back to categories</Link>
         <p className="text-xs font-bold uppercase tracking-[0.16em] text-primary-dark">Shared catalogue</p>
-        <h1 className="mt-1 text-2xl font-bold text-text sm:text-3xl">Inherit product categories</h1>
+        <h1 className="mt-1 text-2xl font-bold text-text sm:text-3xl">Import product categories</h1>
         <p className="mt-2 text-sm text-text-secondary">Select existing MtaaMall categories to add to your business.</p>
       </div>
-      <Button onClick={() => inheritMutation.mutate()} loading={inheritMutation.isPending} disabled={!selectedIds.size}>Inherit selected categories</Button>
+      <Button onClick={() => inheritMutation.mutate()} loading={inheritMutation.isPending} disabled={!selectedIds.size}>Import selected categories</Button>
     </header>
 
     <section className="overflow-hidden rounded-2xl border border-border bg-white shadow-sm">
@@ -115,7 +115,7 @@ const InheritProductCategoriesPage = () => {
       {notice && <p role="status" className="m-4 rounded-xl bg-primary/10 px-4 py-3 text-sm text-primary-dark">{notice}</p>}
       {loading ? <div className="py-20 text-center text-sm text-text-secondary"><ArrowPathIcon className="mx-auto mb-3 h-7 w-7 animate-spin text-primary" />Loading shared categories...</div>
         : loadFailed ? <p role="alert" className="m-4 rounded-xl bg-error/10 px-4 py-3 text-sm text-error">Could not load shared categories.</p>
-        : categories.length === 0 ? <div className="py-20 text-center"><TagIcon className="mx-auto h-9 w-9 text-text-tertiary" /><p className="mt-3 font-semibold text-text">No categories available to inherit</p><p className="mt-1 text-sm text-text-secondary">Matching categories may already belong to this business.</p></div>
+        : categories.length === 0 ? <div className="py-20 text-center"><TagIcon className="mx-auto h-9 w-9 text-text-tertiary" /><p className="mt-3 font-semibold text-text">No categories available to import</p><p className="mt-1 text-sm text-text-secondary">Matching categories may already belong to this business.</p></div>
         : <div className="overflow-x-auto">
           <table className="w-full min-w-[720px] border-collapse text-left text-sm">
             <thead className="bg-background text-xs uppercase tracking-wide text-text-secondary"><tr><th className="w-20 px-4 py-3">Select</th><th className="w-1/3 px-4 py-3">Category name</th><th className="px-4 py-3">Description</th></tr></thead>
@@ -133,7 +133,7 @@ const InheritProductCategoriesPage = () => {
 
     <div className="sticky bottom-4 flex items-center justify-between rounded-2xl border border-border bg-white/95 p-4 shadow-lg backdrop-blur">
       <p className="text-sm font-medium text-text-secondary">{selectedIds.size} categor{selectedIds.size === 1 ? 'y' : 'ies'} selected</p>
-      <Button onClick={() => inheritMutation.mutate()} loading={inheritMutation.isPending} disabled={!selectedIds.size}>Inherit selected categories</Button>
+      <Button onClick={() => inheritMutation.mutate()} loading={inheritMutation.isPending} disabled={!selectedIds.size}>Import selected categories</Button>
     </div>
   </div>
 }
