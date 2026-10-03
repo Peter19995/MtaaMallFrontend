@@ -35,6 +35,8 @@ const PlatformPaymentsOverviewPage = lazy(() => import('@pages/dashboard/admin/P
 const PlatformTransactionsPage = lazy(() => import('@pages/dashboard/admin/PlatformPayments/PlatformPaymentPages').then(module => ({ default: module.PlatformTransactionsPage })))
 const PlatformReconciliationPage = lazy(() => import('@pages/dashboard/admin/PlatformPayments/PlatformPaymentPages').then(module => ({ default: module.PlatformReconciliationPage })))
 const PlatformSettlementsPage = lazy(() => import('@pages/dashboard/admin/PlatformPayments/PlatformPaymentPages').then(module => ({ default: module.PlatformSettlementsPage })))
+const BillingPeriodsPage = lazy(() => import('@pages/dashboard/BillingPeriodsPage'))
+const PlatformBillingWorkspacePage = lazy(() => import('@pages/dashboard/admin/PlatformBilling/PlatformBillingWorkspacePage'))
 const PlatformCatalogPage = lazy(() => import('@pages/dashboard/admin/PlatformCatalog/PlatformCatalogPage'))
 const MyBusinessPage = lazy(() => import('@pages/dashboard/business/MyBusinessPage'))
 const WorkspacesPage = lazy(() => import('@pages/customer/WorkspacesPage'))
@@ -112,6 +114,11 @@ const LegacyDashboard = () => {
   return <Navigate to={canonicalDashboardPath(user ?? {}, location.pathname) + location.search + location.hash} state={location.state} replace />
 }
 
+const PlatformBillingRedirect = () => {
+  const location = useLocation()
+  return <Navigate to={`/platform/billing/reconciliation${location.search}`} replace />
+}
+
 export const AppRoutes = () => {
   return (
     <Suspense fallback={<Loader />}>
@@ -186,6 +193,22 @@ export const AppRoutes = () => {
               <Route path="/platform/payments/transactions" element={<PlatformTransactionsPage />} />
               <Route path="/platform/payments/reconciliation" element={<PlatformReconciliationPage />} />
               <Route path="/platform/settlements" element={<PlatformSettlementsPage />} />
+              <Route path="/platform/billing" element={<PlatformBillingRedirect />} />
+              <Route path="/platform/billing/reconciliation" element={<PlatformBillingWorkspacePage view="reconciliation" />} />
+              <Route path="/platform/billing/plans" element={<PlatformBillingWorkspacePage view="plans" />} />
+              <Route path="/platform/billing/plans/new" element={<PlatformBillingWorkspacePage view="plans" />} />
+              <Route path="/platform/billing/plans/:planId" element={<PlatformBillingWorkspacePage view="plans" />} />
+              <Route path="/platform/billing/plans/:planId/edit" element={<PlatformBillingWorkspacePage view="plans" />} />
+              <Route path="/platform/billing/plans/:planId/pricing" element={<PlatformBillingWorkspacePage view="plans" />} />
+              <Route path="/platform/billing/plans/:planId/pricing/new" element={<PlatformBillingWorkspacePage view="plans" />} />
+              <Route path="/platform/billing/plans/:planId/pricing/:ruleId/edit" element={<PlatformBillingWorkspacePage view="plans" />} />
+              <Route path="/platform/billing/plans/:planId/pricing/:ruleId/remove" element={<PlatformBillingWorkspacePage view="plans" />} />
+              <Route path="/platform/billing/plans/:planId/calculator" element={<PlatformBillingWorkspacePage view="plans" />} />
+              <Route path="/platform/billing/plans/:planId/duplicate" element={<PlatformBillingWorkspacePage view="plans" />} />
+              <Route path="/platform/billing/plans/:planId/remove" element={<PlatformBillingWorkspacePage view="plans" />} />
+              <Route path="/platform/billing/agreements" element={<PlatformBillingWorkspacePage view="agreements" />} />
+              <Route path="/platform/billing/assessments" element={<PlatformBillingWorkspacePage view="assessments" />} />
+              <Route path="/platform/billing/audit" element={<PlatformBillingWorkspacePage view="audit" />} />
               <Route path="/platform/businesses/:id/payments" element={<PlatformMpesaPage />} />
               <Route path="/platform/admins" element={<MembershipManagementPage scope="platform" />} />
               {['business', 'employee'].map(experience => <Route key={experience}>
@@ -197,6 +220,7 @@ export const AppRoutes = () => {
                 <Route path={`/${experience}/profile`} element={<MyBusinessPage />} />
                 <Route path={`/${experience}/members`} element={<MembershipManagementPage />} />
                 <Route path={`/${experience}/overview`} element={<AdminOverview />} />
+                <Route path={`/${experience}/billing`} element={<BillingPeriodsPage />} />
                 <Route path={`/${experience}/products`} element={<ProductManagementPage />} />
                 <Route path={`/${experience}/product-categories`} element={<ProductCategoriesPage />} />
                 <Route path={`/${experience}/product-categories/import`} element={<InheritProductCategoriesPage />} />

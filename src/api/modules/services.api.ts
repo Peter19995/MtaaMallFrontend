@@ -80,6 +80,68 @@ export type ServiceListParams = {
   is_active?: boolean
 }
 
+export type ServiceMilestone = {
+  public_id: string
+  name: string
+  sequence: number
+  amount: string
+  status: 'pending' | 'completed' | 'cancelled'
+  due_at?: string | null
+  completed_at?: string | null
+}
+
+export type ServiceJob = {
+  public_id: string
+  business_id: number
+  branch_id?: number | null
+  service_offering_id: number
+  service_name?: string | null
+  customer_id?: number | null
+  pricing_model: 'fixed' | 'hourly' | 'quoted'
+  status: 'draft' | 'booked' | 'in_progress' | 'completed' | 'cancelled' | 'no_show'
+  currency: string
+  fixed_amount: string
+  hourly_rate: string
+  estimated_hours?: string | null
+  actual_hours: string
+  quoted_amount: string
+  materials_amount: string
+  travel_amount: string
+  tip_amount: string
+  pass_through_amount: string
+  deposit_amount: string
+  seller_discount_amount: string
+  platform_discount_amount: string
+  cancellation_fee: string
+  no_show_fee: string
+  scheduled_at?: string | null
+  completed_at?: string | null
+  cancelled_at?: string | null
+  created_at: string
+  milestones: ServiceMilestone[]
+}
+
+export type ServiceJobCreate = {
+  service_offering_id: number
+  branch_id?: number
+  pricing_model: ServiceJob['pricing_model']
+  fixed_amount?: number
+  hourly_rate?: number
+  estimated_hours?: number
+  quoted_amount?: number
+  materials_amount?: number
+  travel_amount?: number
+  tip_amount?: number
+  pass_through_amount?: number
+  deposit_amount?: number
+  cancellation_fee?: number
+  no_show_fee?: number
+  scheduled_at?: string
+  notes?: string
+  idempotency_key: string
+  milestones?: Array<{ name: string; amount: number; due_at?: string }>
+}
+
 export const listServiceCategoriesRequest = async (): Promise<ServiceCategoryResponse[]> => {
   const { data } = await api.get<ServiceCategoryResponse[] | StandardApiResponse<ServiceCategoryResponse[]>>(
     '/services/categories'
@@ -174,4 +236,52 @@ export const uploadServiceImagesRequest = async (
 
 export const deleteServiceRequest = async (serviceId: number): Promise<void> => {
   await api.delete(`/services/${serviceId}`)
+}
+
+export const listServiceJobsRequest = async (): Promise<ServiceJob[]> => {
+  const { data } = await api.get<ServiceJob[] | StandardApiResponse<ServiceJob[]>>('/services/jobs')
+  return unwrapList(data)
+}
+
+export const createServiceJobRequest = async (payload: ServiceJobCreate): Promise<ServiceJob> => {
+  const { data } = await api.post<ServiceJob | StandardApiResponse<ServiceJob>>('/services/jobs', payload)
+  return unwrapItem(data)
+}
+
+export const completeServiceJobRequest = async (
+  jobId: string,
+  payload: { actual_hours?: number }
+): Promise<ServiceJob> => {
+  const { data } = await api.post<ServiceJob | StandardApiResponse<ServiceJob>>(
+    `/services/jobs/${jobId}/complete`, payload
+  )
+  return unwrapItem(data)
+}
+
+export const completeServiceMilestoneRequest = async (
+  jobId: string,
+  milestoneId: string
+): Promise<ServiceMilestone> => {
+  const { data } = await api.post<ServiceMilestone | StandardApiResponse<ServiceMilestone>>(
+    `/services/jobs/${jobId}/milestones/${milestoneId}/complete`
+  )
+  return unwrapItem(data)
+}
+
+export const applyServicePolicyRequest = async (
+  jobId: string,
+  action: 'cancel' | 'no-show',
+  payload: { reason: string; fee_amount?: number }
+): Promise<ServiceJob> => {
+  const { data } = await api.post<ServiceJob | StandardApiResponse<ServiceJob>>(
+    `/services/jobs/${jobId}/${action}`, payload
+  )
+  return unwrapItem(data)
+}
+
+export const addServiceAdjustmentRequest = async (
+  jobId: string,
+  payload: { kind: 'refund' | 'credit'; amount: number; reason: string; idempotency_key: string }
+): Promise<void> => {
+  await api.post(`/services/jobs/${jobId}/adjustments`, payload)
 }

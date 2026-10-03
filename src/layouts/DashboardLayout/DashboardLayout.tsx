@@ -37,6 +37,7 @@ type MenuEntry = ReturnType<typeof workspaceMenu>[number]
 
 const groupDefinition = (path: string) => {
   if (path.includes('/platform/catalog')) return { id: 'platform-catalog', label: 'Global Catalogue', icon: CubeIcon, order: 30 }
+  if (path.includes('/platform/billing/')) return { id: 'platform-billing', label: 'Billing operations', icon: CurrencyDollarIcon, order: 25 }
   if (path.endsWith('/sales') || path.endsWith('/sales/create') || path.endsWith('/payment-modes')) return { id: 'sales', label: 'Sales & Payments', icon: CurrencyDollarIcon, order: 10 }
   if (path.includes('/products') || path.endsWith('/product-categories') || path.endsWith('/collections') || path.endsWith('/catalogue') || path.endsWith('/variant-options') || path.includes('/inventory')) return { id: 'catalog', label: 'Catalog & Inventory', icon: CubeIcon, order: 20 }
   if (path.endsWith('/branches') || path.endsWith('/projects') || path.endsWith('/services') || path.endsWith('/styling')) return { id: 'operations', label: 'Business Operations', icon: WrenchScrewdriverIcon, order: 30 }
@@ -61,6 +62,11 @@ const groupMenu = (items: MenuEntry[]) => {
 }
 
 const iconFor = (path: string) => {
+  if (path.endsWith('/billing/reconciliation')) return ServerStackIcon
+  if (path.endsWith('/billing/plans')) return CreditCardIcon
+  if (path.endsWith('/billing/agreements')) return ClipboardDocumentCheckIcon
+  if (path.endsWith('/billing/assessments')) return CurrencyDollarIcon
+  if (path.endsWith('/billing/audit')) return ShieldCheckIcon
   if (path.endsWith('/audit')) return ClipboardDocumentCheckIcon
   if (path.endsWith('/approvals')) return CheckBadgeIcon
   if (path.endsWith('/businesses')) return BuildingStorefrontIcon
@@ -129,6 +135,9 @@ export const DashboardLayout = () => {
   }
 
   const navLink = (isActive: boolean) => `group flex w-full items-center gap-3 rounded-xl px-3.5 py-2.5 text-sm font-medium transition-all duration-200 ${isActive ? 'bg-primary/10 text-primary-dark shadow-[inset_3px_0_0_#51c4d8]' : 'text-text-secondary hover:translate-x-0.5 hover:bg-primary/5 hover:text-primary-dark'}`
+  const menuTarget = (path: string) => path.startsWith('/platform/billing/') && location.pathname.startsWith('/platform/billing')
+    ? `${path}${location.search}`
+    : path
 
   const navigation = (isMobile = false) => <nav aria-label={labels[experience]} className="flex-1 overflow-y-auto px-3 py-4">
     <p className="mb-2 px-3 text-[10px] font-bold uppercase tracking-[0.18em] text-text-tertiary">Main menu</p>
@@ -138,12 +147,12 @@ export const DashboardLayout = () => {
         if (group.items.length === 1 && !['hr', 'crm'].includes(group.id)) {
           const item = group.items[0]
           const Icon = iconFor(item.path)
-          return <NavLink key={item.path} to={item.path} end onClick={() => isMobile && setMobile(false)} className={({ isActive }) => navLink(isActive)}><Icon className="h-5 w-5 shrink-0" /><span className="truncate">{item.label}</span></NavLink>
+          return <NavLink key={item.path} to={menuTarget(item.path)} end onClick={() => isMobile && setMobile(false)} className={({ isActive }) => navLink(isActive)}><Icon className="h-5 w-5 shrink-0" /><span className="truncate">{item.label}</span></NavLink>
         }
         const GroupIcon = group.icon
         const open = openGroups[group.id] ?? false
         const active = group.items.some(item => location.pathname === item.path || location.pathname.startsWith(`${item.path}/`))
-        return <div key={group.id} className="space-y-1"><button type="button" aria-expanded={open} onClick={() => setOpenGroups(previous => ({ ...previous, [group.id]: !open }))} className={navLink(active)}><GroupIcon className="h-5 w-5 shrink-0" /><span className="min-w-0 flex-1 truncate text-left">{group.label}</span><ChevronDownIcon className={`h-4 w-4 shrink-0 transition-transform ${open ? 'rotate-180' : ''}`} /></button><AnimatePresence initial={false}>{open && <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }} className="overflow-hidden"><div className="ml-5 space-y-1 border-l border-divider py-1 pl-2">{group.items.map(item => { const Icon = iconFor(item.path); return <NavLink key={item.path} to={item.path} end onClick={() => isMobile && setMobile(false)} className={({ isActive }) => `flex items-center gap-2 rounded-lg px-3 py-2 text-sm transition ${isActive ? 'bg-primary/10 font-semibold text-primary-dark' : 'text-text-tertiary hover:bg-primary/5 hover:text-primary-dark'}`}><Icon className="h-4 w-4 shrink-0" /><span className="truncate">{item.label}</span></NavLink> })}</div></motion.div>}</AnimatePresence></div>
+        return <div key={group.id} className="space-y-1"><button type="button" aria-expanded={open} onClick={() => setOpenGroups(previous => ({ ...previous, [group.id]: !open }))} className={navLink(active)}><GroupIcon className="h-5 w-5 shrink-0" /><span className="min-w-0 flex-1 truncate text-left">{group.label}</span><ChevronDownIcon className={`h-4 w-4 shrink-0 transition-transform ${open ? 'rotate-180' : ''}`} /></button><AnimatePresence initial={false}>{open && <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }} className="overflow-hidden"><div className="ml-5 space-y-1 border-l border-divider py-1 pl-2">{group.items.map(item => { const Icon = iconFor(item.path); return <NavLink key={item.path} to={menuTarget(item.path)} end onClick={() => isMobile && setMobile(false)} className={({ isActive }) => `flex items-center gap-2 rounded-lg px-3 py-2 text-sm transition ${isActive ? 'bg-primary/10 font-semibold text-primary-dark' : 'text-text-tertiary hover:bg-primary/5 hover:text-primary-dark'}`}><Icon className="h-4 w-4 shrink-0" /><span className="truncate">{item.label}</span></NavLink> })}</div></motion.div>}</AnimatePresence></div>
       })}
     </div>
   </nav>

@@ -48,6 +48,11 @@ import {
   type PosSaleResponse
 } from '@api/modules/pos.api'
 import { AppTheme, withOpacity } from '@constants/theme'
+import {
+  cancelBusinessMarketplaceOrder,
+  listBusinessMarketplaceOrders,
+  updateBusinessMarketplaceOrderStatus,
+} from '@api/modules/marketplaceOrders.api'
 
 type FeedbackState = {
   type: 'success' | 'error'
@@ -105,6 +110,7 @@ const SalesOperationsPage = () => {
   const siteDialog = useSiteDialog()
   const canReport = hasPermission('reports.read')
   const canReadSales = hasPermission('orders.read')
+  const canUpdateOrders = hasPermission('orders.update')
   const isSalesStaff = user?.roles?.includes('sales_staff') ?? false
   const canSell = canAccessWorkspace(user, workspacePath('/dashboard/admin/sales/create'))
   const canMutate = !['suspended', 'closed'].includes(user?.business_status ?? '')
@@ -187,6 +193,44 @@ const SalesOperationsPage = () => {
     queryKey: ['pos', 'sales', posFilters],
     queryFn: () => listPosSalesRequest(posFilters)
   })
+
+  const marketplaceOrdersQuery = useQuery({
+    queryKey: ['business', 'marketplace-orders', branchIdNumber],
+    queryFn: () => listBusinessMarketplaceOrders({ branch_id: branchIdNumber }),
+    enabled: canReadSales,
+  })
+
+  const marketplaceStatusMutation = useMutation({
+    mutationFn: ({ orderId, status }: { orderId: number; status: 'shipped' | 'delivered' }) =>
+      updateBusinessMarketplaceOrderStatus(orderId, status),
+    onSuccess: () => {
+      setFeedback({ type: 'success', message: 'Marketplace order status updated.' })
+      void queryClient.invalidateQueries({ queryKey: ['business', 'marketplace-orders'] })
+      void queryClient.invalidateQueries({ queryKey: ['billing-periods'] })
+    },
+    onError: (error: Error) => setFeedback({ type: 'error', message: error.message }),
+  })
+
+  const marketplaceCancelMutation = useMutation({
+    mutationFn: ({ orderId, reason }: { orderId: number; reason: string }) =>
+      cancelBusinessMarketplaceOrder(orderId, reason),
+    onSuccess: () => {
+      setFeedback({ type: 'success', message: 'Marketplace order cancelled and its reservation released.' })
+      void queryClient.invalidateQueries({ queryKey: ['business', 'marketplace-orders'] })
+    },
+    onError: (error: Error) => setFeedback({ type: 'error', message: error.message }),
+  })
+
+  const cancelMarketplaceOrder = async (orderId: number) => {
+    const reason = await siteDialog.prompt({
+      title: 'Cancel marketplace order',
+      message: 'Pending stock and commission reservations will be released. Paid orders require a recorded refund first.',
+      inputLabel: 'Cancellation reason',
+      confirmLabel: 'Cancel order',
+      minLength: 3,
+    })
+    if (reason) marketplaceCancelMutation.mutate({ orderId, reason })
+  }
 
   const dailyPosSummaryQuery = useQuery({
     queryKey: ['pos', 'daily-summary', branchIdNumber, dailySummaryDate],
@@ -551,6 +595,50 @@ const SalesOperationsPage = () => {
             </motion.div>
           )}
         </section>
+      )}
+
+      {/* Filters Section */}
+      {canReadSales && (
+        <motion.section
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="mb-6 overflow-hidden rounded-xl border border-border bg-white shadow-sm"
+        >
+          <div className="flex items-center justify-between border-b border-border p-4">
+            <div>
+              <h2 className="font-semibold text-text">Marketplace orders</h2>
+              <p className="text-xs text-text-secondary">
+                Payment reserves an estimated commission. The fee is recognized only when the order is delivered.
+              </p>
+            </div>
+            {marketplaceOrdersQuery.isFetching && <ArrowPathIcon className="h-5 w-5 animate-spin text-primary" />}
+          </div>
+          <div className="overflow-x-auto">
+            <table className="min-w-full text-left text-sm">
+              <thead className="bg-background text-xs uppercase text-text-tertiary">
+                <tr><th className="px-4 py-3">Order</th><th className="px-4 py-3">Items</th><th className="px-4 py-3">Payment</th><th className="px-4 py-3">Total</th><th className="px-4 py-3">Status</th><th className="px-4 py-3">Action</th></tr>
+              </thead>
+              <tbody className="divide-y divide-border">
+                {(marketplaceOrdersQuery.data ?? []).map((order) => (
+                  <tr key={order.id}>
+                    <td className="px-4 py-3 font-semibold">#{order.id}<span className="block text-xs font-normal text-text-tertiary">{formatDateTime(order.created_at)}</span></td>
+                    <td className="px-4 py-3">{order.items.reduce((sum, item) => sum + item.quantity, 0)}</td>
+                    <td className="px-4 py-3 capitalize">{order.payment_status}</td>
+                    <td className="px-4 py-3 font-semibold">KES {Number(order.total_amount).toLocaleString()}</td>
+                    <td className="px-4 py-3 capitalize">{order.status}</td>
+                    <td className="px-4 py-3">
+                      {canUpdateOrders && order.status === 'paid' && <Button size="sm" variant="outline" onClick={() => marketplaceStatusMutation.mutate({ orderId: order.id, status: 'shipped' })}>Mark shipped</Button>}
+                      {canUpdateOrders && ['paid', 'shipped'].includes(order.status) && <Button size="sm" className="ml-2" onClick={() => marketplaceStatusMutation.mutate({ orderId: order.id, status: 'delivered' })}>Mark delivered</Button>}
+                      {canUpdateOrders && order.status === 'pending' && <Button size="sm" variant="outline" onClick={() => void cancelMarketplaceOrder(order.id)}>Cancel</Button>}
+                      {(!canUpdateOrders || !['pending', 'paid', 'shipped'].includes(order.status)) && <span className="text-xs text-text-tertiary">No action</span>}
+                    </td>
+                  </tr>
+                ))}
+                {marketplaceOrdersQuery.data?.length === 0 && <tr><td colSpan={6} className="px-4 py-8 text-center text-text-secondary">No marketplace orders yet.</td></tr>}
+              </tbody>
+            </table>
+          </div>
+        </motion.section>
       )}
 
       {/* Filters Section */}

@@ -73,6 +73,14 @@ export type SettlementSummary = {
   business_id: string; business_name: string; currency: string; entry_count: number
   gross_amount: string; provider_fee: string; platform_commission: string
   adjustment_amount: string; net_amount: string; available_amount: string
+  ledger_balance: string; pending_settlement_amount: string; negative_balance: string
+  active_reserve_amount: string; projected_reserve_amount: string; paid_amount: string
+}
+export type SettlementPayoutControl = {
+  psp_arrangement_confirmed: boolean; regulatory_review_confirmed: boolean
+  withdrawals_enabled: boolean; ready_to_enable: boolean
+  confirmation_note: string | null; confirmed_by_user_id: number | null
+  confirmed_at: string | null; updated_at: string
 }
 export type BusinessSettlement = {
   public_id: string; business_id: string; business_name: string
@@ -153,6 +161,16 @@ export const getBusinessPaymentBranches = async (businessId: string) =>
   (await api.get<BusinessPaymentBranch[]>(`/platform/businesses/${encodeURIComponent(businessId)}/payments/mpesa/branches`)).data
 export const getSettlementSummaries = async () =>
   (await api.get<SettlementSummary[]>('/platform/settlement-wallets')).data
+export const getSettlementPayoutControl = async () =>
+  (await api.get<SettlementPayoutControl>('/platform/settlement-payout-control')).data
+export const saveSettlementPayoutControl = async (body: {
+  psp_arrangement_confirmed: boolean; regulatory_review_confirmed: boolean
+  withdrawals_enabled: boolean; confirmation_note: string
+}) => (await api.put<SettlementPayoutControl>('/platform/settlement-payout-control', body)).data
+export const createSellerReserve = async (body: {
+  business_id: string; reserve_type: 'refund' | 'dispute'; amount: number
+  currency: string; external_reference: string; reason: string
+}) => (await api.post('/platform/seller-ledger/reserves', body)).data
 export const listSettlements = async () =>
   (await api.get<BusinessSettlement[]>('/platform/settlements')).data
 export const prepareSettlement = async (businessId: string, currency: string) =>

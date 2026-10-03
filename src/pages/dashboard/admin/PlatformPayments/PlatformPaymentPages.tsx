@@ -6,9 +6,9 @@ import { ArrowPathIcon, BanknotesIcon, BuildingStorefrontIcon, CreditCardIcon } 
 import { listBusinesses } from '@api/modules/businesses.api'
 import {
   approveSettlement, getPaymentAlerts, getPaymentMetrics, getPaymentReconciliation, getPaymentTransactions,
-  getSettlementSummaries, listSettlements, markSettlementPaid,
+  createSellerReserve, getSettlementPayoutControl, getSettlementSummaries, listSettlements, markSettlementPaid,
   prepareSettlement, reconcilePayment, rejectSettlement, resolvePaymentAlert,
-  saveCommissionPolicy, submitSettlement,
+  saveCommissionPolicy, saveSettlementPayoutControl, submitSettlement,
   type PaymentTransaction,
 } from '@api/modules/platformPayments.api'
 import { useAuth } from '@hooks/useAuth'
@@ -98,12 +98,15 @@ export function PlatformSettlementsPage() {
   const dialog = useSiteDialog()
   const queryClient = useQueryClient()
   const wallets = useQuery({ queryKey: ['platform-settlement-wallets'], queryFn: getSettlementSummaries })
+  const payoutControl = useQuery({ queryKey: ['platform-settlement-payout-control'], queryFn: getSettlementPayoutControl })
   const settlements = useQuery({ queryKey: ['platform-settlements'], queryFn: listSettlements })
   const businesses = useQuery({ queryKey: ['platform-businesses-for-settlements'], queryFn: () => listBusinesses() })
   const [policy, setPolicy] = useState({ businessId: '', name: 'Standard agreement', percentage: '0', fixed: '0', providerPercentage: '0', providerFixed: '0' })
+  const [reserve, setReserve] = useState({ businessId: '', type: 'refund' as 'refund' | 'dispute', amount: '', reference: '', reason: '' })
   const refresh = () => {
     queryClient.invalidateQueries({ queryKey: ['platform-settlement-wallets'] })
     queryClient.invalidateQueries({ queryKey: ['platform-settlements'] })
+    queryClient.invalidateQueries({ queryKey: ['platform-settlement-payout-control'] })
   }
   const action = useMutation({
     mutationFn: async ({ kind, id }: { kind: string; id: string }) => {
@@ -131,8 +134,35 @@ export function PlatformSettlementsPage() {
     }),
     onSuccess: () => dialog.alert({ title: 'Commission policy saved', message: 'New online payments will use this agreement. Historical ledger entries are unchanged.' })
   })
+  const saveControl = useMutation({
+    mutationFn: (form: HTMLFormElement) => {
+      const data = new FormData(form)
+      return saveSettlementPayoutControl({
+        psp_arrangement_confirmed: data.has('psp'),
+        regulatory_review_confirmed: data.has('regulatory'),
+        withdrawals_enabled: data.has('enabled'),
+        confirmation_note: String(data.get('note') ?? ''),
+      })
+    },
+    onSuccess: refresh,
+  })
+  const addReserve = useMutation({
+    mutationFn: () => createSellerReserve({
+      business_id: reserve.businessId, reserve_type: reserve.type,
+      amount: Number(reserve.amount), currency: 'KES',
+      external_reference: reserve.reference, reason: reserve.reason,
+    }),
+    onSuccess: () => { setReserve({ businessId: '', type: 'refund', amount: '', reference: '', reason: '' }); refresh() },
+  })
   return <div className="mx-auto max-w-7xl space-y-6 pb-12">
     <Header eyebrow="Platform payments" title="Seller wallets & settlements" text="Reconcile online collections, fees and commission before approving external seller payouts." />
+    {action.isError && <p className="rounded-xl bg-error/10 p-3 text-sm text-error">{action.error instanceof Error ? action.error.message : 'Settlement action failed.'}</p>}
+    <section className={`${panel} p-5`}>
+      <div className="flex flex-wrap items-start justify-between gap-3"><div><h2 className="font-bold text-text">Withdrawal readiness</h2><p className="mt-1 text-sm text-text-secondary">Payouts stay blocked until the PSP arrangement and regulatory review are both documented.</p></div><span className={`rounded-full px-3 py-1 text-xs font-bold ${payoutControl.data?.withdrawals_enabled ? 'bg-green-100 text-green-800' : 'bg-amber-100 text-amber-800'}`}>{payoutControl.data?.withdrawals_enabled ? 'Withdrawals enabled' : 'Withdrawals disabled'}</span></div>
+      {payoutControl.data && hasPermission('platform.settlements.configure_withdrawals') && <form key={payoutControl.data.updated_at} className="mt-4 space-y-3" onSubmit={event => { event.preventDefault(); saveControl.mutate(event.currentTarget) }}><div className="grid gap-3 md:grid-cols-3">{([['psp', 'PSP arrangement confirmed', payoutControl.data.psp_arrangement_confirmed], ['regulatory', 'Regulatory review confirmed', payoutControl.data.regulatory_review_confirmed], ['enabled', 'Enable seller withdrawals', payoutControl.data.withdrawals_enabled]] as const).map(([name, label, checked]) => <label className="flex items-center gap-3 rounded-xl border border-border p-3 text-sm font-semibold" key={name}><input type="checkbox" name={name} defaultChecked={checked} />{label}</label>)}</div><div className="flex flex-col gap-2 md:flex-row"><input className={`${input} flex-1`} name="note" minLength={10} required defaultValue={payoutControl.data.confirmation_note ?? ''} placeholder="Document the PSP contract and regulatory review reference" /><button className={linkButton} disabled={saveControl.isPending}>Save control</button></div></form>}
+      {(saveControl.isError || addReserve.isError) && <p className="mt-3 rounded-xl bg-error/10 p-3 text-sm text-error">{((saveControl.error ?? addReserve.error) as Error)?.message}</p>}
+    </section>
+    {hasPermission('platform.settlements.adjust') && <section className={`${panel} p-5`}><h2 className="font-bold text-text">Refund or dispute reserve</h2><p className="mt-1 text-sm text-text-secondary">A reserve immediately reduces the available seller balance without editing an existing ledger entry.</p><form className="mt-4 grid gap-3 md:grid-cols-6" onSubmit={event => { event.preventDefault(); addReserve.mutate() }}><Select className={input} required value={reserve.businessId} onChange={event => setReserve({ ...reserve, businessId: event.target.value })}><option value="">Select business</option>{businesses.data?.map(item => <option value={item.public_id} key={item.public_id}>{item.display_name}</option>)}</Select><Select className={input} value={reserve.type} onChange={event => setReserve({ ...reserve, type: event.target.value as 'refund' | 'dispute' })}><option value="refund">Refund</option><option value="dispute">Dispute</option></Select><input className={input} required type="number" min="0.01" step="0.01" placeholder="Amount" value={reserve.amount} onChange={event => setReserve({ ...reserve, amount: event.target.value })} /><input className={input} required minLength={3} placeholder="External reference" value={reserve.reference} onChange={event => setReserve({ ...reserve, reference: event.target.value })} /><input className={input} required minLength={3} placeholder="Reason" value={reserve.reason} onChange={event => setReserve({ ...reserve, reason: event.target.value })} /><button className={linkButton} disabled={addReserve.isPending}>Place reserve</button></form></section>}
     <section className={`${panel} p-5`}>
       <h2 className="font-bold text-text">Commission policy</h2>
       <p className="mt-1 text-sm text-text-secondary">Policies apply to future successful online payments only.</p>
@@ -145,6 +175,7 @@ export function PlatformSettlementsPage() {
         <div className="flex gap-2"><input className={`${input} min-w-0 flex-1`} type="number" min="0" step="0.01" value={policy.providerFixed} onChange={e => setPolicy({ ...policy, providerFixed: e.target.value })} placeholder="Provider fixed" aria-label="Provider fixed fee" /><button className={linkButton} disabled={savePolicy.isPending}>Save</button></div>
       </form>}
     </section>
+    <section className="grid gap-3 sm:grid-cols-3">{wallets.data?.map(row => <article className={`${panel} p-4`} key={`reserve-${row.business_id}-${row.currency}`}><p className="font-bold text-text">{row.business_name}</p><div className="mt-3 grid grid-cols-2 gap-3 text-sm"><div><p className="text-text-tertiary">Available</p><p className="font-extrabold text-primary-dark">{row.currency} {row.available_amount}</p></div><div><p className="text-text-tertiary">Active reserves</p><p className="font-bold">{row.currency} {row.active_reserve_amount}</p></div><div><p className="text-text-tertiary">Projected billing</p><p className="font-bold">{row.currency} {row.projected_reserve_amount}</p></div><div><p className="text-text-tertiary">Negative balance</p><p className={Number(row.negative_balance) > 0 ? 'font-bold text-error' : 'font-bold'}>{row.currency} {row.negative_balance}</p></div></div></article>)}</section>
     <section className={`${panel} overflow-hidden`}><div className="overflow-x-auto"><table className="min-w-full text-left text-sm"><thead className="bg-background text-xs uppercase text-text-tertiary"><tr><th className="px-4 py-4">Business</th><th className="px-4 py-4">Gross</th><th className="px-4 py-4">Provider fees</th><th className="px-4 py-4">Commission</th><th className="px-4 py-4">Net ledger</th><th className="px-4 py-4">Available</th><th className="px-4 py-4">Action</th></tr></thead><tbody className="divide-y divide-border">{wallets.data?.map(row => <tr key={`${row.business_id}-${row.currency}`}><td className="px-4 py-4 font-semibold">{row.business_name}<span className="block text-xs font-normal text-text-tertiary">{row.entry_count} entries</span></td><td className="px-4 py-4">{row.currency} {row.gross_amount}</td><td className="px-4 py-4 text-error">− {row.provider_fee}</td><td className="px-4 py-4 text-error">− {row.platform_commission}</td><td className="px-4 py-4 font-bold">{row.currency} {row.net_amount}</td><td className="px-4 py-4 font-bold text-primary-dark">{row.currency} {row.available_amount}</td><td className="px-4 py-4">{hasPermission('platform.settlements.prepare') && <button className={linkButton} disabled={Number(row.available_amount) <= 0 || prepare.isPending} onClick={() => prepare.mutate({ businessId: row.business_id, currency: row.currency })}>Prepare</button>}</td></tr>)}{wallets.data?.length === 0 && <tr><td colSpan={7} className="px-5 py-10 text-center text-text-secondary">No successful online collections have reached the seller ledger.</td></tr>}</tbody></table></div></section>
     <section className={`${panel} overflow-hidden`}><div className="border-b border-border px-5 py-4"><h2 className="font-bold text-text">Settlement statements</h2><p className="text-sm text-text-secondary">A different authorized administrator must approve a submitted statement.</p></div><div className="overflow-x-auto"><table className="min-w-full text-left text-sm"><thead className="bg-background text-xs uppercase text-text-tertiary"><tr><th className="px-4 py-3">Statement</th><th className="px-4 py-3">Business</th><th className="px-4 py-3">Net payable</th><th className="px-4 py-3">Status</th><th className="px-4 py-3">Payout reference</th><th className="px-4 py-3">Actions</th></tr></thead><tbody className="divide-y divide-border">{settlements.data?.map(row => <tr key={row.public_id}><td className="px-4 py-4 font-mono text-xs">{row.settlement_number}<span className="block font-sans text-text-tertiary">{row.item_count} entries</span></td><td className="px-4 py-4 font-semibold">{row.business_name}</td><td className="px-4 py-4 font-bold">{row.currency} {row.net_amount}</td><td className="px-4 py-4 capitalize">{row.status.replace(/_/g, ' ')}</td><td className="px-4 py-4">{row.external_payout_reference ?? '—'}</td><td className="px-4 py-4"><div className="flex flex-wrap gap-2">{row.status === 'draft' && hasPermission('platform.settlements.prepare') && <button className={linkButton} onClick={() => action.mutate({ kind: 'submit', id: row.public_id })}>Submit</button>}{row.status === 'pending_approval' && hasPermission('platform.settlements.approve') && <><button className={linkButton} onClick={() => action.mutate({ kind: 'approve', id: row.public_id })}>Approve</button><button className={`${input} text-error`} onClick={() => action.mutate({ kind: 'reject', id: row.public_id })}>Reject</button></>}{row.status === 'approved' && hasPermission('platform.settlements.payout') && <button className={linkButton} onClick={() => action.mutate({ kind: 'pay', id: row.public_id })}>Record payout</button>}</div></td></tr>)}{settlements.data?.length === 0 && <tr><td colSpan={6} className="px-5 py-10 text-center text-text-secondary">No settlement statements have been prepared.</td></tr>}</tbody></table></div></section>
   </div>

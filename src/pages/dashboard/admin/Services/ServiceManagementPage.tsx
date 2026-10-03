@@ -26,18 +26,27 @@ import {
 import { Button, DataTable, Select, TextArea, TextInput, useSiteDialog, type Column } from '@components/common'
 import {
   createServiceCategoryRequest,
+  createServiceJobRequest,
   createServiceRequest,
+  completeServiceJobRequest,
+  completeServiceMilestoneRequest,
+  applyServicePolicyRequest,
+  addServiceAdjustmentRequest,
   deleteServiceRequest,
   listServiceCategoriesRequest,
+  listServiceJobsRequest,
   listServicesRequest,
   type ServiceOfferingCreate,
   type ServiceOfferingResponse,
   type ServiceOfferingUpdate,
+  type ServiceJob,
   uploadServiceImagesRequest,
   updateServiceRequest
 } from '@api/modules/services.api'
 import { AppTheme, withOpacity } from '@constants/theme'
 import { resolveMediaUrl, resolveMediaUrls } from '@utils/media'
+import { useAuth } from '@hooks/useAuth'
+import { listBranchesRequest } from '@api/modules/branches.api'
 
 type ServiceFormState = {
   code: string
@@ -85,6 +94,12 @@ const staggerContainer = {
 }
 
 const ServiceManagementPage = () => {
+  const { hasPermission } = useAuth()
+  const canManageCatalogue = hasPermission('content.manage')
+  const canReadJobs = hasPermission('services.jobs.read')
+  const canManageJobs = hasPermission('services.jobs.manage')
+  const canCompleteJobs = hasPermission('services.jobs.complete')
+  const canRefundJobs = hasPermission('services.jobs.refund')
   const siteDialog = useSiteDialog()
   const queryClient = useQueryClient()
   const [search, setSearch] = useState('')
@@ -99,6 +114,13 @@ const ServiceManagementPage = () => {
   const [previewImage, setPreviewImage] = useState<string | null>(null)
   const [selectedServiceDetails, setSelectedServiceDetails] = useState<ServiceOfferingResponse | null>(null)
   const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'inactive'>('all')
+  const [showJobForm, setShowJobForm] = useState(false)
+  const [jobForm, setJobForm] = useState({
+    serviceId: '', branchId: '', pricingModel: 'fixed' as 'fixed' | 'hourly' | 'quoted',
+    amount: '', estimatedHours: '', deposit: '', materials: '', travel: '',
+    tip: '', passThrough: '', cancellationFee: '', noShowFee: '',
+    milestoneName: '', milestoneAmount: '', notes: ''
+  })
 
   const categoriesQuery = useQuery({
     queryKey: ['services', 'categories', 'admin'],
@@ -112,6 +134,83 @@ const ServiceManagementPage = () => {
       search: search.trim() || undefined,
       is_active: statusFilter === 'all' ? undefined : statusFilter === 'active'
     })
+  })
+
+  const jobsQuery = useQuery({
+    queryKey: ['services', 'jobs'],
+    queryFn: listServiceJobsRequest,
+    enabled: canReadJobs
+  })
+
+  const branchesQuery = useQuery({
+    queryKey: ['branches', 'service-jobs'],
+    queryFn: listBranchesRequest,
+    enabled: canManageJobs
+  })
+
+  const createJobMutation = useMutation({
+    mutationFn: () => {
+      const amount = Number(jobForm.amount || 0)
+      const milestoneAmount = Number(jobForm.milestoneAmount || 0)
+      return createServiceJobRequest({
+        service_offering_id: Number(jobForm.serviceId),
+        branch_id: jobForm.branchId ? Number(jobForm.branchId) : undefined,
+        pricing_model: jobForm.pricingModel,
+        fixed_amount: jobForm.pricingModel === 'fixed' ? amount : 0,
+        hourly_rate: jobForm.pricingModel === 'hourly' ? amount : 0,
+        estimated_hours: jobForm.pricingModel === 'hourly' ? Number(jobForm.estimatedHours || 0) : undefined,
+        quoted_amount: jobForm.pricingModel === 'quoted' ? amount : 0,
+        materials_amount: Number(jobForm.materials || 0),
+        travel_amount: Number(jobForm.travel || 0),
+        tip_amount: Number(jobForm.tip || 0),
+        pass_through_amount: Number(jobForm.passThrough || 0),
+        deposit_amount: Number(jobForm.deposit || 0),
+        cancellation_fee: Number(jobForm.cancellationFee || 0),
+        no_show_fee: Number(jobForm.noShowFee || 0),
+        notes: jobForm.notes || undefined,
+        idempotency_key: crypto.randomUUID(),
+        milestones: jobForm.milestoneName.trim() && milestoneAmount > 0
+          ? [{ name: jobForm.milestoneName.trim(), amount: milestoneAmount }]
+          : []
+      })
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['services', 'jobs'] })
+      setShowJobForm(false)
+      setJobForm({ serviceId: '', branchId: '', pricingModel: 'fixed', amount: '', estimatedHours: '', deposit: '', materials: '', travel: '', tip: '', passThrough: '', cancellationFee: '', noShowFee: '', milestoneName: '', milestoneAmount: '', notes: '' })
+    }
+  })
+
+  const jobActionMutation = useMutation({
+    mutationFn: async ({ job, action }: { job: ServiceJob; action: 'complete' | 'cancel' | 'no-show' | 'refund' }) => {
+      if (action === 'complete') {
+        let actualHours: number | undefined
+        if (job.pricing_model === 'hourly') {
+          const value = await siteDialog.prompt({ title: 'Complete hourly service', message: 'Enter the actual hours worked.', inputLabel: 'Actual hours' })
+          if (value === null) return
+          actualHours = Number(value)
+        }
+        await completeServiceJobRequest(job.public_id, { actual_hours: actualHours })
+        return
+      }
+      if (action === 'refund') {
+        const amount = await siteDialog.prompt({ title: 'Service refund or credit', message: 'Enter the amount to credit.', inputLabel: 'Amount' })
+        if (amount === null) return
+        const reason = await siteDialog.prompt({ title: 'Reason required', message: 'Explain this refund or credit.', inputLabel: 'Reason', minLength: 3 })
+        if (reason === null) return
+        await addServiceAdjustmentRequest(job.public_id, { kind: 'refund', amount: Number(amount), reason, idempotency_key: crypto.randomUUID() })
+        return
+      }
+      const reason = await siteDialog.prompt({ title: action === 'cancel' ? 'Cancel service' : 'Mark no-show', message: 'Record the reason. The configured policy fee will be used.', inputLabel: 'Reason', minLength: 3 })
+      if (reason === null) return
+      await applyServicePolicyRequest(job.public_id, action, { reason })
+    },
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['services', 'jobs'] })
+  })
+
+  const milestoneMutation = useMutation({
+    mutationFn: ({ jobId, milestoneId }: { jobId: string; milestoneId: string }) => completeServiceMilestoneRequest(jobId, milestoneId),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['services', 'jobs'] })
   })
 
   const saveServiceMutation = useMutation({
@@ -307,15 +406,15 @@ const ServiceManagementPage = () => {
       align: 'right',
       render: (row) => (
         <div className="flex justify-end gap-2">
-          <button
+          {canManageCatalogue && <button
             type="button"
             className="p-2 text-text-secondary hover:text-primary hover:bg-primary/5 rounded-lg transition-all"
             onClick={() => setSelectedServiceDetails(row)}
             title="View details"
           >
             <EyeIcon className="h-4 w-4" />
-          </button>
-          <button
+          </button>}
+          {canManageCatalogue && <button
             type="button"
             className="p-2 text-text-secondary hover:text-primary hover:bg-primary/5 rounded-lg transition-all"
             onClick={() => {
@@ -336,7 +435,7 @@ const ServiceManagementPage = () => {
             title="Edit service"
           >
             <PencilIcon className="h-4 w-4" />
-          </button>
+          </button>}
           <button
             type="button"
             className="p-2 text-text-secondary hover:text-error hover:bg-error/5 rounded-lg transition-all"
@@ -403,7 +502,7 @@ const ServiceManagementPage = () => {
             </p>
           </div>
           
-          <div className="flex gap-2">
+          {canManageCatalogue && <div className="flex gap-2">
             <Button
               variant="outline"
               onClick={() => setShowCategoryForm(!showCategoryForm)}
@@ -424,7 +523,7 @@ const ServiceManagementPage = () => {
               <PlusIcon className="h-4 w-4" />
               {showForm ? 'Close Service Form' : 'New Service'}
             </Button>
-          </div>
+          </div>}
         </div>
       </motion.div>
 
@@ -777,6 +876,50 @@ const ServiceManagementPage = () => {
         )}
       </AnimatePresence>
 
+      {/* Service billing jobs */}
+      {canReadJobs && <motion.section
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        className="overflow-hidden rounded-xl border border-border bg-white shadow-sm"
+      >
+        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border p-4">
+          <div>
+            <h2 className="text-sm font-semibold text-text">Service jobs & billing</h2>
+            <p className="mt-1 text-xs text-text-tertiary">Fixed, hourly and quoted work. Tips, deposits and pass-through costs are shown but excluded from service commission.</p>
+          </div>
+          {canManageJobs && <Button onClick={() => setShowJobForm(true)}><PlusIcon className="mr-2 h-4 w-4" />New service job</Button>}
+        </div>
+        <div className="overflow-x-auto">
+          <table className="min-w-full divide-y divide-border text-sm">
+            <thead className="bg-background text-left text-xs uppercase tracking-wide text-text-tertiary">
+              <tr><th className="px-4 py-3">Service</th><th className="px-4 py-3">Pricing</th><th className="px-4 py-3">Deposit</th><th className="px-4 py-3">Status</th><th className="px-4 py-3 text-right">Actions</th></tr>
+            </thead>
+            <tbody className="divide-y divide-border">
+              {(jobsQuery.data ?? []).map((job) => (
+                <tr key={job.public_id}>
+                  <td className="px-4 py-3"><p className="font-semibold text-text">{job.service_name ?? 'Service job'}</p><p className="text-xs text-text-tertiary">{job.milestones.length} milestone(s)</p></td>
+                  <td className="px-4 py-3 capitalize text-text-secondary">{job.pricing_model} · {formatCurrency(Number(job.pricing_model === 'fixed' ? job.fixed_amount : job.pricing_model === 'quoted' ? job.quoted_amount : job.hourly_rate))}{job.pricing_model === 'hourly' ? '/hr' : ''}</td>
+                  <td className="px-4 py-3 text-text-secondary">{formatCurrency(Number(job.deposit_amount))}</td>
+                  <td className="px-4 py-3"><span className="rounded-full bg-primary/10 px-3 py-1 text-xs font-semibold capitalize text-primary">{job.status.replace('_', ' ')}</span></td>
+                  <td className="px-4 py-3">
+                    <div className="flex flex-wrap justify-end gap-2">
+                      {canCompleteJobs && job.milestones.filter((item) => item.status === 'pending').map((item) => (
+                        <button key={item.public_id} className="rounded-lg border border-border px-2 py-1 text-xs font-semibold text-text-secondary hover:border-primary hover:text-primary" onClick={() => milestoneMutation.mutate({ jobId: job.public_id, milestoneId: item.public_id })}>Complete {item.name}</button>
+                      ))}
+                      {canCompleteJobs && !['completed', 'cancelled', 'no_show'].includes(job.status) && <button className="rounded-lg bg-primary px-2 py-1 text-xs font-semibold text-white" onClick={() => jobActionMutation.mutate({ job, action: 'complete' })}>Complete</button>}
+                      {canManageJobs && !['completed', 'cancelled', 'no_show'].includes(job.status) && <button className="rounded-lg border border-border px-2 py-1 text-xs" onClick={() => jobActionMutation.mutate({ job, action: 'cancel' })}>Cancel</button>}
+                      {canManageJobs && !['completed', 'cancelled', 'no_show'].includes(job.status) && <button className="rounded-lg border border-border px-2 py-1 text-xs" onClick={() => jobActionMutation.mutate({ job, action: 'no-show' })}>No-show</button>}
+                      {canRefundJobs && job.status === 'completed' && <button className="rounded-lg border border-error/30 px-2 py-1 text-xs text-error" onClick={() => jobActionMutation.mutate({ job, action: 'refund' })}>Refund / credit</button>}
+                    </div>
+                  </td>
+                </tr>
+              ))}
+              {!jobsQuery.isLoading && !(jobsQuery.data ?? []).length && <tr><td colSpan={5} className="px-4 py-8 text-center text-text-tertiary">No service jobs yet.</td></tr>}
+            </tbody>
+          </table>
+        </div>
+      </motion.section>}
+
       {/* Services Table */}
       <motion.section
         initial={{ opacity: 0, y: 20 }}
@@ -832,6 +975,28 @@ const ServiceManagementPage = () => {
           )}
         </div>
       </motion.section>
+
+      <AnimatePresence>
+        {canManageJobs && showJobForm && (
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm" onClick={() => setShowJobForm(false)}>
+            <motion.form initial={{ scale: 0.97, y: 12 }} animate={{ scale: 1, y: 0 }} exit={{ scale: 0.97, y: 12 }} className="max-h-[90vh] w-full max-w-3xl overflow-y-auto rounded-2xl border border-border bg-white p-6 shadow-2xl" onClick={(event) => event.stopPropagation()} onSubmit={(event) => { event.preventDefault(); createJobMutation.mutate() }}>
+              <div className="flex items-start justify-between"><div><p className="text-xs font-bold uppercase tracking-wider text-primary">Service billing</p><h3 className="mt-1 text-xl font-bold text-text">Create service job</h3></div><button type="button" onClick={() => setShowJobForm(false)}><XMarkIcon className="h-5 w-5" /></button></div>
+              <div className="mt-6 grid gap-4 md:grid-cols-2">
+                <label className="text-sm font-medium text-text">Service<select required value={jobForm.serviceId} onChange={(e) => setJobForm((p) => ({ ...p, serviceId: e.target.value }))} className="mt-2 w-full rounded-xl border border-border bg-white px-3 py-2.5"><option value="">Select service</option>{(servicesQuery.data ?? []).map((service) => <option key={service.id} value={service.id}>{service.name}</option>)}</select></label>
+                <label className="text-sm font-medium text-text">Branch<select value={jobForm.branchId} onChange={(e) => setJobForm((p) => ({ ...p, branchId: e.target.value }))} className="mt-2 w-full rounded-xl border border-border bg-white px-3 py-2.5"><option value="">Business-wide / no branch</option>{(branchesQuery.data ?? []).map((branch) => <option key={branch.id} value={branch.id}>{branch.name}</option>)}</select></label>
+                <label className="text-sm font-medium text-text">Pricing model<select value={jobForm.pricingModel} onChange={(e) => setJobForm((p) => ({ ...p, pricingModel: e.target.value as typeof p.pricingModel }))} className="mt-2 w-full rounded-xl border border-border bg-white px-3 py-2.5"><option value="fixed">Fixed price</option><option value="hourly">Hourly</option><option value="quoted">Quoted</option></select></label>
+                <label className="text-sm font-medium text-text">{jobForm.pricingModel === 'hourly' ? 'Hourly rate' : jobForm.pricingModel === 'quoted' ? 'Quoted amount' : 'Fixed price'}<input required type="number" min="0.01" step="0.01" value={jobForm.amount} onChange={(e) => setJobForm((p) => ({ ...p, amount: e.target.value }))} className="mt-2 w-full rounded-xl border border-border px-3 py-2.5" /></label>
+                {jobForm.pricingModel === 'hourly' && <label className="text-sm font-medium text-text">Estimated hours<input type="number" min="0" step="0.25" value={jobForm.estimatedHours} onChange={(e) => setJobForm((p) => ({ ...p, estimatedHours: e.target.value }))} className="mt-2 w-full rounded-xl border border-border px-3 py-2.5" /></label>}
+                {([['deposit', 'Deposit received'], ['materials', 'Materials'], ['travel', 'Travel'], ['tip', 'Tip (excluded)'], ['passThrough', 'Pass-through cost (excluded)'], ['cancellationFee', 'Cancellation fee'], ['noShowFee', 'No-show fee']] as const).map(([key, label]) => <label key={key} className="text-sm font-medium text-text">{label}<input type="number" min="0" step="0.01" value={jobForm[key]} onChange={(e) => setJobForm((p) => ({ ...p, [key]: e.target.value }))} className="mt-2 w-full rounded-xl border border-border px-3 py-2.5" /></label>)}
+              </div>
+              <div className="mt-5 rounded-xl border border-border bg-background p-4"><p className="text-sm font-semibold text-text">Optional first milestone</p><div className="mt-3 grid gap-3 md:grid-cols-2"><input placeholder="Milestone name" value={jobForm.milestoneName} onChange={(e) => setJobForm((p) => ({ ...p, milestoneName: e.target.value }))} className="rounded-xl border border-border bg-white px-3 py-2.5" /><input type="number" min="0" step="0.01" placeholder="Amount" value={jobForm.milestoneAmount} onChange={(e) => setJobForm((p) => ({ ...p, milestoneAmount: e.target.value }))} className="rounded-xl border border-border bg-white px-3 py-2.5" /></div></div>
+              <label className="mt-4 block text-sm font-medium text-text">Notes<textarea value={jobForm.notes} onChange={(e) => setJobForm((p) => ({ ...p, notes: e.target.value }))} className="mt-2 min-h-24 w-full rounded-xl border border-border px-3 py-2.5" /></label>
+              {createJobMutation.isError && <p className="mt-4 text-sm text-error">Could not create the service job. Check the values and try again.</p>}
+              <div className="mt-6 flex justify-end gap-3"><Button type="button" variant="outline" onClick={() => setShowJobForm(false)}>Cancel</Button><Button type="submit" disabled={createJobMutation.isPending}>{createJobMutation.isPending ? 'Creating…' : 'Create job'}</Button></div>
+            </motion.form>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* Service Details Modal */}
       <AnimatePresence>

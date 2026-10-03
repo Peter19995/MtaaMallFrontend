@@ -67,6 +67,11 @@ export const platformModules: WorkspaceModule[] = [
   { path: 'payments/transactions', label: 'Transactions', permission: 'platform.payments.read' },
   { path: 'payments/reconciliation', label: 'Reconciliation', permission: 'platform.payments.reconcile' },
   { path: 'settlements', label: 'Settlements', permission: 'platform.settlements.read' },
+  { path: 'billing/plans', label: 'Plans', permission: 'platform.billing.read' },
+  { path: 'billing/agreements', label: 'Agreements', permission: 'platform.billing.read' },
+  { path: 'billing/assessments', label: 'Assessments & invoices', permission: 'platform.billing.read' },
+  { path: 'billing/reconciliation', label: 'Reconciliation', permission: 'platform.billing.reconcile' },
+  { path: 'billing/audit', label: 'Audit history', permission: 'platform.billing.audit.read' },
   { path: 'admins', label: 'Platform team', permission: 'platform.admins.manage' },
 ]
 export const businessModules: WorkspaceModule[] = [
@@ -76,6 +81,7 @@ export const businessModules: WorkspaceModule[] = [
   { path: 'members', label: 'Team', permission: 'business.members.read' },
   { path: 'customers', label: 'Customers', permission: 'customers.read' },
   { path: 'overview', label: 'Reports', permission: 'reports.read' },
+  { path: 'billing', label: 'Billing', permission: 'business.billing.read' },
   { path: 'products', label: 'Products', permission: 'products.read' },
   { path: 'product-categories', label: 'Product categories', permission: 'products.read' },
   { path: 'collections', label: 'Collections', permission: 'products.collections.read' },
@@ -89,7 +95,7 @@ export const businessModules: WorkspaceModule[] = [
   { path: 'sales', label: 'Sales', permission: 'orders.read' },
   { path: 'sales/create', label: 'New POS sale', permission: 'pos.sell', mutation: true },
   { path: 'payment-modes', label: 'Payment modes', permission: 'payments.manage', mutation: true },
-  { path: 'services', label: 'Services', permission: 'content.manage', mutation: true },
+  { path: 'services', label: 'Services', permission: 'services.jobs.read', anyPermissions: ['content.manage'] },
   { path: 'styling', label: 'Styling', permission: 'content.manage', mutation: true },
   { path: 'settings', label: 'Settings', permission: 'business.settings.update', mutation: true },
 ]
@@ -104,7 +110,13 @@ export function canAccessWorkspace(user: WorkspacePrincipal | null, path: string
   const suffix = path.slice(root.length + 1)
   if (['onboarding', 'suspended'].includes(suffix)) return workspaceLanding(user) === path
   const modules = experience === 'platform' ? platformModules : businessModules
-  const module = experience === 'platform' && /^businesses\/[^/]+\/payments$/.test(suffix)
+  const module = experience === 'platform' && suffix === 'billing'
+    ? { path: suffix, label: 'Billing operations', permission: 'platform.billing.read' }
+    : experience === 'platform' && /^(?:billing\/plans\/(?:new|[^/]+\/(?:edit|duplicate|remove))|billing\/plans\/[^/]+\/pricing\/(?:new|[^/]+\/(?:edit|remove)))$/.test(suffix)
+    ? { path: suffix, label: 'Manage billing plan', permission: 'platform.billing.plans.manage' }
+    : experience === 'platform' && /^billing\/plans\/[^/]+(?:\/(?:pricing|calculator))?$/.test(suffix)
+    ? { path: suffix, label: 'Billing plan', permission: 'platform.billing.read' }
+    : experience === 'platform' && /^businesses\/[^/]+\/payments$/.test(suffix)
     ? { path: suffix, label: 'Business POS payments', permission: 'platform.payments.read' }
     : ['catalogue', 'products/import', 'products/add-from-catalog', 'products/new'].includes(suffix)
     ? { path: suffix, label: 'Import products', permission: 'products.create', mutation: true }

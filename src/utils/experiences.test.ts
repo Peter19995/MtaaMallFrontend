@@ -89,6 +89,29 @@ describe('separate application experiences', () => {
     expect(canAccessWorkspace({ ...reader, permissions: ['platform.payments.reconcile'] }, '/platform/payments/reconciliation')).toBe(true)
     expect(canAccessWorkspace({ ...reader, permissions: [] }, '/platform/businesses/tenant-uuid/payments')).toBe(false)
   })
+  it('allows the legacy billing address to redirect into the billing workspace', () => {
+    const reader = { context: 'platform', permissions: ['platform.billing.read', 'platform.billing.reconcile', 'platform.billing.audit.read'] }
+    expect(canAccessWorkspace(reader, '/platform/billing')).toBe(true)
+    expect(canAccessWorkspace(reader, '/platform/billing/plans')).toBe(true)
+    expect(workspaceMenu(reader).map(module => module.path)).toEqual([
+      '/platform/billing/plans',
+      '/platform/billing/agreements',
+      '/platform/billing/assessments',
+      '/platform/billing/reconciliation',
+      '/platform/billing/audit',
+    ])
+    expect(canAccessWorkspace({ ...reader, permissions: ['platform.billing.read'] }, '/platform/billing/reconciliation')).toBe(false)
+    expect(canAccessWorkspace(reader, '/platform/billing/plans/plan-uuid')).toBe(true)
+    expect(canAccessWorkspace(reader, '/platform/billing/plans/plan-uuid/pricing')).toBe(true)
+    expect(canAccessWorkspace(reader, '/platform/billing/plans/plan-uuid/calculator')).toBe(true)
+    expect(canAccessWorkspace(reader, '/platform/billing/plans/new')).toBe(false)
+    expect(canAccessWorkspace({ ...reader, permissions: [...reader.permissions, 'platform.billing.plans.manage'] }, '/platform/billing/plans/new')).toBe(true)
+    expect(canAccessWorkspace({ ...reader, permissions: [...reader.permissions, 'platform.billing.plans.manage'] }, '/platform/billing/plans/plan-uuid/duplicate')).toBe(true)
+    expect(canAccessWorkspace(reader, '/platform/billing/plans/plan-uuid/edit')).toBe(false)
+    expect(canAccessWorkspace({ ...reader, permissions: [...reader.permissions, 'platform.billing.plans.manage'] }, '/platform/billing/plans/plan-uuid/edit')).toBe(true)
+    expect(canAccessWorkspace(reader, '/platform/billing/plans/plan-uuid/pricing/rule-uuid/edit')).toBe(false)
+    expect(canAccessWorkspace({ ...reader, permissions: [...reader.permissions, 'platform.billing.plans.manage'] }, '/platform/billing/plans/plan-uuid/pricing/rule-uuid/edit')).toBe(true)
+  })
   it('does not combine contexts or use business membership presence as a grant', () => {
     const personal = { ...customer, business_memberships: [{ status: 'active' }, { status: 'active' }] }
     expect(loginLanding(personal)).toBe('/account/workspaces')
