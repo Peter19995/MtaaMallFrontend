@@ -15,7 +15,8 @@ import {
   FireIcon,
   ArrowPathIcon,
   MinusIcon,
-  PlusIcon
+  PlusIcon,
+  BuildingStorefrontIcon
 } from '@heroicons/react/24/outline'
 import { HeartIcon as HeartIconSolid } from '@heroicons/react/24/solid'
 import { Button, Select, TextInput } from '@components/common'
@@ -310,7 +311,7 @@ const ProductsPage = () => {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-background via-white to-background">
-      {variantChoice && <div role="dialog" aria-modal="true" aria-label="Choose product variant" className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"><div className="max-h-[80vh] w-full max-w-lg overflow-auto rounded-2xl bg-white p-6"><h2 className="mb-1 text-xl font-semibold">Choose {variantChoice.product.name}</h2><p className="mb-4 text-sm text-text-secondary">Selected quantity: {variantChoice.quantity}</p>{variantChoice.variants.map(v => <button key={v.id} disabled={cart.isBusy || !v.is_active || v.stock_quantity <= 0} className="mb-2 block w-full rounded-lg border p-3 text-left disabled:opacity-40" onClick={() => addProductToCart(variantChoice.product, v, variantChoice.quantity)}>{Object.entries(v.options).map(([k, value]) => `${k}: ${value}`).join(' · ') || v.sku}<span className="block text-sm">{formatCurrency(v.price_override ?? variantChoice.product.price)} · {v.stock_quantity} in stock</span></button>)}<button className="mt-3 underline" onClick={() => setVariantChoice(null)}>Cancel</button></div></div>}
+      {variantChoice && <div role="dialog" aria-modal="true" aria-label="Choose product variant" className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"><div className="max-h-[80vh] w-full max-w-lg overflow-auto rounded-2xl bg-white p-6"><h2 className="mb-1 text-xl font-semibold">Choose {variantChoice.product.name}</h2><p className="flex items-center gap-1.5 text-sm font-medium text-text-secondary"><BuildingStorefrontIcon className="h-4 w-4 text-primary" />Sold by <span className="font-semibold text-text">{variantChoice.product.business_name ?? 'MtaaMall seller'}</span></p><p className="mb-4 mt-1 text-sm text-text-secondary">Selected quantity: {variantChoice.quantity}</p>{variantChoice.variants.map(v => <button key={v.id} disabled={cart.isBusy || !v.is_active || v.stock_quantity <= 0} className="mb-2 block w-full rounded-lg border p-3 text-left disabled:opacity-40" onClick={() => addProductToCart(variantChoice.product, v, variantChoice.quantity)}>{Object.entries(v.options).map(([k, value]) => `${k}: ${value}`).join(' · ') || v.sku}<span className="block text-sm">{formatCurrency(v.price_override ?? variantChoice.product.price)} · {v.stock_quantity} in stock</span></button>)}<button className="mt-3 underline" onClick={() => setVariantChoice(null)}>Cancel</button></div></div>}
       {/* Hero Section */}
       <section className="relative overflow-hidden bg-gradient-to-br from-primary/5 via-transparent to-secondary/5 py-12">
         <div className="absolute inset-0 bg-grid-pattern opacity-5" />
@@ -640,7 +641,10 @@ const ProductsPage = () => {
                                 {product.category_name || 'Uncategorized'}
                               </p>
                               <h2 className="text-lg font-semibold text-text mt-1">{product.name}</h2>
-                              <p className="mt-1 text-xs font-semibold text-text-tertiary">Sold by {product.business_name ?? 'MtaaMall seller'}</p>
+                              <p className="mt-2 flex items-center gap-1.5 text-sm text-text-secondary">
+                                <BuildingStorefrontIcon className="h-4 w-4 shrink-0 text-primary" />
+                                <span>Sold by <strong className="font-semibold text-text">{product.business_name ?? 'MtaaMall seller'}</strong></span>
+                              </p>
                             </div>
                             <button
                               onClick={() => toggleWishlist(product.id)}
@@ -769,7 +773,13 @@ const ProductsPage = () => {
                         <h3 className="text-base font-semibold text-text mb-2 line-clamp-1">
                           {product.name}
                         </h3>
-                        <p className="mb-2 text-xs font-semibold text-text-tertiary">{product.business_name ?? 'MtaaMall seller'}{product.branch_name ? ` · ${product.branch_name}` : ''}</p>
+                        <div className="mb-3 flex items-start gap-1.5 rounded-lg bg-primary/5 px-2.5 py-2 text-xs text-text-secondary">
+                          <BuildingStorefrontIcon className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
+                          <span>
+                            Sold by <strong className="font-semibold text-text">{product.business_name ?? 'MtaaMall seller'}</strong>
+                            {product.branch_name ? <span className="block text-[11px] text-text-tertiary">Fulfilled by {product.branch_name}</span> : null}
+                          </span>
+                        </div>
 
                         {/* Price and Stock */}
                         <div className="flex items-end justify-between mb-3">

@@ -29,8 +29,7 @@ import brandLogo from "@/assets/mtaamall-logo.svg";
 
 // Navigation items with icons
 const navItems = [
-  { path: "/", label: "The mall", icon: HomeIcon, public: true },
-  { path: "/products", label: "Shop all", icon: ShoppingBagIcon, public: true },
+  { path: "/products", label: "Shop", icon: ShoppingBagIcon, public: true },
   { path: "/account/orders", label: "My orders", icon: UserIcon, public: true },
   {
     path: "/register?type=business",
@@ -38,6 +37,7 @@ const navItems = [
     icon: SparklesIcon,
     public: true,
   },
+  { path: "/info", label: "The mall", icon: HomeIcon, public: true },
 ];
 
 export const MainLayout = () => {

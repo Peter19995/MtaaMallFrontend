@@ -290,11 +290,17 @@ const LoginPage = () => {
                   animate={{ scale: 1 }}
                   className="text-center mb-8"
                 >
-                  <img
-                    src={brandLogo}
-                    alt="MtaaMall logo"
-                    className="mx-auto mb-4 h-16 w-auto sm:h-20"
-                  />
+                  <Link
+                    to="/products"
+                    aria-label="Go to MtaaMall shop"
+                    className="mx-auto mb-4 inline-flex rounded-xl focus:outline-none focus:ring-4 focus:ring-primary/20"
+                  >
+                    <img
+                      src={brandLogo}
+                      alt="MtaaMall logo"
+                      className="h-16 w-auto sm:h-20"
+                    />
+                  </Link>
                   <h2 className="text-2xl font-bold text-text">
                     Sign in to your account
                   </h2>

@@ -126,7 +126,8 @@ export const AppRoutes = () => {
     <Suspense fallback={<Loader />}>
       <Routes>
         <Route element={<MainLayout />}>
-          <Route path="/" element={<HomePage />} />
+          <Route path="/" element={<Navigate to="/products" replace />} />
+          <Route path="/info" element={<HomePage />} />
           <Route path="/about" element={<AboutPage />} />
           <Route path="/about-us" element={<AboutPage />} />
           <Route path="/contact" element={<ContactPage />} />

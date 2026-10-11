@@ -12,6 +12,11 @@ vi.mock('@api/modules/auth.api', () => ({ loginRequest: vi.fn(), getMeRequest: v
 beforeEach(() => { vi.stubGlobal('scrollTo', vi.fn()) })
 afterEach(() => { cleanup(); vi.resetAllMocks(); vi.unstubAllGlobals() })
 
+it('links the login logo back to the public shop', () => {
+  render(<MemoryRouter><LoginPage /></MemoryRouter>)
+  expect(screen.getByRole('link', { name: 'Go to MtaaMall shop' })).toHaveAttribute('href', '/products')
+})
+
 it('accepts lowercase usernames without altering passwords or stored username spelling', async () => {
   vi.mocked(loginRequest).mockResolvedValue({ access_token: 'test', refresh_token: 'refresh', token_type: 'bearer', expires_in: 3600 })
   vi.mocked(getMeRequest).mockResolvedValue({ id: 1, username: 'OSLTD', email: null, full_name: null, is_active: true, is_superuser: false, roles: ['customer'], permissions: [], created_at: '2026-09-06T00:00:00Z' })
