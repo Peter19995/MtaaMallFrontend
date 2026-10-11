@@ -12,7 +12,7 @@ describe('product image selection', () => {
     expect(productImageSelectionError([new File(['x'], 'notes.txt', { type: 'text/plain' })], 1)).toMatch(/images only/)
     expect(productImageSelectionError([new File(['x'], 'fake.txt', { type: 'image/png' })], 1)).toMatch(/images only/)
     expect(productImageSelectionError([new File([new Uint8Array(5 * 1024 * 1024 + 1)], 'large.jpg', { type: 'image/jpeg' })], 1)).toMatch(/larger than 5 MB/)
-    expect(productImageSelectionError([], 6)).toMatch(/at most 5 images/)
+    expect(productImageSelectionError([], 4)).toMatch(/at most 3 images/)
   })
 })
 

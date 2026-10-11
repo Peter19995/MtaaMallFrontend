@@ -83,6 +83,12 @@ type RestockRowState = {
   notes: string
 }
 
+type VariantRestockDraft = {
+  quantity: string
+  buyingPrice: string
+  sellingPrice: string
+}
+
 type StockCountFormState = {
   branchId: string
   countDate: string
@@ -390,6 +396,8 @@ const InventoryManagementPage = ({ view = 'status' }: InventoryManagementPagePro
   const [showRestockItemForm, setShowRestockItemForm] = useState(false)
   const [editingRestockRowId, setEditingRestockRowId] = useState<string | null>(null)
   const [restockItemDraft, setRestockItemDraft] = useState<RestockRowState>(createRestockRow())
+  const [variantPricingMode, setVariantPricingMode] = useState<'shared' | 'individual'>('shared')
+  const [variantRestockDrafts, setVariantRestockDrafts] = useState<Record<string, VariantRestockDraft>>({})
   const [restockItemError, setRestockItemError] = useState<string | null>(null)
   const [catalogSearch, setCatalogSearch] = useState('')
   const [catalogProduct, setCatalogProduct] = useState<CatalogProductSearchResult | null>(null)
@@ -968,6 +976,8 @@ const InventoryManagementPage = ({ view = 'status' }: InventoryManagementPagePro
     setRestockItemError(null)
     setCatalogSearch('')
     setCatalogProduct(null)
+    setVariantPricingMode('shared')
+    setVariantRestockDrafts({})
     setShowRestockItemForm(true)
   }
 
@@ -985,6 +995,8 @@ const InventoryManagementPage = ({ view = 'status' }: InventoryManagementPagePro
     setRestockItemError(null)
     setCatalogSearch('')
     setCatalogProduct(null)
+    setVariantPricingMode('shared')
+    setVariantRestockDrafts({})
   }
 
   const updateRestockItemDraft = (
@@ -1007,6 +1019,49 @@ const InventoryManagementPage = ({ view = 'status' }: InventoryManagementPagePro
     if (!restockItemDraft.productId) return setRestockItemError('Select a product.')
     if (restockItemProductQuery.isLoading || !product) {
       return setRestockItemError('Product details are still loading. Try again.')
+    }
+    if (!editingRestockRowId && (product.variants?.length ?? 0) > 0) {
+      const selectedVariants = product.variants
+        .map((variant) => ({ variant, draft: variantRestockDrafts[String(variant.id)] }))
+        .filter(({ draft }) => draft && toSafeNumber(draft.quantity) > 0)
+
+      if (selectedVariants.length === 0) {
+        return setRestockItemError('Enter a quantity for at least one variant.')
+      }
+      if (selectedVariants.some(({ draft }) =>
+        toSafeNumber(draft.quantity) < 1 ||
+        toSafeNumber(variantPricingMode === 'shared' ? restockItemDraft.buyingPrice : draft.buyingPrice) < 0 ||
+        toSafeNumber(variantPricingMode === 'shared' ? restockItemDraft.sellingPrice : draft.sellingPrice) < 0
+      )) {
+        return setRestockItemError('Variant quantities must be 1 or more and prices cannot be negative.')
+      }
+
+      const incomingRows = selectedVariants.map(({ variant, draft }) => syncMaxOffer({
+        ...restockItemDraft,
+        id: `${Date.now()}-${variant.id}-${Math.random().toString(36).slice(2, 6)}`,
+        productVariantId: String(variant.id),
+        variantSelections: variant.options ?? {},
+        quantity: draft.quantity,
+        buyingPrice: variantPricingMode === 'shared' ? restockItemDraft.buyingPrice : draft.buyingPrice,
+        sellingPrice: variantPricingMode === 'shared' ? restockItemDraft.sellingPrice : draft.sellingPrice
+      }))
+
+      setRestockForm((current) => {
+        const incomingByTarget = new Map(incomingRows.map((row) => [restockTargetKey(row), row]))
+        const replacedTargets = new Set<string>()
+        const rows = current.rows.map((row) => {
+          const replacement = incomingByTarget.get(restockTargetKey(row))
+          if (!replacement) return row
+          replacedTargets.add(restockTargetKey(row))
+          return { ...replacement, id: row.id }
+        })
+        return {
+          ...current,
+          rows: [...rows, ...incomingRows.filter((row) => !replacedTargets.has(restockTargetKey(row)))]
+        }
+      })
+      closeRestockItemForm()
+      return
     }
     if (toSafeNumber(restockItemDraft.quantity) < 1) {
       return setRestockItemError('Quantity must be 1 or more.')
@@ -1779,6 +1834,34 @@ const InventoryManagementPage = ({ view = 'status' }: InventoryManagementPagePro
   const draftBuyingTotal = draftQuantity * toSafeNumber(restockItemDraft.buyingPrice)
   const draftSellingTotal = draftQuantity * toSafeNumber(restockItemDraft.sellingPrice)
 
+  useEffect(() => {
+    if (editingRestockRowId || draftVariants.length === 0) return
+    setVariantRestockDrafts((current) => {
+      const next: Record<string, VariantRestockDraft> = {}
+      draftVariants.forEach((variant) => {
+        const key = String(variant.id)
+        next[key] = current[key] ?? {
+          quantity: '0',
+          buyingPrice: variant.cost_price != null ? String(variant.cost_price) : restockItemDraft.buyingPrice,
+          sellingPrice: String(variant.price_override ?? variant.price ?? restockItemDraft.sellingPrice)
+        }
+      })
+      return next
+    })
+  }, [draftVariants, editingRestockRowId, restockItemDraft.buyingPrice, restockItemDraft.sellingPrice])
+
+  const isBulkVariantEntry = !editingRestockRowId && draftVariants.length > 0
+  const bulkVariantTotals = draftVariants.reduce((totals, variant) => {
+    const row = variantRestockDrafts[String(variant.id)]
+    const quantity = toSafeNumber(row?.quantity ?? '0')
+    const buyingPrice = toSafeNumber(variantPricingMode === 'shared' ? restockItemDraft.buyingPrice : row?.buyingPrice ?? '0')
+    const sellingPrice = toSafeNumber(variantPricingMode === 'shared' ? restockItemDraft.sellingPrice : row?.sellingPrice ?? '0')
+    return {
+      buying: totals.buying + quantity * buyingPrice,
+      selling: totals.selling + quantity * sellingPrice
+    }
+  }, { buying: 0, selling: 0 })
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-background via-white to-background p-6">
       {approvalNotice && <p role="status" className="mb-5 rounded-xl border border-blue-200 bg-blue-50 p-4 text-sm">{approvalNotice}</p>}
@@ -2162,7 +2245,7 @@ const InventoryManagementPage = ({ view = 'status' }: InventoryManagementPagePro
               initial={{ opacity: 0, y: 16, scale: 0.97 }}
               animate={{ opacity: 1, y: 0, scale: 1 }}
               exit={{ opacity: 0, y: 16, scale: 0.97 }}
-              className="max-h-[90vh] w-full max-w-3xl overflow-y-auto rounded-2xl border border-border bg-white p-5 shadow-2xl sm:p-6"
+              className="max-h-[94vh] w-full max-w-6xl overflow-y-auto rounded-2xl border border-border bg-white p-5 shadow-2xl sm:p-7"
               onClick={(event) => event.stopPropagation()}
             >
               <div className="mb-5 flex items-start justify-between gap-4">
@@ -2171,7 +2254,7 @@ const InventoryManagementPage = ({ view = 'status' }: InventoryManagementPagePro
                     {editingRestockRowId ? 'Edit Restock Item' : 'Add Restock Item'}
                   </h3>
                   <p className="mt-1 text-sm text-text-tertiary">
-                    Enter one product, then add it to the restock list.
+                    Select a product, then enter the quantities being received for its variants.
                   </p>
                 </div>
                 <button
@@ -2330,7 +2413,7 @@ const InventoryManagementPage = ({ view = 'status' }: InventoryManagementPagePro
                     onChange={(event) => updateRestockItemDraft('productId', String(event.target.value))}
                     required
                   />
-                  {draftVariantOptionNames.length > 0 ? draftVariantOptionNames.map((optionName) => {
+                  {!isBulkVariantEntry && (draftVariantOptionNames.length > 0 ? draftVariantOptionNames.map((optionName) => {
                     const compatibleVariants = draftVariants.filter((variant) =>
                       draftVariantOptionNames.every((name) =>
                         name === optionName || !restockItemDraft.variantSelections[name] ||
@@ -2372,7 +2455,7 @@ const InventoryManagementPage = ({ view = 'status' }: InventoryManagementPagePro
                     onChange={(event) => selectDraftVariant(String(event.target.value))}
                     disabled={!draftVariants.length}
                     required={draftVariants.length > 0}
-                  />}
+                  />)}
                   <Select
                     label="Supplier (optional)"
                     searchable
@@ -2396,15 +2479,15 @@ const InventoryManagementPage = ({ view = 'status' }: InventoryManagementPagePro
                     value={restockItemDraft.expiryDate}
                     onChange={(event) => updateRestockItemDraft('expiryDate', event.target.value)}
                   />
-                  <TextInput
+                  {!isBulkVariantEntry && <TextInput
                     label="Quantity"
                     type="number"
                     min={1}
                     value={restockItemDraft.quantity}
                     onChange={(event) => updateRestockItemDraft('quantity', event.target.value)}
                     required
-                  />
-                  <TextInput
+                  />}
+                  {!isBulkVariantEntry && <TextInput
                     label="Buying Price (per unit)"
                     type="number"
                     min={0}
@@ -2412,8 +2495,8 @@ const InventoryManagementPage = ({ view = 'status' }: InventoryManagementPagePro
                     value={restockItemDraft.buyingPrice}
                     onChange={(event) => updateRestockItemDraft('buyingPrice', event.target.value)}
                     required
-                  />
-                  <TextInput
+                  />}
+                  {!isBulkVariantEntry && <TextInput
                     label="Selling Price (per unit)"
                     type="number"
                     min={0}
@@ -2421,8 +2504,8 @@ const InventoryManagementPage = ({ view = 'status' }: InventoryManagementPagePro
                     value={restockItemDraft.sellingPrice}
                     onChange={(event) => updateRestockItemDraft('sellingPrice', event.target.value)}
                     required
-                  />
-                  <TextInput
+                  />}
+                  {!isBulkVariantEntry && <TextInput
                     label="Restock Target"
                     value={
                       draftVariants.length
@@ -2435,10 +2518,100 @@ const InventoryManagementPage = ({ view = 'status' }: InventoryManagementPagePro
                     }
                     readOnly
                     className="bg-background"
-                  />
+                  />}
                 </div>
 
-                {draftProduct && (
+                {isBulkVariantEntry && (
+                  <section className="space-y-4 rounded-xl border border-primary/25 bg-primary/5 p-4">
+                    <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                      <div>
+                        <h4 className="font-semibold text-text">Variant quantities</h4>
+                        <p className="mt-1 text-xs text-text-tertiary">
+                          Enter a quantity only for the variants being received. Existing lines for the same variant will be updated.
+                        </p>
+                      </div>
+                      <div className="inline-flex rounded-lg border border-border bg-white p-1 text-sm">
+                        <button
+                          type="button"
+                          onClick={() => setVariantPricingMode('shared')}
+                          className={`rounded-md px-3 py-1.5 font-medium ${variantPricingMode === 'shared' ? 'bg-primary text-white' : 'text-text-secondary hover:bg-background'}`}
+                        >
+                          Same prices
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setVariantPricingMode('individual')}
+                          className={`rounded-md px-3 py-1.5 font-medium ${variantPricingMode === 'individual' ? 'bg-primary text-white' : 'text-text-secondary hover:bg-background'}`}
+                        >
+                          Different prices
+                        </button>
+                      </div>
+                    </div>
+
+                    {variantPricingMode === 'shared' && (
+                      <div className="grid gap-3 sm:grid-cols-2">
+                        <TextInput
+                          label="Buying Price (all variants)"
+                          type="number"
+                          min={0}
+                          step="0.01"
+                          value={restockItemDraft.buyingPrice}
+                          onChange={(event) => updateRestockItemDraft('buyingPrice', event.target.value)}
+                          required
+                        />
+                        <TextInput
+                          label="Selling Price (all variants)"
+                          type="number"
+                          min={0}
+                          step="0.01"
+                          value={restockItemDraft.sellingPrice}
+                          onChange={(event) => updateRestockItemDraft('sellingPrice', event.target.value)}
+                          required
+                        />
+                      </div>
+                    )}
+
+                    <div className="overflow-x-auto rounded-xl border border-border bg-white">
+                      <table className="min-w-full divide-y divide-border text-sm">
+                        <thead className="bg-background/80 text-left text-xs font-semibold uppercase tracking-wide text-text-tertiary">
+                          <tr>
+                            <th className="px-3 py-2.5">Variant</th>
+                            <th className="px-3 py-2.5">Current</th>
+                            <th className="px-3 py-2.5">Quantity</th>
+                            {variantPricingMode === 'individual' && <th className="px-3 py-2.5">Buying price</th>}
+                            {variantPricingMode === 'individual' && <th className="px-3 py-2.5">Selling price</th>}
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-border">
+                          {draftVariants.map((variant) => {
+                            const variantDraft = variantRestockDrafts[String(variant.id)] ?? { quantity: '0', buyingPrice: '0', sellingPrice: '0' }
+                            const updateVariant = (changes: Partial<VariantRestockDraft>) => setVariantRestockDrafts((current) => ({
+                              ...current,
+                              [String(variant.id)]: { ...variantDraft, ...changes }
+                            }))
+                            return (
+                              <tr key={variant.id} className={toSafeNumber(variantDraft.quantity) > 0 ? 'bg-primary/5' : ''}>
+                                <td className="whitespace-nowrap px-3 py-3 font-medium text-text">{formatVariantLabel(variant)}</td>
+                                <td className="whitespace-nowrap px-3 py-3 text-text-secondary">{variant.stock_quantity ?? 0}</td>
+                                <td className="min-w-28 px-3 py-2">
+                                  <TextInput aria-label={`${formatVariantLabel(variant)} quantity`} type="number" min={0} value={variantDraft.quantity} onChange={(event) => updateVariant({ quantity: event.target.value })} />
+                                </td>
+                                {variantPricingMode === 'individual' && <td className="min-w-36 px-3 py-2">
+                                  <TextInput aria-label={`${formatVariantLabel(variant)} buying price`} type="number" min={0} step="0.01" value={variantDraft.buyingPrice} onChange={(event) => updateVariant({ buyingPrice: event.target.value })} />
+                                </td>}
+                                {variantPricingMode === 'individual' && <td className="min-w-36 px-3 py-2">
+                                  <TextInput aria-label={`${formatVariantLabel(variant)} selling price`} type="number" min={0} step="0.01" value={variantDraft.sellingPrice} onChange={(event) => updateVariant({ sellingPrice: event.target.value })} />
+                                </td>}
+                              </tr>
+                            )
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  </section>
+                )}
+
+                {draftProduct && !isBulkVariantEntry && (
                   <div className="rounded-lg border border-border bg-background/60 px-3 py-2 text-xs text-text-secondary">
                     Current stock in {selectedRestockBranchName}:{' '}
                     <strong className="text-text">
@@ -2484,16 +2657,16 @@ const InventoryManagementPage = ({ view = 'status' }: InventoryManagementPagePro
                 <div className="grid grid-cols-3 gap-3 rounded-lg border border-primary/20 bg-primary/5 p-3 text-sm">
                   <div>
                     <p className="text-xs text-text-tertiary">Total Buying</p>
-                    <p className="font-semibold text-text">{formatCurrency(draftBuyingTotal)}</p>
+                    <p className="font-semibold text-text">{formatCurrency(isBulkVariantEntry ? bulkVariantTotals.buying : draftBuyingTotal)}</p>
                   </div>
                   <div>
                     <p className="text-xs text-text-tertiary">Total Selling</p>
-                    <p className="font-semibold text-text">{formatCurrency(draftSellingTotal)}</p>
+                    <p className="font-semibold text-text">{formatCurrency(isBulkVariantEntry ? bulkVariantTotals.selling : draftSellingTotal)}</p>
                   </div>
                   <div>
                     <p className="text-xs text-text-tertiary">Expected Profit</p>
-                    <p className={`font-semibold ${draftSellingTotal - draftBuyingTotal >= 0 ? 'text-success' : 'text-error'}`}>
-                      {formatCurrency(draftSellingTotal - draftBuyingTotal)}
+                    <p className={`font-semibold ${(isBulkVariantEntry ? bulkVariantTotals.selling - bulkVariantTotals.buying : draftSellingTotal - draftBuyingTotal) >= 0 ? 'text-success' : 'text-error'}`}>
+                      {formatCurrency(isBulkVariantEntry ? bulkVariantTotals.selling - bulkVariantTotals.buying : draftSellingTotal - draftBuyingTotal)}
                     </p>
                   </div>
                 </div>
@@ -2510,7 +2683,7 @@ const InventoryManagementPage = ({ view = 'status' }: InventoryManagementPagePro
                     Cancel
                   </Button>
                   <Button type="button" onClick={saveRestockItemDraft}>
-                    {editingRestockRowId ? 'Update Item' : 'Add to List'}
+                    {editingRestockRowId ? 'Update Item' : isBulkVariantEntry ? 'Add Variants to List' : 'Add to List'}
                   </Button>
                 </div>
               </div>

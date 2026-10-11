@@ -84,7 +84,7 @@ const EMPTY_FORM: ProductFormState = {
 
 const ALL_CATEGORIES = 'all'
 const automaticSku = () => `PRD-${Date.now().toString(36).toUpperCase()}`
-const MAX_PRODUCT_IMAGES = 5
+const MAX_PRODUCT_IMAGES = 3
 const MAX_PRODUCT_IMAGE_SIZE = 5 * 1024 * 1024
 const PRODUCT_IMAGE_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp', 'image/gif'])
 const PRODUCT_IMAGE_EXTENSIONS = new Set(['jpg', 'jpeg', 'png', 'webp', 'gif'])
@@ -664,7 +664,7 @@ const ProductManagementPage = () => {
           <button
             type="button"
             className="p-2 text-text-secondary hover:text-primary hover:bg-primary/5 rounded-lg transition-all"
-            onClick={() => setSelectedProduct(row)}
+            onClick={() => navigate(`${location.pathname}/${row.id}`)}
             title="View details"
           >
             <EyeIcon className="h-4 w-4" />
@@ -1028,7 +1028,7 @@ const ProductManagementPage = () => {
                       className="block w-full cursor-pointer rounded-lg border border-border bg-background px-3 py-2 text-sm text-text file:mr-4 file:rounded-lg file:border-0 file:bg-primary/10 file:px-4 file:py-2 file:text-xs file:font-semibold file:text-primary-dark hover:file:bg-primary/20"
                     />
                     <p className="text-xs text-text-tertiary">
-                      JPG, PNG, WEBP or GIF only. Maximum 5 images per product and 5 MB per image.
+                      JPG, PNG, WEBP or GIF only. Maximum 3 images per product and 5 MB per image.
                     </p>
                     {form.imageFiles.length > 0 && (
                       <div className="space-y-2">

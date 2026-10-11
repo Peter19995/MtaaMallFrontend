@@ -1,5 +1,5 @@
-import { useContext, useMemo, useState, useEffect } from 'react'
-import { useSearchParams } from 'react-router-dom'
+import { useContext, useMemo, useState, useEffect, type MouseEvent } from 'react'
+import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { motion, AnimatePresence } from 'framer-motion'
 import toast from 'react-hot-toast'
@@ -77,6 +77,7 @@ const sortOptions = [
 ]
 
 const ProductsPage = () => {
+  const navigate = useNavigate()
   const { user } = useAuth()
   const [variantChoice, setVariantChoice] = useState<{
     product: ProductResponse
@@ -307,6 +308,12 @@ const ProductsPage = () => {
     setPriceRange([priceLimits.min, priceLimits.max])
     setInStockOnly(false)
     setOnOfferOnly(false)
+  }
+
+  const openProduct = (productId: number) => navigate(`/products/${productId}`)
+  const openProductFromCard = (event: MouseEvent<HTMLElement>, productId: number) => {
+    if ((event.target as HTMLElement).closest('button, input, select, a')) return
+    openProduct(productId)
   }
 
   return (
@@ -615,7 +622,12 @@ const ProductsPage = () => {
                         key={product.id}
                         variants={fadeInUp}
                         layout
-                        className="flex flex-col md:flex-row bg-white rounded-xl border border-border overflow-hidden hover:shadow-lg hover:border-primary/30 transition-all duration-300 group"
+                        role="link"
+                        tabIndex={0}
+                        aria-label={`View ${product.name}`}
+                        onClick={(event) => openProductFromCard(event, product.id)}
+                        onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') openProduct(product.id) }}
+                        className="group flex cursor-pointer flex-col overflow-hidden rounded-xl border border-border bg-white transition-all duration-300 hover:border-primary/30 hover:shadow-lg md:flex-row"
                       >
                         {/* Image Placeholder */}
                         <div className="md:w-48 h-48 bg-gradient-to-br from-primary/5 to-secondary/5 flex items-center justify-center relative overflow-hidden">
@@ -640,7 +652,9 @@ const ProductsPage = () => {
                               <p className="text-xs font-medium text-primary uppercase tracking-wider">
                                 {product.category_name || 'Uncategorized'}
                               </p>
-                              <h2 className="text-lg font-semibold text-text mt-1">{product.name}</h2>
+                              <Link to={`/products/${product.id}`} className="mt-1 block hover:text-primary">
+                                <h2 className="text-lg font-semibold text-text">{product.name}</h2>
+                              </Link>
                               <p className="mt-2 flex items-center gap-1.5 text-sm text-text-secondary">
                                 <BuildingStorefrontIcon className="h-4 w-4 shrink-0 text-primary" />
                                 <span>Sold by <strong className="font-semibold text-text">{product.business_name ?? 'MtaaMall seller'}</strong></span>
@@ -719,7 +733,12 @@ const ProductsPage = () => {
                       key={product.id}
                       variants={fadeInUp}
                       layout
-                      className="group relative bg-white rounded-xl border border-border overflow-hidden hover:shadow-xl hover:border-primary/30 transition-all duration-300"
+                      role="link"
+                      tabIndex={0}
+                      aria-label={`View ${product.name}`}
+                      onClick={(event) => openProductFromCard(event, product.id)}
+                      onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') openProduct(product.id) }}
+                      className="group relative cursor-pointer overflow-hidden rounded-xl border border-border bg-white transition-all duration-300 hover:border-primary/30 hover:shadow-xl"
                     >
                       {/* Discount Badge */}
                       {discount > 0 && (
@@ -770,9 +789,9 @@ const ProductsPage = () => {
                           {product.category_name || 'Uncategorized'}
                         </p>
                         
-                        <h3 className="text-base font-semibold text-text mb-2 line-clamp-1">
-                          {product.name}
-                        </h3>
+                        <Link to={`/products/${product.id}`} className="mb-2 block hover:text-primary">
+                          <h3 className="line-clamp-1 text-base font-semibold text-text">{product.name}</h3>
+                        </Link>
                         <div className="mb-3 flex items-start gap-1.5 rounded-lg bg-primary/5 px-2.5 py-2 text-xs text-text-secondary">
                           <BuildingStorefrontIcon className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
                           <span>

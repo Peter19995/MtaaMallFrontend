@@ -29,6 +29,7 @@ import {
 } from '@api/modules/inventory.api'
 import {
   attachVariantOptionToProductRequest,
+  createVariantOptionRequest,
   deleteProductImageRequest,
   deleteProductRequest,
   detachVariantOptionFromProductRequest,
@@ -70,6 +71,10 @@ const EMPTY_FORM: ManageProductFormState = {
   maxOffer: '0',
   imageFiles: []
 }
+
+const MAX_PRODUCT_IMAGES = 3
+const MAX_PRODUCT_IMAGE_BYTES = 5 * 1024 * 1024
+const PRODUCT_IMAGE_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp', 'image/gif'])
 
 const formatCurrency = (amount: number): string =>
   new Intl.NumberFormat('en-KE', {
@@ -140,6 +145,16 @@ const mergeImageFiles = (existingFiles: File[], incomingFiles: File[]) => {
   return mergedFiles
 }
 
+const imageSelectionError = (files: File[]): string | null => {
+  if (files.some((file) => !PRODUCT_IMAGE_TYPES.has(file.type))) {
+    return 'Images only: select JPG, PNG, WEBP or GIF files.'
+  }
+  if (files.some((file) => file.size > MAX_PRODUCT_IMAGE_BYTES)) {
+    return 'Each product photo must be 5 MB or smaller.'
+  }
+  return null
+}
+
 type PendingImagePreview = {
   file: File
   previewUrl: string
@@ -166,6 +181,8 @@ const ManageProductPage = () => {
   const [activeTab, setActiveTab] = useState<'details' | 'images' | 'variants'>(initialTab)
   const [uploadProgress, setUploadProgress] = useState(0)
   const [selectedVariantOptionId, setSelectedVariantOptionId] = useState('')
+  const [newVariantOptionName, setNewVariantOptionName] = useState('')
+  const [newVariantOptionValues, setNewVariantOptionValues] = useState('')
   const [variantActionError, setVariantActionError] = useState<string | null>(null)
   const [variantImageFiles, setVariantImageFiles] = useState<Record<number, File | null>>({})
 
@@ -328,6 +345,10 @@ const ManageProductPage = () => {
       if (imageFiles.length === 0) {
         throw new Error('Select one or more images to upload.')
       }
+      const currentImageCount = productQuery.data?.image_urls?.length ?? 0
+      if (currentImageCount + imageFiles.length > MAX_PRODUCT_IMAGES) {
+        throw new Error(`A product can have at most ${MAX_PRODUCT_IMAGES} photos.`)
+      }
 
       setUploadProgress(0)
       const interval = setInterval(() => {
@@ -373,6 +394,48 @@ const ManageProductPage = () => {
     onSuccess: () => {
       setVariantActionError(null)
       setSelectedVariantOptionId('')
+      queryClient.invalidateQueries({ queryKey: ['products', 'details', productId, 'variant-options'] })
+      queryClient.invalidateQueries({ queryKey: ['products', 'details', productId] })
+      queryClient.invalidateQueries({ queryKey: ['products', 'list'] })
+    },
+    onError: (error: unknown) => {
+      setVariantActionError(variantActionErrorMessage(error))
+    }
+  })
+
+  const createAndAttachVariantOptionMutation = useMutation({
+    mutationFn: async () => {
+      const optionName = newVariantOptionName.trim()
+      const values = [...new Set(
+        newVariantOptionValues
+          .split(',')
+          .map((value) => value.trim())
+          .filter(Boolean)
+      )]
+      if (!optionName) throw new Error('Enter an option name, such as Size or Color.')
+      if (values.length === 0) throw new Error('Enter at least one option value.')
+
+      const option = await createVariantOptionRequest({
+        option_name: optionName,
+        option_type: 'select',
+        values: values.map((value, index) => ({
+          value,
+          display_value: value,
+          sort_order: index
+        }))
+      })
+      await attachVariantOptionToProductRequest(
+        productId,
+        option.id,
+        option.values.map((value) => value.id)
+      )
+      return option
+    },
+    onSuccess: () => {
+      setVariantActionError(null)
+      setNewVariantOptionName('')
+      setNewVariantOptionValues('')
+      queryClient.invalidateQueries({ queryKey: ['products', 'variant-options'] })
       queryClient.invalidateQueries({ queryKey: ['products', 'details', productId, 'variant-options'] })
       queryClient.invalidateQueries({ queryKey: ['products', 'details', productId] })
       queryClient.invalidateQueries({ queryKey: ['products', 'list'] })
@@ -852,7 +915,7 @@ const ManageProductPage = () => {
                               Select one or more images to upload
                             </p>
                             <p className="text-xs text-text-tertiary mb-4">
-                              Each upload is added to the existing product gallery.
+                              Add up to {MAX_PRODUCT_IMAGES} photos. Each upload is added to the existing product gallery.
                             </p>
                             <input
                               type="file"
@@ -860,10 +923,17 @@ const ManageProductPage = () => {
                               multiple
                               onChange={(e) => {
                                 const files = Array.from(e.target.files ?? [])
-                                setForm((previous) => ({
-                                  ...previous,
-                                  imageFiles: mergeImageFiles(previous.imageFiles, files)
-                                }))
+                                const mergedFiles = mergeImageFiles(form.imageFiles, files)
+                                const currentImageCount = productQuery.data?.image_urls?.length ?? 0
+                                const selectionError = imageSelectionError(files)
+                                if (selectionError) {
+                                  setFormError(selectionError)
+                                } else if (currentImageCount + mergedFiles.length > MAX_PRODUCT_IMAGES) {
+                                  setFormError(`A product can have at most ${MAX_PRODUCT_IMAGES} photos.`)
+                                } else {
+                                  setFormError(null)
+                                  setForm((previous) => ({ ...previous, imageFiles: mergedFiles }))
+                                }
                                 e.target.value = ''
                               }}
                               className="mx-auto block w-full max-w-sm rounded-lg border border-border bg-white px-3 py-2 text-sm text-text file:mr-3 file:rounded-md file:border-0 file:bg-primary file:px-3 file:py-2 file:text-sm file:font-medium file:text-white hover:file:bg-primary-dark"
@@ -990,6 +1060,60 @@ const ManageProductPage = () => {
                             </p>
                           </div>
                         </div>
+                      </div>
+
+                      <div className="rounded-xl border border-border bg-white p-5">
+                        <div className="flex items-start justify-between gap-3">
+                          <div>
+                            <h3 className="text-sm font-semibold text-text">Create Variants</h3>
+                            <p className="mt-1 text-xs text-text-secondary">
+                              Add an option and its values here. The variants will be generated and attached to this product automatically.
+                            </p>
+                          </div>
+                          <PlusIcon className="h-5 w-5 shrink-0 text-primary" />
+                        </div>
+
+                        {canUpdateProduct ? (
+                          <form
+                            className="mt-4 grid gap-4 md:grid-cols-2"
+                            onSubmit={(event) => {
+                              event.preventDefault()
+                              setVariantActionError(null)
+                              createAndAttachVariantOptionMutation.mutate()
+                            }}
+                          >
+                            <TextInput
+                              label="Option name"
+                              placeholder="For example: Size or Color"
+                              value={newVariantOptionName}
+                              onChange={(event) => setNewVariantOptionName(event.target.value)}
+                            />
+                            <TextInput
+                              label="Option values"
+                              placeholder="For example: Small, Medium, Large"
+                              helperText="Separate each value with a comma."
+                              value={newVariantOptionValues}
+                              onChange={(event) => setNewVariantOptionValues(event.target.value)}
+                            />
+                            <div className="md:col-span-2 flex flex-wrap items-center gap-3">
+                              <Button
+                                type="submit"
+                                loading={createAndAttachVariantOptionMutation.isPending}
+                                disabled={!newVariantOptionName.trim() || !newVariantOptionValues.trim()}
+                              >
+                                <PlusIcon className="mr-2 h-4 w-4" />
+                                Create and attach variants
+                              </Button>
+                              <span className="text-xs text-text-tertiary">
+                                Adding another option later also creates every valid combination.
+                              </span>
+                            </div>
+                          </form>
+                        ) : (
+                          <p className="mt-4 rounded-lg bg-background px-4 py-3 text-sm text-text-secondary">
+                            You need product update permission to create variants.
+                          </p>
+                        )}
                       </div>
 
                       <div className="rounded-xl border border-border bg-white p-5">

@@ -17,6 +17,7 @@ const AboutPage = lazy(() => import('@pages/public/About/AboutPage'))
 const ContactPage = lazy(() => import('@pages/public/Contact/ContactPage'))
 const FAQPage = lazy(() => import('@pages/public/FAQ/FAQPage'))
 const ProductsPage = lazy(() => import('@pages/public/Products/ProductsPage'))
+const ProductDetailsPage = lazy(() => import('@pages/public/Products/ProductDetailsPage'))
 const ServicesPage = lazy(() => import('@pages/public/Services/ServicesPage'))
 const ProjectsPage = lazy(() => import('@pages/public/Projects/ProjectsPage'))
 const BlogPage = lazy(() => import('@pages/public/Blog/BlogPage'))
@@ -133,6 +134,7 @@ export const AppRoutes = () => {
           <Route path="/contact" element={<ContactPage />} />
           <Route path="/faq" element={<FAQPage />} />
           <Route path="/products" element={<ProductsPage />} />
+          <Route path="/products/:productId" element={<ProductDetailsPage />} />
           <Route path="/services" element={<ServicesPage />} />
           <Route path="/projects" element={<ProjectsPage />} />
           <Route path="/blog" element={<BlogPage />} />
