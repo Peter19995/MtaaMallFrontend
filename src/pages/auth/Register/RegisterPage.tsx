@@ -1,4 +1,4 @@
-import { FormEvent, useState } from 'react'
+import { FormEvent, useEffect, useState } from 'react'
 import axios from 'axios'
 import { Link, useSearchParams } from 'react-router-dom'
 import {
@@ -10,6 +10,7 @@ import {
   XCircleIcon
 } from '@heroicons/react/24/outline'
 import { registerBusinessRequest, registerCustomerRequest, type AccountType } from '@api/modules/auth.api'
+import { listPublicBusinessTypes, type BusinessType } from '@api/modules/businesses.api'
 import brandLogo from '@/assets/mtaamall-logo.svg'
 
 const getErrorMessage = (error: unknown) => {
@@ -31,15 +32,30 @@ const RegisterPage = () => {
   const [phone, setPhone] = useState('')
   const [password, setPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
-  const [businessName, setBusinessName] = useState('')
   const [legalName, setLegalName] = useState('')
   const [registrationNumber, setRegistrationNumber] = useState('')
-  const [businessType, setBusinessType] = useState('retail')
+  const [businessType, setBusinessType] = useState('')
+  const [businessTypes, setBusinessTypes] = useState<BusinessType[]>([])
+  const [businessTypesError, setBusinessTypesError] = useState(false)
   const [address, setAddress] = useState('')
   const [showPassword, setShowPassword] = useState(false)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
   const [created, setCreated] = useState(false)
+
+  useEffect(() => {
+    if (accountType !== 'business' || businessTypes.length) return
+    let active = true
+    listPublicBusinessTypes()
+      .then(items => {
+        if (!active) return
+        setBusinessTypes(items)
+        setBusinessType(current => current || items[0]?.code || '')
+        setBusinessTypesError(false)
+      })
+      .catch(() => active && setBusinessTypesError(true))
+    return () => { active = false }
+  }, [accountType, businessTypes.length])
 
   const handleSubmit = async (event: FormEvent) => {
     event.preventDefault()
@@ -52,10 +68,10 @@ const RegisterPage = () => {
     setIsSubmitting(true)
     try {
       if (accountType === 'customer') {
-        await registerCustomerRequest({ username: username.trim(), phone: phone.trim(), password, email: email.trim() })
+        await registerCustomerRequest({ username: username.trim(), phone: phone.trim(), password, email: email.trim() || undefined })
       } else {
         await registerBusinessRequest({
-          name: businessName.trim(), legal_name: legalName.trim(), registration_number: registrationNumber.trim(),
+          name: legalName.trim(), legal_name: legalName.trim(), registration_number: registrationNumber.trim(),
           business_type: businessType.trim(), address: address.trim() || undefined,
           email: email.trim() || undefined, phone: phone.trim(), country: 'KE', currency: 'KES',
           timezone: 'Africa/Nairobi', branches: [],
@@ -92,15 +108,15 @@ const RegisterPage = () => {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-primary/5 via-background to-secondary/5 px-4 py-10">
-      <div className="mx-auto w-full max-w-2xl rounded-3xl border border-border bg-white/90 p-6 shadow-2xl backdrop-blur-xl sm:p-8">
-        <div className="text-center">
+      <div className="mx-auto flex max-h-[calc(100vh-5rem)] w-full max-w-2xl flex-col overflow-hidden rounded-3xl border border-border bg-white/90 p-6 shadow-2xl backdrop-blur-xl sm:p-8">
+        <div className="shrink-0 text-center">
           <img src={brandLogo} alt="MtaaMall logo" className="mx-auto h-14 w-auto sm:h-16" />
           <h1 className="mt-4 text-2xl font-bold text-text">Create your MtaaMall account</h1>
           <p className="mt-1 text-sm text-text-secondary">Choose how you plan to use MtaaMall.</p>
         </div>
 
-        <form onSubmit={handleSubmit} className="mt-7 space-y-5">
-          <fieldset>
+        <form onSubmit={handleSubmit} className="mt-7 flex min-h-0 flex-1 flex-col gap-5">
+          <fieldset className="shrink-0">
             <legend className="mb-2 text-xs font-semibold uppercase tracking-wide text-text-secondary">Account type</legend>
             <div className="grid gap-3 sm:grid-cols-2">
               {([
@@ -116,28 +132,59 @@ const RegisterPage = () => {
             </div>
           </fieldset>
 
-          <div className="grid gap-4 sm:grid-cols-2">
-            {accountType === 'business' && <>
-              <label className="text-xs font-medium text-text-secondary">Business display name<input className={`${inputClass} mt-1`} value={businessName} onChange={(e) => setBusinessName(e.target.value)} required /></label>
-              <label className="text-xs font-medium text-text-secondary">Legal business name<input className={`${inputClass} mt-1`} value={legalName} onChange={(e) => setLegalName(e.target.value)} required /></label>
-              <label className="text-xs font-medium text-text-secondary">Registration number<input className={`${inputClass} mt-1`} value={registrationNumber} onChange={(e) => setRegistrationNumber(e.target.value)} required /></label>
-              <label className="text-xs font-medium text-text-secondary">Business type<input className={`${inputClass} mt-1`} value={businessType} onChange={(e) => setBusinessType(e.target.value)} required /></label>
-              <label className="text-xs font-medium text-text-secondary sm:col-span-2">Business address <span className="font-normal text-text-tertiary">(optional)</span><input className={`${inputClass} mt-1`} value={address} onChange={(e) => setAddress(e.target.value)} /></label>
-            </>}
+          <div className="min-h-0 flex-1 space-y-5 overflow-y-auto px-1 pb-1 pr-2">
+          {accountType === 'business' ? <div className="space-y-5">
+            <section aria-labelledby="business-information-heading" className="rounded-2xl border border-border bg-background/60 p-4 sm:p-5">
+              <div className="mb-4 flex items-start gap-3">
+                <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-primary/15 font-bold text-primary-dark">1</span>
+                <div><h2 id="business-information-heading" className="font-semibold text-text">Business information</h2><p className="mt-0.5 text-xs text-text-secondary">Tell us about the business you are registering.</p></div>
+              </div>
+              <div className="grid gap-4 sm:grid-cols-2">
+                <label className="text-xs font-medium text-text-secondary sm:col-span-2">Legal business name<input className={`${inputClass} mt-1`} value={legalName} onChange={(e) => setLegalName(e.target.value)} autoComplete="organization" required /><span className="mt-1 block font-normal text-text-tertiary">This will also be used as the business display name.</span></label>
+                <label className="text-xs font-medium text-text-secondary">Registration number<input className={`${inputClass} mt-1`} value={registrationNumber} onChange={(e) => setRegistrationNumber(e.target.value)} required /></label>
+                <label className="text-xs font-medium text-text-secondary">Business type<select className={`${inputClass} mt-1`} value={businessType} onChange={(e) => setBusinessType(e.target.value)} required disabled={!businessTypes.length}><option value="">{businessTypesError ? 'Business types unavailable' : 'Select business type'}</option>{businessTypes.map(type => <option key={type.public_id} value={type.code}>{type.name}</option>)}</select>{businessTypesError && <span className="mt-1 block font-normal text-error">Could not load business types. Refresh the page to try again.</span>}</label>
+                <label className="text-xs font-medium text-text-secondary sm:col-span-2">Business address <span className="font-normal text-text-tertiary">(optional)</span><input className={`${inputClass} mt-1`} value={address} onChange={(e) => setAddress(e.target.value)} autoComplete="street-address" /></label>
+              </div>
+            </section>
+
+            <section aria-labelledby="administrator-information-heading" className="rounded-2xl border border-border bg-background/60 p-4 sm:p-5">
+              <div className="mb-4 flex items-start gap-3">
+                <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-secondary/15 font-bold text-secondary-dark">2</span>
+                <div><h2 id="administrator-information-heading" className="font-semibold text-text">Administrator information</h2><p className="mt-0.5 text-xs text-text-secondary">Enter the contact details of the person who will manage this business.</p></div>
+              </div>
+              <div className="grid gap-4 sm:grid-cols-2">
+                <label className="text-xs font-medium text-text-secondary">Full name<input className={`${inputClass} mt-1`} value={fullName} onChange={(e) => setFullName(e.target.value)} autoComplete="name" required /></label>
+                <label className="text-xs font-medium text-text-secondary">Email address <span className="font-normal text-text-tertiary">(optional)</span><input className={`${inputClass} mt-1`} type="email" value={email} onChange={(e) => setEmail(e.target.value)} autoComplete="email" /></label>
+                <label className="text-xs font-medium text-text-secondary">Phone number<input className={`${inputClass} mt-1`} type="tel" value={phone} onChange={(e) => setPhone(e.target.value)} autoComplete="tel" required /></label>
+              </div>
+            </section>
+
+            <section aria-labelledby="login-information-heading" className="rounded-2xl border border-border bg-background/60 p-4 sm:p-5">
+              <div className="mb-4 flex items-start gap-3">
+                <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-success/15 font-bold text-success-dark">3</span>
+                <div><h2 id="login-information-heading" className="font-semibold text-text">Login information</h2><p className="mt-0.5 text-xs text-text-secondary">Choose the credentials the administrator will use to sign in.</p></div>
+              </div>
+              <div className="grid gap-4 sm:grid-cols-2">
+                <label className="text-xs font-medium text-text-secondary sm:col-span-2">Username<input className={`${inputClass} mt-1`} value={username} onChange={(e) => setUsername(e.target.value)} pattern="[A-Za-z0-9_]+" minLength={3} maxLength={50} autoComplete="username" required /></label>
+                <label className="text-xs font-medium text-text-secondary">Password<span className="relative mt-1 block"><input className={`${inputClass} pr-10`} type={showPassword ? 'text' : 'password'} value={password} onChange={(e) => setPassword(e.target.value)} minLength={6} autoComplete="new-password" required /><button type="button" onClick={() => setShowPassword((current) => !current)} aria-label={showPassword ? 'Hide password' : 'Show password'} className="absolute inset-y-0 right-0 px-3 text-text-tertiary hover:text-primary">{showPassword ? <EyeSlashIcon className="h-4 w-4" /> : <EyeIcon className="h-4 w-4" />}</button></span></label>
+                <label className="text-xs font-medium text-text-secondary">Confirm password<input className={`${inputClass} mt-1`} type={showPassword ? 'text' : 'password'} value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} minLength={6} autoComplete="new-password" required /></label>
+              </div>
+            </section>
+          </div> : <div className="grid gap-4 sm:grid-cols-2">
             <label className="text-xs font-medium text-text-secondary">Username<input className={`${inputClass} mt-1`} value={username} onChange={(e) => setUsername(e.target.value)} pattern="[A-Za-z0-9_]+" minLength={3} maxLength={50} autoComplete="username" required /></label>
-            {accountType === 'business' && <label className="text-xs font-medium text-text-secondary">Full name<input className={`${inputClass} mt-1`} value={fullName} onChange={(e) => setFullName(e.target.value)} autoComplete="name" required /></label>}
-            <label className="text-xs font-medium text-text-secondary">Email address<input required className={`${inputClass} mt-1`} type="email" value={email} onChange={(e) => setEmail(e.target.value)} autoComplete="email" /><span className="mt-1 block text-xs">Verify this address before shopping or managing a business.</span></label>
+            <label className="text-xs font-medium text-text-secondary">Email address <span className="font-normal text-text-tertiary">(optional)</span><input className={`${inputClass} mt-1`} type="email" value={email} onChange={(e) => setEmail(e.target.value)} autoComplete="email" /></label>
             <label className="text-xs font-medium text-text-secondary">Phone number<input className={`${inputClass} mt-1`} type="tel" value={phone} onChange={(e) => setPhone(e.target.value)} autoComplete="tel" required /></label>
             <label className="text-xs font-medium text-text-secondary">Password<span className="relative mt-1 block"><input className={`${inputClass} pr-10`} type={showPassword ? 'text' : 'password'} value={password} onChange={(e) => setPassword(e.target.value)} minLength={6} autoComplete="new-password" required /><button type="button" onClick={() => setShowPassword((current) => !current)} aria-label={showPassword ? 'Hide password' : 'Show password'} className="absolute inset-y-0 right-0 px-3 text-text-tertiary hover:text-primary">{showPassword ? <EyeSlashIcon className="h-4 w-4" /> : <EyeIcon className="h-4 w-4" />}</button></span></label>
             <label className="text-xs font-medium text-text-secondary">Confirm password<input className={`${inputClass} mt-1`} type={showPassword ? 'text' : 'password'} value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} minLength={6} autoComplete="new-password" required /></label>
-          </div>
+          </div>}
 
           <p className="text-xs text-text-tertiary">Use at least 6 characters.</p>
           {errorMessage && <div className="flex items-center gap-2 rounded-xl border border-error/20 bg-error/10 p-3 text-xs text-error"><XCircleIcon className="h-5 w-5 flex-none" />{errorMessage}</div>}
-          <button type="submit" disabled={isSubmitting} className="w-full rounded-xl bg-gradient-to-r from-primary to-secondary px-4 py-3 text-sm font-semibold text-white disabled:opacity-60">{isSubmitting ? 'Creating account…' : `Create ${accountType} account`}</button>
+          <button type="submit" disabled={isSubmitting || (accountType === 'business' && !businessType)} className="w-full rounded-xl bg-gradient-to-r from-primary to-secondary px-4 py-3 text-sm font-semibold text-white disabled:opacity-60">{isSubmitting ? 'Creating account…' : `Create ${accountType} account`}</button>
+          </div>
         </form>
 
-        <p className="mt-6 text-center text-sm text-text-secondary">Already have an account? <Link to="/login" className="font-semibold text-primary hover:text-primary-dark">Sign in</Link></p>
+        <p className="mt-5 shrink-0 text-center text-sm text-text-secondary">Already have an account? <Link to="/login" className="font-semibold text-primary hover:text-primary-dark">Sign in</Link></p>
       </div>
     </div>
   )

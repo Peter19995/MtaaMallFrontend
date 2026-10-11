@@ -333,8 +333,8 @@ const ProductsPage = () => {
               </span>
             </h1>
             <p className="text-text-secondary max-w-2xl mx-auto">
-              Explore our curated selection of high-quality interior products, 
-              from elegant curtains to stylish home accessories.
+              Shop everyday essentials and new finds from verified businesses
+              across MtaaMall.
             </p>
           </motion.div>
         </div>

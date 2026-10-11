@@ -1,6 +1,15 @@
 import api from '@api/config/axios.config'
 
 export type BusinessStatus = 'draft' | 'pending_verification' | 'active' | 'suspended' | 'rejected' | 'closed'
+export type BusinessType = {
+  public_id: string
+  code: string
+  name: string
+  description: string | null
+  is_active: boolean
+  created_at: string
+  updated_at: string | null
+}
 export type BusinessCapabilities = {
   local_pos_enabled: boolean
   storefront_enabled: boolean
@@ -74,6 +83,16 @@ export type PlatformBusinessDetail = {
 export type BusinessOnboarding = { status: string; current_step: string; checklist: Record<string, boolean>; created_at: string; updated_at: string | null }
 export const listBusinesses = async (status?: BusinessStatus) =>
   (await api.get<Business[]>('/platform/businesses', { params: { status } })).data
+export const listPublicBusinessTypes = async () =>
+  (await api.get<BusinessType[]>('/reference/business-types')).data
+export const listPlatformBusinessTypes = async () =>
+  (await api.get<BusinessType[]>('/platform/business-types')).data
+export const createBusinessType = async (body: { name: string; code?: string; description?: string }) =>
+  (await api.post<BusinessType>('/platform/business-types', body)).data
+export const updateBusinessType = async (id: string, body: { name?: string; description?: string; is_active?: boolean }) =>
+  (await api.patch<BusinessType>(`/platform/business-types/${encodeURIComponent(id)}`, body)).data
+export const deleteBusinessType = async (id: string) =>
+  api.delete(`/platform/business-types/${encodeURIComponent(id)}`)
 export const getBusiness = async (id: string) =>
   (await api.get<PlatformBusinessDetail>(`/platform/businesses/${encodeURIComponent(id)}`)).data
 export const decideBusiness = async (id: string, action: 'activate' | 'reject' | 'suspend' | 'reactivate', reason: string) =>

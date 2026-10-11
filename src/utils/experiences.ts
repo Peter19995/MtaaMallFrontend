@@ -56,6 +56,7 @@ export type WorkspaceModule = { path: string; label: string; permission: string;
 export const platformModules: WorkspaceModule[] = [
   { path: 'audit', label: 'Audit history', permission: 'platform.audit.read' },
   { path: 'businesses', label: 'Businesses', permission: 'platform.businesses.read' },
+  { path: 'business-types', label: 'Business types', permission: 'platform.businesses.read' },
   { path: 'catalog', label: 'Catalogue overview', permission: 'catalog.products.review' },
   { path: 'catalog/proposals', label: 'Catalogue proposals', permission: 'catalog.products.review' },
   { path: 'catalog/products', label: 'Global products', permission: 'catalog.products.review' },

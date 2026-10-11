@@ -27,9 +27,11 @@ const CheckoutPage = lazy(() => import('@pages/public/Checkout/CheckoutPage'))
 const CartPage = lazy(() => import('@pages/public/Cart/CartPage'))
 const LoginPage = lazy(() => import('@pages/auth/Login/LoginPage'))
 const RegisterPage = lazy(() => import('@pages/auth/Register/RegisterPage'))
+const SocialAuthCallbackPage = lazy(() => import('@pages/auth/SocialAuthCallbackPage'))
 const AcceptInvitationPage = lazy(() => import('@pages/auth/AcceptInvitation/AcceptInvitationPage'))
 const BusinessInvitationAcceptPage = lazy(() => import('@pages/auth/AcceptInvitation/BusinessInvitationAcceptPage'))
 const PlatformBusinessesPage = lazy(() => import('@pages/dashboard/business/PlatformBusinessesPage'))
+const PlatformBusinessTypesPage = lazy(() => import('@pages/dashboard/business/PlatformBusinessTypesPage'))
 const PlatformMpesaPage = lazy(() => import('@pages/dashboard/admin/PlatformPayments/PlatformMpesaPage'))
 const PlatformPaymentsOverviewPage = lazy(() => import('@pages/dashboard/admin/PlatformPayments/PlatformPaymentPages').then(module => ({ default: module.PlatformPaymentsOverviewPage })))
 const PlatformTransactionsPage = lazy(() => import('@pages/dashboard/admin/PlatformPayments/PlatformPaymentPages').then(module => ({ default: module.PlatformTransactionsPage })))
@@ -146,6 +148,7 @@ export const AppRoutes = () => {
         <Route path="/reset-password" element={<ResetPasswordPage />} />
         <Route path="/forgot-password" element={<ResetPasswordPage />} />
         <Route path="/register" element={<RegisterPage />} />
+        <Route path="/auth/social/callback" element={<SocialAuthCallbackPage />} />
         <Route path="/accept-invitation" element={<AcceptInvitationPage />} />
         <Route path="/unauthorized" element={<UnauthorizedPage />} />
 
@@ -182,6 +185,7 @@ export const AppRoutes = () => {
               <Route path="/platform" element={<WorkspaceHome />} />
               <Route path="/platform/audit" element={<AuditApprovalsPage />} />
               <Route path="/platform/businesses" element={<PlatformBusinessesPage />} />
+              <Route path="/platform/business-types" element={<PlatformBusinessTypesPage />} />
               <Route path="/platform/catalog" element={<PlatformCatalogPage view="overview" />} />
               <Route path="/platform/catalog/proposals" element={<PlatformCatalogPage view="proposals" />} />
               <Route path="/platform/catalog/products" element={<PlatformCatalogPage view="products" />} />

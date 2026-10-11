@@ -14,7 +14,7 @@ type ApiEnvelope<T> = {
   code?: string | number
 }
 
-const AUTH_BYPASS_PATHS = ['/auth/login', '/auth/register', '/auth/invitations/platform', '/auth/refresh']
+const AUTH_BYPASS_PATHS = ['/auth/login', '/auth/register', '/auth/invitations/platform', '/auth/refresh', '/auth/social']
 
 const shouldBypassStoredToken = (url?: string) => {
   if (!url) {

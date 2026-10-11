@@ -78,7 +78,7 @@ export default function PlatformBillingWorkspacePage({ view }: { view: PlatformB
     </section>}
 
     {view === 'reconciliation' && <ReconciliationPanel businessId={businessId} data={reconciliation.data} error={reconciliation.error} />}
-    {view === 'plans' && <BillingPlansPanel businessId={businessId} plans={plans.data ?? []} canManage={hasPermission('platform.billing.plans.manage')} onChanged={() => void queryClient.invalidateQueries({ queryKey: ['billing-plans'] })} />}
+    {view === 'plans' && <BillingPlansPanel plans={plans.data ?? []} canManage={hasPermission('platform.billing.plans.manage')} onChanged={() => void queryClient.invalidateQueries({ queryKey: ['billing-plans'] })} />}
     {view === 'agreements' && <AgreementsPanel businessId={businessId} versions={publishedVersions} agreements={agreements.data ?? []} canManage={hasPermission('platform.billing.agreements.manage')} onChanged={() => void queryClient.invalidateQueries({ queryKey: ['billing-agreements', businessId] })} />}
     {view === 'assessments' && <BillingPeriodsPage platform key={businessId || 'no-business'} />}
     {view === 'audit' && <AuditPanel businessId={businessId} data={audit.data ?? []} error={audit.error} />}

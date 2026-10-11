@@ -13,6 +13,34 @@ export type TokenResponse = {
   security?: { ready: boolean }
 }
 
+export type SocialProvider = {
+  provider: 'google' | 'facebook' | 'apple'
+  display_name: string
+}
+
+export type SocialAuthStartResponse = {
+  provider: SocialProvider['provider']
+  authorization_url: string
+  expires_in: number
+}
+
+export type SocialProfilePrefill = {
+  provider: SocialProvider['provider']
+  email?: string | null
+  email_verified: boolean
+  display_name?: string | null
+  avatar_url?: string | null
+}
+
+export type SocialExchangeResponse =
+  | ({ status: 'authenticated' } & TokenResponse)
+  | {
+      status: 'profile_completion_required'
+      profile_completion_token: string
+      expires_in: number
+      profile: SocialProfilePrefill
+    }
+
 export type AccountType = 'business' | 'customer'
 
 export type CustomerRegistration = {
@@ -64,6 +92,7 @@ export type UserIdentity = {
   full_name?: string | null
   phone?: string | null
   is_active: boolean
+  password_login_enabled?: boolean
 }
 
 export type CustomerProfile = {
@@ -111,6 +140,7 @@ export type UserResponse = {
   branch_scope?: 'all' | 'selected' | null
   branch_ids?: number[]
   is_active: boolean
+  password_login_enabled?: boolean
   is_superuser: boolean
   created_at?: string
   last_login?: string | null
@@ -130,6 +160,22 @@ export const loginRequest = async (payload: LoginRequest): Promise<TokenResponse
 
   return data
 }
+
+export const listSocialProvidersRequest = async (): Promise<SocialProvider[]> =>
+  (await api.get<SocialProvider[]>('/auth/social/providers')).data
+
+export const startSocialLoginRequest = async (
+  provider: SocialProvider['provider']
+): Promise<SocialAuthStartResponse> =>
+  (await api.get<SocialAuthStartResponse>(`/auth/social/${provider}/start`)).data
+
+export const exchangeSocialTicketRequest = async (
+  ticket: string
+): Promise<SocialExchangeResponse> =>
+  (await api.post<SocialExchangeResponse>('/auth/social/exchange', {
+    ticket,
+    use_cookies: true
+  })).data
 
 export const refreshTokenRequest = async (
   payload: RefreshTokenRequest

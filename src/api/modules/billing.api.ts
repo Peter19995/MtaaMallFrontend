@@ -18,9 +18,14 @@ export type BillingAssessment = {
     payment_methods: string[]
     offline: boolean
     line_type: string
+    rule_id: string
+    rule_name: string
     basis_amount: string
+    fee_before_tax: string
+    tax_amount: string
     final_fee: string
     explanation: string
+    calculation: Record<string, unknown>
   }[]
 }
 export type BillingPeriod = {
@@ -52,6 +57,22 @@ export type SellerWallet = {
   ledger_balance: string; available_amount: string
   active_reserve_amount: string; projected_reserve_amount: string
   pending_settlement_amount: string; negative_balance: string; paid_amount: string
+}
+export type BusinessBillingStatus = {
+  agreement: null | {
+    agreement_id: string; plan_name: string; pricing_version_id: string
+    pricing_version_number: number; charging_mode: string; charges_enabled: boolean
+  }
+  current_period: {
+    period_id: string | null; starts_at: string; ends_at: string; status: string
+    fee_state: 'provisional' | 'finalized'; usage_total: string; fee_total: string; currency: string
+  }
+  rules: {
+    rule_id: string; rule_name: string; channel: string; calculation_mode: string; currency: string
+    free_allowance: string; period_usage: string; remaining_free_allowance: string
+    provisional_fee: string
+    current_bracket: { label: string; lower_bound: string; upper_bound: string | null; percentage_rate: string }
+  }[]
 }
 export type BillingInvoice = {
   public_id: string; invoice_number: string; currency: string
@@ -128,12 +149,16 @@ export type BillingAuditEvent = {
 
 export const listBusinessBillingPeriods = async () =>
   (await api.get<BillingPeriod[]>('/billing/periods')).data
+export const getBusinessBillingStatus = async () =>
+  (await api.get<BusinessBillingStatus>('/billing/status')).data
 export const getBusinessSellerWallet = async () =>
   (await api.get<SellerWallet>('/billing/wallet')).data
 export const getBusinessBillingPeriod = async (id: string) =>
   (await api.get<BillingPeriod>(`/billing/periods/${encodeURIComponent(id)}`)).data
 export const listPlatformBillingPeriods = async (businessId: string) =>
   (await api.get<BillingPeriod[]>(`/platform/billing/businesses/${encodeURIComponent(businessId)}/periods`)).data
+export const getPlatformBillingPeriod = async (businessId: string, periodId: string) =>
+  (await api.get<BillingPeriod>(`/platform/billing/businesses/${encodeURIComponent(businessId)}/periods/${encodeURIComponent(periodId)}`)).data
 export const calculateCurrentBillingPeriod = async (businessId: string) =>
   (await api.post<BillingPeriod>(`/platform/billing/businesses/${encodeURIComponent(businessId)}/periods/calculate-current`)).data
 export const calculateBillingPeriod = async (businessId: string, periodId: string) =>
