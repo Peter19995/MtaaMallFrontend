@@ -1,38 +1,40 @@
-#!/usr/bin/env sh
-set -eu
-
-DEPLOY_PATH="${DEPLOY_PATH:-/opt/mtaamall-frontend}"
-COMPOSE_FILE="docker-compose.prod.yml"
-ENV_FILE=".env.production"
-NETWORK_NAME="mtaamall-public"
-
-cd "$DEPLOY_PATH"
-
-if [ ! -f "$ENV_FILE" ]; then
-  cp .env.production.example "$ENV_FILE"
-fi
-
-API_BASE_URL="$(awk -F= '/^VITE_API_BASE_URL=/{print $2}' "$ENV_FILE" | tail -n 1)"
-
-if [ -z "$API_BASE_URL" ]; then
-  echo "VITE_API_BASE_URL is not set in $ENV_FILE"
-  exit 1
-fi
-
-case "$API_BASE_URL" in
-  *localhost*|*127.0.0.1*)
-    echo "Refusing to deploy with local API base URL: $API_BASE_URL"
-    echo "Set VITE_API_BASE_URL=https://api.mtaamall.com/api/v1 in $ENV_FILE"
-    exit 1
-    ;;
+#!/usr/bin/env bash
+set -euo pipefail
+APP_DIR="${APP_DIR:-/opt/mtaamall/frontend}"
+APP_ROOT="${APP_ROOT:-/opt/mtaamall}"
+PROJECT_NAME="mtaamall"
+SCOPE="mtaa-frontend"
+build=true
+case "${1:-}" in
+  "") ;;
+  --no-build) build=false ;;
+  *) echo "Usage: $0 [--no-build]" >&2; exit 2 ;;
 esac
-
-if ! docker network inspect "$NETWORK_NAME" >/dev/null 2>&1; then
-  echo "Required Docker network '$NETWORK_NAME' does not exist."
-  echo "Create it once with: docker network create $NETWORK_NAME"
-  exit 1
-fi
-
-docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" up -d --build --remove-orphans
-
-docker image prune -f >/dev/null 2>&1 || true
+cd "$APP_DIR"
+test -f "$APP_ROOT/.env"
+exec 8>/var/lock/mtaamall-app-deploy.lock
+flock -n 8 || { echo "Another component deployment is running." >&2; exit 75; }
+compose=(docker compose --project-name "$PROJECT_NAME" -f "$APP_ROOT/docker-compose.yml")
+state="$(mktemp)"
+trap 'rm -f "$state"' EXIT
+python3 scripts/deployment_guard.py snapshot "$state" "$SCOPE"
+"${compose[@]}" config --quiet
+if $build; then "${compose[@]}" build frontend; fi
+python3 scripts/deployment_guard.py verify "$state" "$SCOPE"
+"${compose[@]}" up -d --no-deps --no-build frontend
+ready=false
+for attempt in {1..60}; do
+  if curl -fsS --max-time 10 https://mtaamall.com/ >/dev/null; then ready=true; break; fi
+  sleep 2
+done
+$ready || { echo "Application health check failed." >&2; exit 1; }
+for container in mtaamall-frontend; do
+  for ready_attempt in {1..30}; do
+    state_now="$(docker inspect --format '{{.State.Running}} {{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}' "$container")"
+    [[ "$state_now" == "true none" || "$state_now" == "true healthy" ]] && break
+    sleep 2
+  done
+  [[ "$state_now" == "true none" || "$state_now" == "true healthy" ]] || { echo "$container is not ready: $state_now" >&2; exit 1; }
+done
+python3 scripts/deployment_guard.py verify "$state" "$SCOPE"
+echo "Deployment healthy; shared proxy, infrastructure and other components unchanged."
