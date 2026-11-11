@@ -21,6 +21,9 @@ jobs:
       - name: Check out source
         uses: actions/checkout@v4
 
+      - name: Test deployment isolation
+        run: python3 -m unittest discover -s tests/deployment -v
+
       - name: Use Node.js
         uses: actions/setup-node@v4
         with:
@@ -63,6 +66,8 @@ jobs:
             --exclude='.git' \
             --exclude='.github' \
             --exclude='.env' \
+            --exclude='.env.production' \
+            --exclude='Caddyfile' \
             --exclude='node_modules' \
             --exclude='dist' \
             --exclude='coverage' \
