@@ -1,17 +1,23 @@
 // @vitest-environment jsdom
-import { afterEach, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import '@testing-library/jest-dom/vitest'
 import { MemoryRouter } from 'react-router-dom'
-import { registerBusinessRequest, registerCustomerRequest } from '@api/modules/auth.api'
+import { listSocialProvidersRequest, registerBusinessRequest, registerCustomerRequest } from '@api/modules/auth.api'
 import RegisterPage from './RegisterPage'
 import { listPublicBusinessTypes } from '@api/modules/businesses.api'
 
 vi.mock('@api/modules/auth.api', () => ({
   registerBusinessRequest: vi.fn(),
   registerCustomerRequest: vi.fn(),
+  listSocialProvidersRequest: vi.fn().mockResolvedValue([]),
+  startSocialLoginRequest: vi.fn(),
 }))
 vi.mock('@api/modules/businesses.api', () => ({ listPublicBusinessTypes: vi.fn() }))
+
+beforeEach(() => {
+  vi.mocked(listSocialProvidersRequest).mockResolvedValue([])
+})
 
 afterEach(() => {
   cleanup()

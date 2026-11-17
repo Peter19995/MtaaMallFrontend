@@ -4,12 +4,20 @@ import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/re
 import '@testing-library/jest-dom/vitest'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import axios from 'axios'
-import { loginRequest, getMeRequest } from '@api/modules/auth.api'
+import { loginRequest, getMeRequest, listSocialProvidersRequest } from '@api/modules/auth.api'
 import LoginPage from './LoginPage'
 
 vi.mock('@hooks/useAuth', () => ({ useAuth: () => ({ login: vi.fn() }) }))
-vi.mock('@api/modules/auth.api', () => ({ loginRequest: vi.fn(), getMeRequest: vi.fn() }))
-beforeEach(() => { vi.stubGlobal('scrollTo', vi.fn()) })
+vi.mock('@api/modules/auth.api', () => ({
+  loginRequest: vi.fn(),
+  getMeRequest: vi.fn(),
+  listSocialProvidersRequest: vi.fn().mockResolvedValue([]),
+  startSocialLoginRequest: vi.fn(),
+}))
+beforeEach(() => {
+  vi.stubGlobal('scrollTo', vi.fn())
+  vi.mocked(listSocialProvidersRequest).mockResolvedValue([])
+})
 afterEach(() => { cleanup(); vi.resetAllMocks(); vi.unstubAllGlobals() })
 
 it('links the login logo back to the public shop', () => {
