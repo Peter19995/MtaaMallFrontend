@@ -2,14 +2,15 @@ import { useEffect, useRef, useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import {
   exchangeSocialTicketRequest,
-  getMeRequest
+  getMeRequest,
+  linkSocialIdentityRequest
 } from '@api/modules/auth.api'
 import { setActiveApiContext } from '@api/config/axios.config'
 import { toAuthUser } from '@contexts/AuthContext'
 import { useAuth } from '@hooks/useAuth'
 import brandLogo from '@/assets/mtaamall-logo.svg'
-
-const PROFILE_COMPLETION_KEY = 'social_profile_completion'
+import { SOCIAL_AUTH_MODE_KEY } from './SocialLoginButtons'
+import { SOCIAL_PROFILE_COMPLETION_KEY } from './SocialProfileCompletionPage'
 
 const SocialAuthCallbackPage = () => {
   const [searchParams] = useSearchParams()
@@ -18,7 +19,6 @@ const SocialAuthCallbackPage = () => {
   const started = useRef(false)
   const [message, setMessage] = useState('Completing your secure sign-in…')
   const [failed, setFailed] = useState(false)
-  const [needsProfile, setNeedsProfile] = useState(false)
 
   useEffect(() => {
     if (started.current) return
@@ -33,15 +33,26 @@ const SocialAuthCallbackPage = () => {
       return
     }
 
+    const mode = sessionStorage.getItem(SOCIAL_AUTH_MODE_KEY)
+    sessionStorage.removeItem(SOCIAL_AUTH_MODE_KEY)
+    if (mode === 'link') {
+      linkSocialIdentityRequest(ticket).then(() => {
+        navigate('/account/profile?social=connected', { replace: true })
+      }).catch(() => {
+        setFailed(true)
+        setMessage('This social account could not be connected. It may already belong to another customer.')
+      })
+      return
+    }
+
     exchangeSocialTicketRequest(ticket).then(async result => {
       if (result.status === 'profile_completion_required') {
-        sessionStorage.setItem(PROFILE_COMPLETION_KEY, JSON.stringify({
+        sessionStorage.setItem(SOCIAL_PROFILE_COMPLETION_KEY, JSON.stringify({
           token: result.profile_completion_token,
           expiresAt: Date.now() + result.expires_in * 1000,
           profile: result.profile
         }))
-        setNeedsProfile(true)
-        setMessage('Your provider identity is verified. Complete your customer profile to continue.')
+        navigate('/auth/social/complete-profile', { replace: true })
         return
       }
       setActiveApiContext('customer')
@@ -58,11 +69,11 @@ const SocialAuthCallbackPage = () => {
     <main className="min-h-screen bg-background px-4 py-12">
       <section className="mx-auto max-w-md rounded-3xl border border-border bg-white p-8 text-center shadow-xl">
         <img src={brandLogo} alt="MtaaMall" className="mx-auto mb-5 h-16 w-auto" />
-        {!failed && !needsProfile && (
+        {!failed && (
           <div className="mx-auto mb-4 h-9 w-9 animate-spin rounded-full border-2 border-primary border-t-transparent" />
         )}
         <h1 className="text-xl font-bold text-text">
-          {failed ? 'Sign-in not completed' : needsProfile ? 'Customer profile required' : 'Signing you in'}
+          {failed ? 'Sign-in not completed' : 'Signing you in'}
         </h1>
         <p className="mt-3 text-sm text-text-secondary">{message}</p>
         {failed && (
@@ -72,11 +83,6 @@ const SocialAuthCallbackPage = () => {
           >
             Return to sign in
           </Link>
-        )}
-        {needsProfile && (
-          <p className="mt-5 rounded-xl bg-primary/10 px-4 py-3 text-xs text-primary">
-            Your secure profile-completion ticket is ready for the customer registration step.
-          </p>
         )}
       </section>
     </main>

@@ -36,6 +36,7 @@ import brandLogo from '@/assets/mtaamall-logo.svg'
 type MenuEntry = ReturnType<typeof workspaceMenu>[number]
 
 const groupDefinition = (path: string) => {
+  if (path.includes('/platform/payments/mpesa/')) return { id: 'mpesa', label: 'M-Pesa accounts', icon: CreditCardIcon, order: 21 }
   if (path.includes('/platform/catalog')) return { id: 'platform-catalog', label: 'Global Catalogue', icon: CubeIcon, order: 30 }
   if (path.includes('/platform/billing/')) return { id: 'platform-billing', label: 'Billing operations', icon: CurrencyDollarIcon, order: 25 }
   if (path.endsWith('/sales') || path.endsWith('/sales/create') || path.endsWith('/payment-modes')) return { id: 'sales', label: 'Sales & Payments', icon: CurrencyDollarIcon, order: 10 }
@@ -62,6 +63,8 @@ const groupMenu = (items: MenuEntry[]) => {
 }
 
 const iconFor = (path: string) => {
+  if (path.endsWith('/payments/mpesa/system')) return CreditCardIcon
+  if (path.endsWith('/payments/mpesa/business')) return BuildingStorefrontIcon
   if (path.endsWith('/billing/reconciliation')) return ServerStackIcon
   if (path.endsWith('/billing/plans')) return CreditCardIcon
   if (path.endsWith('/billing/agreements')) return ClipboardDocumentCheckIcon

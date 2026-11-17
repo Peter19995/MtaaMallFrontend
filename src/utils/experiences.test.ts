@@ -81,7 +81,7 @@ describe('separate application experiences', () => {
       permissions: ['platform.payments.read', 'platform.settlements.read']
     }
     expect(workspaceMenu(reader).map(module => module.path)).toEqual([
-      '/platform/payments', '/platform/payments/mpesa', '/platform/payments/transactions', '/platform/settlements'
+      '/platform/payments', '/platform/payments/mpesa/system', '/platform/payments/mpesa/business', '/platform/payments/transactions', '/platform/settlements'
     ])
     expect(canAccessWorkspace(reader, '/platform/businesses/tenant-uuid/payments')).toBe(true)
     expect(canAccessWorkspace({ ...reader, permissions: ['platform.payments.read'] }, '/platform/settlements')).toBe(false)

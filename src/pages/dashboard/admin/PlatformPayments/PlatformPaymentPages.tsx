@@ -34,7 +34,7 @@ export function PlatformPaymentsOverviewPage() {
       { label: 'Businesses', value: businesses.data?.length ?? 0, Icon: BuildingStorefrontIcon },
     ].map(({ label, value, Icon }) => <div className={`${panel} p-5`} key={label}><Icon className="h-6 w-6 text-primary-dark" /><p className="mt-4 text-2xl font-bold text-text">{value}</p><p className="text-sm text-text-secondary">{label}</p></div>)}</section>
     <section className="grid gap-4 md:grid-cols-2">{[
-      ['/platform/payments/mpesa', 'Online system M-Pesa', 'Configure the platform account used by online checkout.'],
+      ['/platform/payments/mpesa/system', 'Online system M-Pesa', 'Configure the platform account used by online checkout.'],
       ['/platform/payments/transactions', 'Transactions', 'Review payment attempts across online and POS channels.'],
       ['/platform/payments/reconciliation', 'Reconciliation', 'Investigate unknown, timed-out and failed callback records.'],
       ['/platform/settlements', 'Settlements', 'See successful collections grouped by seller business.'],

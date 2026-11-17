@@ -19,6 +19,7 @@ import { getMeRequest, loginRequest } from '@api/modules/auth.api'
 import brandLogo from '@/assets/mtaamall-logo.svg'
 import { loginLanding } from '@utils/experiences'
 import { canAccessDashboard } from '@utils/dashboardAccess'
+import SocialLoginButtons from '../SocialLoginButtons'
 
 type LoginLocationState = {
   from?: {
@@ -483,6 +484,8 @@ const LoginPage = () => {
                   </AnimatePresence>
                 </form>
 
+                <SocialLoginButtons />
+
                 <p className="mt-6 text-center text-sm text-text-secondary">
                   New to MtaaMall?{' '}
                   <Link to="/register" className="font-semibold text-primary hover:text-primary-dark">
@@ -490,10 +493,6 @@ const LoginPage = () => {
                   </Link>
                 </p>
 
-                {/* API Endpoint Info */}
-                <p className="mt-4 text-center text-[10px] text-text-tertiary">
-                  Secure connection to API endpoint at `/api/v1/auth/login`
-                </p>
               </div>
             </div>
           </motion.div>

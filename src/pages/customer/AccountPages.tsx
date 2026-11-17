@@ -17,6 +17,7 @@ import { CartContext } from '@contexts/CartContext'
 import { accountGet, accountPost, accountPut, accountDelete, checkoutAccount, getOnlineMpesaIntent, initiateOnlineMpesa, AccountAddress, AccountOrder, AccountPayment, ReturnRequest, type OnlinePaymentIntent, type SavedProduct } from '@api/modules/account.api'
 import type { UserResponse } from '@api/modules/auth.api'
 import { useSiteDialog } from '@components/common'
+import SocialAccountSettings from './SocialAccountSettings'
 
 const panel = 'rounded-2xl border border-border/80 bg-surface p-5 shadow-[0_12px_36px_rgba(30,43,50,0.06)]'
 const input = 'mt-1.5 w-full rounded-xl border border-border bg-white px-3.5 py-2.5 text-text outline-none transition placeholder:text-text-tertiary focus:border-primary focus:ring-4 focus:ring-primary/10'
@@ -95,6 +96,7 @@ export function AccountProfile() {
         <div className="flex flex-wrap items-center gap-4 border-t border-divider pt-5"><button className={button} disabled={busy}>{busy ? 'Saving…' : 'Save profile'}</button>{notice && <p role="status" className={`text-sm font-medium ${notice === 'Profile saved.' ? 'text-success-dark' : 'text-error-dark'}`}>{notice}</p>}</div>
       </form>}</div>
     </section>
+    {q.data && <SocialAccountSettings passwordEnabled={q.data.password_login_enabled !== false} />}
     <section className="grid gap-4 sm:grid-cols-2" aria-label="Account shortcuts"><Link to="/account/orders" className="group rounded-2xl border border-border/80 bg-white p-5 shadow-sm transition hover:-translate-y-0.5 hover:border-primary/50 hover:shadow-md"><div className="flex items-center gap-3"><span className="grid h-11 w-11 place-items-center rounded-xl bg-primary/10 text-primary-dark"><ClipboardDocumentListIcon className="h-6 w-6" /></span><div><h3 className="font-bold text-text">Your orders</h3><p className="text-sm text-text-secondary">Track purchases and view details</p></div><ArrowRightIcon className="ml-auto h-5 w-5 text-text-tertiary transition group-hover:translate-x-1 group-hover:text-primary-dark" /></div></Link><Link to="/account/addresses" className="group rounded-2xl border border-border/80 bg-white p-5 shadow-sm transition hover:-translate-y-0.5 hover:border-secondary/50 hover:shadow-md"><div className="flex items-center gap-3"><span className="grid h-11 w-11 place-items-center rounded-xl bg-secondary/10 text-secondary-dark"><MapPinIcon className="h-6 w-6" /></span><div><h3 className="font-bold text-text">Saved addresses</h3><p className="text-sm text-text-secondary">Make checkout quicker next time</p></div><ArrowRightIcon className="ml-auto h-5 w-5 text-text-tertiary transition group-hover:translate-x-1 group-hover:text-secondary-dark" /></div></Link></section>
   </div>
 }

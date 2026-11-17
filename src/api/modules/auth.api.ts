@@ -32,6 +32,18 @@ export type SocialProfilePrefill = {
   avatar_url?: string | null
 }
 
+export type SocialIdentity = {
+  public_id: string
+  provider: SocialProvider['provider']
+  display_name: string
+  provider_email?: string | null
+  provider_email_verified: boolean
+  profile_name?: string | null
+  avatar_url?: string | null
+  linked_at: string
+  last_login_at?: string | null
+}
+
 export type SocialExchangeResponse =
   | ({ status: 'authenticated' } & TokenResponse)
   | {
@@ -176,6 +188,30 @@ export const exchangeSocialTicketRequest = async (
     ticket,
     use_cookies: true
   })).data
+
+export const completeSocialProfileRequest = async (payload: {
+  profile_completion_token: string
+  username: string
+  phone: string
+  full_name?: string
+  email?: string
+}): Promise<Extract<SocialExchangeResponse, { status: 'authenticated' }>> =>
+  (await api.post('/auth/social/profile/complete', { ...payload, use_cookies: true })).data
+
+export const listSocialIdentitiesRequest = async (): Promise<SocialIdentity[]> =>
+  (await api.get('/auth/social/identities')).data
+
+export const linkSocialIdentityRequest = async (ticket: string) =>
+  (await api.post('/auth/social/identities/link', { ticket })).data
+
+export const unlinkSocialIdentityRequest = async (provider: SocialProvider['provider']) =>
+  (await api.delete(`/auth/social/identities/${provider}`)).data
+
+export const addSocialPasswordRequest = async (newPassword: string) =>
+  (await api.post('/auth/social/password', { new_password: newPassword })).data
+
+export const closeSocialAccountRequest = async (confirmation: string, password?: string) =>
+  (await api.post('/auth/social/account/close', { confirmation, password: password || null })).data
 
 export const refreshTokenRequest = async (
   payload: RefreshTokenRequest

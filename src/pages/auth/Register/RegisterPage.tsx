@@ -12,6 +12,7 @@ import {
 import { registerBusinessRequest, registerCustomerRequest, type AccountType } from '@api/modules/auth.api'
 import { listPublicBusinessTypes, type BusinessType } from '@api/modules/businesses.api'
 import brandLogo from '@/assets/mtaamall-logo.svg'
+import SocialLoginButtons from '../SocialLoginButtons'
 
 const getErrorMessage = (error: unknown) => {
   if (axios.isAxiosError(error)) {
@@ -181,6 +182,7 @@ const RegisterPage = () => {
           <p className="text-xs text-text-tertiary">Use at least 6 characters.</p>
           {errorMessage && <div className="flex items-center gap-2 rounded-xl border border-error/20 bg-error/10 p-3 text-xs text-error"><XCircleIcon className="h-5 w-5 flex-none" />{errorMessage}</div>}
           <button type="submit" disabled={isSubmitting || (accountType === 'business' && !businessType)} className="w-full rounded-xl bg-gradient-to-r from-primary to-secondary px-4 py-3 text-sm font-semibold text-white disabled:opacity-60">{isSubmitting ? 'Creating account…' : `Create ${accountType} account`}</button>
+          {accountType === 'customer' && <SocialLoginButtons />}
           </div>
         </form>
 

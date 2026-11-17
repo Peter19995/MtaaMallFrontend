@@ -29,6 +29,7 @@ const CartPage = lazy(() => import('@pages/public/Cart/CartPage'))
 const LoginPage = lazy(() => import('@pages/auth/Login/LoginPage'))
 const RegisterPage = lazy(() => import('@pages/auth/Register/RegisterPage'))
 const SocialAuthCallbackPage = lazy(() => import('@pages/auth/SocialAuthCallbackPage'))
+const SocialProfileCompletionPage = lazy(() => import('@pages/auth/SocialProfileCompletionPage'))
 const AcceptInvitationPage = lazy(() => import('@pages/auth/AcceptInvitation/AcceptInvitationPage'))
 const BusinessInvitationAcceptPage = lazy(() => import('@pages/auth/AcceptInvitation/BusinessInvitationAcceptPage'))
 const PlatformBusinessesPage = lazy(() => import('@pages/dashboard/business/PlatformBusinessesPage'))
@@ -152,6 +153,7 @@ export const AppRoutes = () => {
         <Route path="/forgot-password" element={<ResetPasswordPage />} />
         <Route path="/register" element={<RegisterPage />} />
         <Route path="/auth/social/callback" element={<SocialAuthCallbackPage />} />
+        <Route path="/auth/social/complete-profile" element={<SocialProfileCompletionPage />} />
         <Route path="/accept-invitation" element={<AcceptInvitationPage />} />
         <Route path="/unauthorized" element={<UnauthorizedPage />} />
 
@@ -196,7 +198,9 @@ export const AppRoutes = () => {
               <Route path="/platform/catalog/brands" element={<PlatformCatalogPage view="brands" />} />
               <Route path="/platform/catalog/duplicates" element={<PlatformCatalogPage view="duplicates" />} />
               <Route path="/platform/payments" element={<PlatformPaymentsOverviewPage />} />
-              <Route path="/platform/payments/mpesa" element={<PlatformMpesaPage />} />
+              <Route path="/platform/payments/mpesa" element={<Navigate to="/platform/payments/mpesa/system" replace />} />
+              <Route path="/platform/payments/mpesa/system" element={<PlatformMpesaPage accountScope="system" />} />
+              <Route path="/platform/payments/mpesa/business" element={<PlatformMpesaPage accountScope="business" />} />
               <Route path="/platform/payments/transactions" element={<PlatformTransactionsPage />} />
               <Route path="/platform/payments/reconciliation" element={<PlatformReconciliationPage />} />
               <Route path="/platform/settlements" element={<PlatformSettlementsPage />} />
