@@ -86,6 +86,9 @@ const BranchesManagementPage = lazy(
 const CustomersManagementPage = lazy(
   () => import('@pages/dashboard/admin/Customers/CustomersManagementPage')
 )
+const BusinessWhatsAppPage = lazy(
+  () => import('@pages/dashboard/business/BusinessWhatsAppPage')
+)
 const ProjectsOperationsPage = lazy(
   () => import('@pages/dashboard/admin/Operations/ProjectsOperationsPage')
 )
@@ -247,6 +250,7 @@ export const AppRoutes = () => {
                 <Route path={`/${experience}/services`} element={<ServiceManagementPage />} />
                 <Route path={`/${experience}/branches`} element={<BranchesManagementPage />} />
                 <Route path={`/${experience}/customers`} element={<CustomersManagementPage />} />
+                <Route path={`/${experience}/whatsapp`} element={<BusinessWhatsAppPage />} />
                 <Route path={`/${experience}/inventory`} element={<InventoryManagementPage view="status" />} />
                 <Route path={`/${experience}/inventory/restocks`} element={<InventoryManagementPage view="restocks" />} />
                 <Route path={`/${experience}/inventory/restocks/new`} element={<InventoryManagementPage view="create-restock" />} />

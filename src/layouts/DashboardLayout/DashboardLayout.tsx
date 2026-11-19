@@ -8,6 +8,7 @@ import {
   BuildingOfficeIcon,
   BuildingStorefrontIcon,
   ChartBarIcon,
+  ChatBubbleLeftRightIcon,
   CheckBadgeIcon,
   ChevronDownIcon,
   ClipboardDocumentCheckIcon,
@@ -43,7 +44,7 @@ const groupDefinition = (path: string) => {
   if (path.includes('/products') || path.endsWith('/product-categories') || path.endsWith('/collections') || path.endsWith('/catalogue') || path.endsWith('/variant-options') || path.includes('/inventory')) return { id: 'catalog', label: 'Catalog & Inventory', icon: CubeIcon, order: 20 }
   if (path.endsWith('/branches') || path.endsWith('/projects') || path.endsWith('/services') || path.endsWith('/styling')) return { id: 'operations', label: 'Business Operations', icon: WrenchScrewdriverIcon, order: 30 }
   if (path.endsWith('/members')) return { id: 'hr', label: 'HR', icon: UserGroupIcon, order: 40 }
-  if (path.endsWith('/customers')) return { id: 'crm', label: 'CRM', icon: UserGroupIcon, order: 50 }
+  if (path.endsWith('/customers') || path.endsWith('/whatsapp')) return { id: 'crm', label: 'CRM', icon: UserGroupIcon, order: 50 }
   if (path.endsWith('/overview')) return { id: 'reports', label: 'Reports', icon: ChartBarIcon, order: 60 }
   if (path.endsWith('/audit') || path.endsWith('/approvals')) return { id: 'oversight', label: 'Audit & approval', icon: ClipboardDocumentCheckIcon, order: 70 }
   if (path.includes('/payments') || path.endsWith('/settlements')) return { id: 'payments', label: 'Platform payments', icon: CreditCardIcon, order: 20 }
@@ -75,6 +76,7 @@ const iconFor = (path: string) => {
   if (path.endsWith('/businesses')) return BuildingStorefrontIcon
   if (path.endsWith('/admins') || path.endsWith('/members')) return UserGroupIcon
   if (path.endsWith('/customers')) return UserGroupIcon
+  if (path.endsWith('/whatsapp')) return ChatBubbleLeftRightIcon
   if (path.endsWith('/overview')) return ChartBarIcon
   if (path.includes('/products') || path.endsWith('/collections') || path.endsWith('/catalogue') || path.endsWith('/variant-options')) return CubeIcon
   if (path.endsWith('/branches')) return BuildingOfficeIcon

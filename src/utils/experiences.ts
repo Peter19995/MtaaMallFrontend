@@ -82,6 +82,7 @@ export const businessModules: WorkspaceModule[] = [
   { path: 'profile', label: 'Business profile', permission: 'business.settings.read' },
   { path: 'members', label: 'Team', permission: 'business.members.read' },
   { path: 'customers', label: 'Customers', permission: 'customers.read' },
+  { path: 'whatsapp', label: 'WhatsApp inbox', permission: 'communications.whatsapp.read' },
   { path: 'overview', label: 'Reports', permission: 'reports.read' },
   { path: 'billing', label: 'Billing', permission: 'business.billing.read' },
   { path: 'products', label: 'Products', permission: 'products.read' },
