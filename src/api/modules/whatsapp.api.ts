@@ -13,13 +13,16 @@ export type WhatsAppMessage = {
   created_at: string; sent_by_user_id?: number | null
 }
 
+export type WhatsAppInboxScope = 'business' | 'platform'
+const inboxPath = (scope: WhatsAppInboxScope) => `/integrations/whatsapp/${scope}`
+
 export const getWhatsAppChannelRequest = async (): Promise<WhatsAppChannel> =>
   (await api.get<WhatsAppChannel>('/integrations/whatsapp/business/channel')).data
 export const enableWhatsAppChannelRequest = async (): Promise<WhatsAppChannel> =>
   (await api.post<WhatsAppChannel>('/integrations/whatsapp/business/channel')).data
-export const listWhatsAppConversationsRequest = async (): Promise<WhatsAppConversation[]> =>
-  (await api.get<WhatsAppConversation[]>('/integrations/whatsapp/business/conversations')).data
-export const listWhatsAppMessagesRequest = async (conversationId: string): Promise<WhatsAppMessage[]> =>
-  (await api.get<WhatsAppMessage[]>(`/integrations/whatsapp/business/conversations/${conversationId}/messages`)).data
-export const replyToWhatsAppConversationRequest = async (conversationId: string, body: string): Promise<WhatsAppMessage> =>
-  (await api.post<WhatsAppMessage>(`/integrations/whatsapp/business/conversations/${conversationId}/reply`, { body })).data
+export const listWhatsAppConversationsRequest = async (scope: WhatsAppInboxScope = 'business'): Promise<WhatsAppConversation[]> =>
+  (await api.get<WhatsAppConversation[]>(`${inboxPath(scope)}/conversations`)).data
+export const listWhatsAppMessagesRequest = async (conversationId: string, scope: WhatsAppInboxScope = 'business'): Promise<WhatsAppMessage[]> =>
+  (await api.get<WhatsAppMessage[]>(`${inboxPath(scope)}/conversations/${conversationId}/messages`)).data
+export const replyToWhatsAppConversationRequest = async (conversationId: string, body: string, scope: WhatsAppInboxScope = 'business'): Promise<WhatsAppMessage> =>
+  (await api.post<WhatsAppMessage>(`${inboxPath(scope)}/conversations/${conversationId}/reply`, { body })).data

@@ -192,6 +192,7 @@ export const AppRoutes = () => {
             <Route element={<DashboardLayout />}>
               <Route path="/platform" element={<WorkspaceHome />} />
               <Route path="/platform/audit" element={<AuditApprovalsPage />} />
+              <Route path="/platform/whatsapp" element={<BusinessWhatsAppPage scope="platform" />} />
               <Route path="/platform/businesses" element={<PlatformBusinessesPage />} />
               <Route path="/platform/business-types" element={<PlatformBusinessTypesPage />} />
               <Route path="/platform/catalog" element={<PlatformCatalogPage view="overview" />} />

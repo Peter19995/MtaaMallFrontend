@@ -54,6 +54,7 @@ export function loginLanding(user: WorkspacePrincipal) {
 }
 export type WorkspaceModule = { path: string; label: string; permission: string; anyPermissions?: string[]; mutation?: boolean }
 export const platformModules: WorkspaceModule[] = [
+  { path: 'whatsapp', label: 'WhatsApp inbox', permission: 'platform.whatsapp.read' },
   { path: 'audit', label: 'Audit history', permission: 'platform.audit.read' },
   { path: 'businesses', label: 'Businesses', permission: 'platform.businesses.read' },
   { path: 'business-types', label: 'Business types', permission: 'platform.businesses.read' },

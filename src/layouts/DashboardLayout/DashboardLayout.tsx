@@ -49,6 +49,7 @@ const groupDefinition = (path: string) => {
   if (path.endsWith('/audit') || path.endsWith('/approvals')) return { id: 'oversight', label: 'Audit & approval', icon: ClipboardDocumentCheckIcon, order: 70 }
   if (path.includes('/payments') || path.endsWith('/settlements')) return { id: 'payments', label: 'Platform payments', icon: CreditCardIcon, order: 20 }
   if (path.endsWith('/businesses') || path.endsWith('/admins')) return { id: 'people', label: 'People & access', icon: UserGroupIcon, order: 10 }
+  if (path.endsWith('/platform/whatsapp')) return { id: 'support', label: 'Customer support', icon: ChatBubbleLeftRightIcon, order: 15 }
   return { id: 'insights', label: 'Insights', icon: ChartBarIcon, order: 60 }
 }
 
