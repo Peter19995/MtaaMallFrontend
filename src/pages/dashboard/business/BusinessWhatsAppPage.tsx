@@ -3,8 +3,8 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { ArrowPathIcon, ChatBubbleLeftRightIcon, ClipboardDocumentIcon, PaperAirplaneIcon } from '@heroicons/react/24/outline'
 import {
   enableWhatsAppChannelRequest, getWhatsAppChannelRequest, listWhatsAppConversationsRequest,
-  listWhatsAppMessagesRequest, replyToWhatsAppConversationRequest, type WhatsAppConversation,
-  type WhatsAppInboxScope,
+  listWhatsAppMessagesRequest, replyToWhatsAppConversationRequest, getWhatsAppMediaRequest,
+  type WhatsAppConversation, type WhatsAppInboxScope, type WhatsAppMessage,
 } from '@api/modules/whatsapp.api'
 import { useAuth } from '@hooks/useAuth'
 
@@ -13,6 +13,41 @@ const errorText = (error: unknown) => {
   const candidate = error as { response?: { data?: { detail?: string | { message?: string } } }; message?: string }
   const detail = candidate.response?.data?.detail
   return typeof detail === 'string' ? detail : detail?.message ?? candidate.message ?? 'The request could not be completed.'
+}
+
+function WhatsAppMedia({ message }: { message: WhatsAppMessage }) {
+  const media = message.media
+  const attachment = useQuery({
+    queryKey: ['whatsapp-media', message.id],
+    queryFn: () => getWhatsAppMediaRequest(media!.url!),
+    enabled: media?.status === 'available' && Boolean(media.url),
+    staleTime: 5 * 60_000,
+  })
+  const [objectUrl, setObjectUrl] = useState<string | null>(null)
+  useEffect(() => {
+    if (!attachment.data) { setObjectUrl(null); return }
+    const url = URL.createObjectURL(attachment.data)
+    setObjectUrl(url)
+    return () => URL.revokeObjectURL(url)
+  }, [attachment.data])
+
+  if (!media) return null
+  if (media.status === 'pending') {
+    return <div className="mb-2 h-32 w-48 animate-pulse rounded-xl bg-slate-200" aria-label="Loading WhatsApp attachment" />
+  }
+  if (media.status === 'failed') {
+    return <p className="mb-2 rounded-lg bg-slate-100 px-3 py-2 text-xs text-text-secondary">This {message.message_type} could not be downloaded.</p>
+  }
+  if (attachment.isPending) return <div className="mb-2 h-32 w-48 animate-pulse rounded-xl bg-slate-200" aria-label="Loading WhatsApp attachment" />
+  if (attachment.isError || !objectUrl) return <p className="mb-2 rounded-lg bg-slate-100 px-3 py-2 text-xs text-text-secondary">This {message.message_type} could not be downloaded.</p>
+  const mime = media.mime_type || attachment.data?.type || ''
+  const safeImageTypes = new Set(['image/jpeg', 'image/png', 'image/webp', 'image/gif'])
+  if ((message.message_type === 'sticker' && mime === 'image/webp') || safeImageTypes.has(mime)) {
+    return <a href={objectUrl} target="_blank" rel="noreferrer" aria-label="Open image attachment"><img src={objectUrl} alt={media.file_name || (message.message_type === 'sticker' ? 'WhatsApp sticker' : 'WhatsApp image')} className={`${message.message_type === 'sticker' ? 'max-h-44 max-w-44' : 'max-h-80 max-w-full'} mb-2 rounded-xl object-contain`} /></a>
+  }
+  if (mime.startsWith('video/')) return <video src={objectUrl} controls preload="metadata" className="mb-2 max-h-80 max-w-full rounded-xl" />
+  if (mime.startsWith('audio/')) return <audio src={objectUrl} controls preload="metadata" className="mb-2 max-w-full" />
+  return <a href={objectUrl} download={media.file_name || undefined} className="mb-2 block rounded-lg bg-slate-100 px-3 py-2 text-sm font-semibold text-primary underline">{media.file_name || 'Download attachment'}</a>
 }
 
 export default function BusinessWhatsAppPage({ scope = 'business' }: { scope?: WhatsAppInboxScope }) {
@@ -55,7 +90,7 @@ export default function BusinessWhatsAppPage({ scope = 'business' }: { scope?: W
     </header>
     {!isPlatform && <section className="flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-emerald-100 bg-emerald-50/60 p-4">
       <div><p className="text-sm font-bold text-emerald-950">Your customer chat link</p><p className="mt-1 text-xs text-emerald-800">Use this link on your storefront, adverts and social profiles so messages reach the correct business.</p></div>
-      <button type="button" onClick={copyLink} disabled={!channel.data.chat_url} className="inline-flex items-center gap-2 rounded-xl border border-emerald-200 bg-white px-4 py-2.5 text-sm font-semibold text-emerald-900 hover:bg-emerald-50 disabled:opacity-50"><ClipboardDocumentIcon className="h-4 w-4" />{copied ? 'Copied' : 'Copy chat link'}</button>
+      <button type="button" onClick={copyLink} disabled={!channel.data?.chat_url} className="inline-flex items-center gap-2 rounded-xl border border-emerald-200 bg-white px-4 py-2.5 text-sm font-semibold text-emerald-900 hover:bg-emerald-50 disabled:opacity-50"><ClipboardDocumentIcon className="h-4 w-4" />{copied ? 'Copied' : 'Copy chat link'}</button>
     </section>}
     <section className="grid min-h-[600px] overflow-hidden rounded-3xl border border-border bg-white shadow-sm lg:grid-cols-[340px_minmax(0,1fr)]">
       <aside className="border-b border-divider lg:border-b-0 lg:border-r"><div className="border-b border-divider p-4"><h2 className="font-bold text-text">Conversations</h2><p className="mt-1 text-xs text-text-tertiary">{conversations.data?.length ?? 0} routed chats</p></div><div className="max-h-[260px] overflow-y-auto lg:max-h-[670px]">
@@ -65,7 +100,7 @@ export default function BusinessWhatsAppPage({ scope = 'business' }: { scope?: W
       </div></aside>
       <div className="flex min-h-[480px] min-w-0 flex-col">{!selected ? <div className="grid flex-1 place-items-center p-8 text-center"><div><ChatBubbleLeftRightIcon className="mx-auto h-12 w-12 text-primary/40" /><p className="mt-4 font-bold text-text">Select a conversation</p><p className="mt-1 text-sm text-text-secondary">Messages and replies will appear here.</p></div></div> : <>
         <div className="border-b border-divider px-5 py-4"><p className="font-bold text-text">{selected.customer_name}</p><p className="mt-0.5 text-xs text-text-tertiary">{selected.customer_phone}</p></div>
-        <div className="flex-1 space-y-3 overflow-y-auto bg-slate-50/70 p-4 sm:p-6">{messages.isPending && <p className="text-sm text-text-secondary">Loading messages…</p>}{messages.data?.map(message => <article key={message.id} className={`flex ${message.direction === 'outbound' ? 'justify-end' : 'justify-start'}`}><div className={`max-w-[85%] rounded-2xl px-4 py-3 shadow-sm sm:max-w-[70%] ${message.direction === 'outbound' ? 'rounded-br-md bg-primary text-white' : 'rounded-bl-md border border-border bg-white text-text'}`}><p className="whitespace-pre-wrap text-sm leading-5">{message.body || `[${message.message_type} message]`}</p><p className={`mt-1.5 text-[10px] ${message.direction === 'outbound' ? 'text-white/70' : 'text-text-tertiary'}`}>{time(message.created_at)}{message.direction === 'outbound' ? ` · ${message.status}` : ''}</p></div></article>)}</div>
+        <div className="flex-1 space-y-3 overflow-y-auto bg-slate-50/70 p-4 sm:p-6">{messages.isPending && <p className="text-sm text-text-secondary">Loading messages…</p>}{messages.data?.map(message => <article key={message.id} className={`flex ${message.direction === 'outbound' ? 'justify-end' : 'justify-start'}`}><div className={`max-w-[85%] rounded-2xl px-4 py-3 shadow-sm sm:max-w-[70%] ${message.direction === 'outbound' ? 'rounded-br-md bg-primary text-white' : 'rounded-bl-md border border-border bg-white text-text'}`}><WhatsAppMedia message={message} />{message.body && <p className="whitespace-pre-wrap text-sm leading-5">{message.body}</p>}{!message.body && !message.media && <p className="whitespace-pre-wrap text-sm leading-5">[{message.message_type} message]</p>}<p className={`mt-1.5 text-[10px] ${message.direction === 'outbound' ? 'text-white/70' : 'text-text-tertiary'}`}>{time(message.created_at)}{message.direction === 'outbound' ? ` · ${message.status}` : ''}</p></div></article>)}</div>
         {canReply && <form onSubmit={submit} className="flex gap-3 border-t border-divider bg-white p-4"><label className="sr-only" htmlFor="whatsapp-reply">Reply</label><textarea id="whatsapp-reply" value={reply} onChange={event => setReply(event.target.value)} rows={2} maxLength={4096} placeholder="Write a reply…" className="min-h-[48px] flex-1 resize-none rounded-xl border border-border px-4 py-3 text-sm outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20" /><button type="submit" aria-label="Send WhatsApp reply" disabled={!reply.trim() || send.isPending} className="self-end rounded-xl bg-primary p-3 text-white transition hover:bg-primary-dark disabled:opacity-40"><PaperAirplaneIcon className="h-5 w-5" /></button></form>}
         {send.isError && <p className="border-t border-error/20 bg-error/5 px-4 py-3 text-sm text-error">{errorText(send.error)}</p>}
       </>}</div>

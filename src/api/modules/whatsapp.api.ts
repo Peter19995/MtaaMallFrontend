@@ -9,6 +9,10 @@ export type WhatsAppConversation = {
 }
 export type WhatsAppMessage = {
   id: string; direction: 'inbound' | 'outbound'; message_type: string; body: string | null
+  media: {
+    status: 'pending' | 'available' | 'failed'; mime_type: string | null
+    file_name: string | null; size: number | null; url: string | null
+  } | null
   status: 'received' | 'accepted' | 'sent' | 'delivered' | 'read' | 'failed'
   created_at: string; sent_by_user_id?: number | null
 }
@@ -26,3 +30,5 @@ export const listWhatsAppMessagesRequest = async (conversationId: string, scope:
   (await api.get<WhatsAppMessage[]>(`${inboxPath(scope)}/conversations/${conversationId}/messages`)).data
 export const replyToWhatsAppConversationRequest = async (conversationId: string, body: string, scope: WhatsAppInboxScope = 'business'): Promise<WhatsAppMessage> =>
   (await api.post<WhatsAppMessage>(`${inboxPath(scope)}/conversations/${conversationId}/reply`, { body })).data
+export const getWhatsAppMediaRequest = async (url: string): Promise<Blob> =>
+  (await api.get<Blob>(url, { responseType: 'blob' })).data
